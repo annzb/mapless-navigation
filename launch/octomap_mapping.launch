@@ -1,0 +1,50 @@
+<!-- 
+  Example launch file for octomap_server mapping: 
+  Listens to incoming PointCloud2 data and incrementally builds an octomap. 
+  The data is sent out in different representations. 
+
+  Copy this file into your workspace and adjust as needed, see
+  www.ros.org/wiki/octomap_server for details  
+-->
+<launch>
+	<node pkg="octomap_server" type="octomap_server_node" name="octomap_server" ns="lidar">
+		<param name="resolution" value="0.25" />
+		
+		<!-- fixed map frame (set to 'map' if SLAM or localization running!) -->
+		<param name="frame_id" type="string" value="world" />
+		<param name="base_frame_id" type="string" value="world"/>
+		
+		<!-- maximum range to integrate (speedup!) -->
+		<param name="sensor_model/max_range" value="7.0" />
+		<param name="sensor_model/min_range" value="0.0" />
+		<param name="sensor_model/hit" value=".95"/>
+		<param name="sensor_model/miss" value=".48"/>
+		<!-- <param name="ground_filter/plane_distance" value="1" -->
+		
+		<!-- data source to integrate (PointCloud2) -->
+		<remap from="cloud_in" to="/os1_cloud_node/points" />
+	</node>
+
+	<node pkg="isrr_analysis" type="point_cloud_angle_filter" name="point_cloud_filter" output="screen">
+		<remap from="in_cloud" to="/os1_cloud_node/points"/>
+		<remap from="filterd_cloud" to="/os1_cloud_node/points/filtered"/>
+	</node>
+
+	<node pkg="octomap_server" type="octomap_server_node" name="octomap_server" ns="lidar_filtered">
+		<param name="resolution" value="0.25" />
+		
+		<!-- fixed map frame (set to 'map' if SLAM or localization running!) -->
+		<param name="frame_id" type="string" value="world" />
+		<param name="base_frame_id" type="string" value="world"/>
+		
+		<!-- maximum range to integrate (speedup!) -->
+		<param name="sensor_model/max_range" value="7.0" />
+		<param name="sensor_model/min_range" value="0.0" />
+		<param name="sensor_model/hit" value=".95"/>
+		<param name="sensor_model/miss" value=".48"/>
+		
+		<!-- data source to integrate (PointCloud2) -->
+		<remap from="cloud_in" to="/os1_cloud_node/points/filtered" />
+	</node>
+
+</launch>

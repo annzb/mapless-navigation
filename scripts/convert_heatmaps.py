@@ -1,6 +1,8 @@
 #!/usr/bin/env python
 import os
+import pickle
 import numpy as np
+from PIL import Image
 
 import rosbag
 from sensor_msgs import point_cloud2
@@ -9,6 +11,8 @@ from scipy.spatial.transform import Rotation as R
 import matplotlib
 matplotlib.use('TkAgg')
 import matplotlib.pyplot as plt
+
+import octomap_python
 
 # import octomap
 # from octomap_msgs.msg import Octomap
@@ -40,7 +44,26 @@ def get_localized_pointcloud(pose, true_map, x_max=5., y_max=10., z_max=5., fov_
     )
     fov_mask = box_mask & cone_mask
 
-    return local_points[fov_mask]
+    points_in_fov = local_points[fov_mask]
+    return points_in_fov
+
+
+def points_to_grid(points, x_min=-5, x_max=5, y_min=0, y_max=10, z_min=-5, z_max=5, resolution=0.25):
+    grid_size_x = int((x_max - x_min) / resolution)
+    grid_size_y = int((y_max - y_min) / resolution)
+    grid_size_z = int((z_max - z_min) / resolution)
+    grid = np.zeros((grid_size_x, grid_size_y, grid_size_z), dtype=float)
+
+    point_indices = np.floor((points - np.array([x_min, y_min, z_min])) / resolution).astype(int)
+    in_bounds_mask = (
+            (point_indices[:, 0] >= 0) & (point_indices[:, 0] < grid_size_x) &
+            (point_indices[:, 1] >= 0) & (point_indices[:, 1] < grid_size_y) &
+            (point_indices[:, 2] >= 0) & (point_indices[:, 2] < grid_size_z)
+    )
+
+    point_indices = tuple(point_indices[in_bounds_mask].T)
+    grid[point_indices] = 1.0
+    return grid
 
 
 def main():
@@ -93,27 +116,46 @@ def main():
     pose_timestamps = np.loadtxt(os.path.join(run_dir, 'groundtruth/timestamps.txt'))
     heatmap_timestamps = np.loadtxt(os.path.join(run_dir, 'single_chip/heatmaps/timestamps.txt'))
     pose_indices = associate_radar_with_pose(heatmap_timestamps, pose_timestamps)
-    print(pose_indices)
     print('Saving total map')
-    save_total_map(true_map, poses)
+    # save_total_map(true_map, poses)
 
     print('Calculating frames')
-    # num_files = len(os.listdir(os.path.join(run_dir, 'single_chip/heatmaps/data')))
     map_frames = []
+    frame_grids = []
+    heatmaps = []
     for heatmap_idx, pose_idx in enumerate(pose_indices):
         heatmap = get_heatmap(
             filename=os.path.join(run_dir, 'single_chip/heatmaps/data/heatmap_' + str(heatmap_idx) + '.bin'),
             params=params['heatmap']
         )
+        # print(calculate_heatmap_stats(heatmap))
+        heatmaps.append(heatmap)
+        # if heatmap_idx in set(range(10, 20)):
+        #     save_heatmap_image(heatmap, idx=heatmap_idx)
+
         localized_points = get_localized_pointcloud(poses[pose_idx], true_map, x_max=x_max, y_max=y_max, z_max=z_max)
+        frame_grid = points_to_grid(
+            localized_points, resolution=map_resolution,
+            x_max=x_max, y_max=y_max, z_max=z_max,
+            x_min=-x_max, y_min=0, z_min=-z_max
+        )
         map_frames.append(localized_points)
+        frame_grids.append(frame_grid)
         # print('Heatmap', heatmap_idx, heatmap.shape)
         # print('Pointcloud from pose', pose_idx, localized_points.shape)
-    print('Heatmap shape', heatmap.shape)
-    print('GT shape', localized_points.shape)
-    print('GT point', localized_points[0])
 
-    visualize_true_frames(map_frames, x_max=x_max, y_max=y_max, z_max=z_max)
+    print('Heatmap shape', heatmaps[0].shape)
+    print('GT frame shape', localized_points.shape)
+    print('GT grid shape', frame_grid.shape)
+
+    with open('dataset.pkl', 'wb') as f:
+        pickle.dump({
+            'heatmaps': heatmaps,
+            'gt_grids': frame_grids,
+            # 'gt_points': map_frames
+        }, f)
+
+    # visualize_true_frames(map_frames, x_max=x_max, y_max=y_max, z_max=z_max)
 
 
 def save_total_map(total_map, poses, filename='total_map'):
@@ -141,13 +183,58 @@ def save_total_map(total_map, poses, filename='total_map'):
     plt.close()
 
 
+def save_heatmap_image(heatmap, filename='heatmap', idx=0):
+    normalized_image_3d = np.zeros_like(heatmap)
+    for i in range(heatmap.shape[-1]):
+        channel = heatmap[:, :, :, i]
+        min_val = channel.min()
+        max_val = channel.max()
+        if max_val > min_val:
+            normalized_image_3d[:, :, :, i] = (channel - min_val) / (max_val - min_val)
+
+    reshaped_image = normalized_image_3d.transpose(1, 2, 0, 3).reshape(64, 64, -1)
+    image_2d_rgb = np.zeros((*reshaped_image.shape[:2], 3), dtype=np.uint8)
+    image_2d_rgb[..., 0] = reshaped_image[..., 0] * 255  # Red channel
+    image_2d_rgb[..., 1] = reshaped_image[..., 1] * 255  # Green channel
+    image_2d_rgb = image_2d_rgb.astype(np.uint8)
+    Image.fromarray(image_2d_rgb).save(filename + str(idx) + '.png')
+
+
+def calculate_heatmap_stats(heatmap):
+    stats = {}
+    if heatmap.shape[-1] != 2:
+        raise ValueError("Array must have shape (X, Y, Z, 2)")
+
+    # Mean and Standard Deviation for each channel
+    stats['mean_channel_1'] = np.mean(heatmap[:, :, :, 0])
+    stats['std_dev_channel_1'] = np.std(heatmap[:, :, :, 0])
+    stats['mean_channel_2'] = np.mean(heatmap[:, :, :, 1])
+    stats['std_dev_channel_2'] = np.std(heatmap[:, :, :, 1])
+
+    # Minimum and Maximum Values for each channel
+    stats['min_channel_1'] = np.min(heatmap[:, :, :, 0])
+    stats['max_channel_1'] = np.max(heatmap[:, :, :, 0])
+    stats['min_channel_2'] = np.min(heatmap[:, :, :, 1])
+    stats['max_channel_2'] = np.max(heatmap[:, :, :, 1])
+
+    # Quantiles and Percentiles for each channel
+    for percentile in [25, 50, 75]:
+        stats[f'percentile_{percentile}_channel_1'] = np.percentile(heatmap[:, :, :, 0], percentile)
+        stats[f'percentile_{percentile}_channel_2'] = np.percentile(heatmap[:, :, :, 1], percentile)
+
+    # Data Type and Scale
+    stats['data_type'] = heatmap.dtype
+
+    return stats
+
+
 def visualize_true_frames(frames, x_max=5., y_max=10., z_max=10.):
     fig = plt.figure()
     ax = fig.add_subplot(111, projection='3d')
-    # ax.view_init(elev=40, azim=-60)
 
     for frame in frames:
         ax.scatter(frame[:, 0], frame[:, 1], frame[:, 2], s=1)
+        ax.scatter([0], [0], [0], c='red')
         ax.set_xlabel('X')
         ax.set_ylabel('Y')
         ax.set_zlabel('Z')
@@ -158,28 +245,6 @@ def visualize_true_frames(frames, x_max=5., y_max=10., z_max=10.):
         plt.pause(0.2)
         ax.clear()
     plt.close()
-
-    # for frame, pose in zip(frames, poses):
-    #     fig = plt.figure(figsize=(12, 10))
-    #     ax = fig.add_subplot(111, projection='3d')
-    #
-    #     # Draw frame points with coloration based on z-coordinate
-    #     norm = plt.Normalize(vmin=frame[:, 2].min(), vmax=frame[:, 2].max())
-    #     colors = plt.cm.jet(norm(frame[:, 2]))
-    #     ax.scatter(frame[:, 0], frame[:, 1], frame[:, 2], c=colors, s=1)
-    #
-    #     # Draw the current location as a separate object (red point)
-    #     ax.scatter(pose[0], pose[1], pose[2], color='red', s=100)
-    #
-    #     # Draw the direction as a line (green line)
-    #     direction = R.from_quat(pose[3:]).apply([1, 0, 0])
-    #     line_length = 1.0  # Adjust as needed
-    #     end_point = pose[:3] + direction * line_length
-    #     ax.plot([pose[0], end_point[0]], [pose[1], end_point[1]], [pose[2], end_point[2]], color='green')
-    #
-    #     plt.draw()
-    #     plt.pause(0.5)  # Display each frame for 0.5 seconds
-    # plt.close()
 
 
 if __name__ == '__main__':

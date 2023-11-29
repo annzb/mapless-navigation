@@ -40,6 +40,17 @@ class BaseTransform(nn.Module):
         )
         # [N, 32, 16, 16]
 
+        self.up3 = nn.Sequential(
+            nn.ConvTranspose2d(32, 32, kernel_size=2, stride=2, padding=0, output_padding=0),
+            nn.ReLU()
+        )
+        # [N, 32, 32, 32]
+        self.conv3 = nn.Sequential(
+            nn.Conv2d(32, 32, kernel_size=3, padding=1),
+            nn.ReLU()
+        )
+        # [N, 32, 32, 32]
+
     def forward(self, x):
         # [N, 2, 64, 64, 16]
 
@@ -70,6 +81,14 @@ class BaseTransform(nn.Module):
         out = self.conv2(out)
         # [N, 32, 16, 16]
         # print("Shape after conv2: ", out.shape)
+
+        out = self.up3(out)
+        # [N, 32, 32, 32]
+        # print("Shape after up3: ", out.shape)
+
+        out = self.conv3(out)
+        # [N, 32, 32, 32]
+        # print("Shape after conv3: ", out.shape)
 
         out = torch.sigmoid(out)
         # [N, 32, 32, 32]
