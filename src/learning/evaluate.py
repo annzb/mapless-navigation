@@ -50,7 +50,7 @@ def calc_tfpn(predictions, targets):
     return true_pos, false_pos, true_neg, false_neg
 
 
-def test_model(test_loader, model, criterion, device, occupancy_threshold=0.5):
+def test_model(test_loader, model, criterion, device, occupancy_threshold=0.5, outfile=None):
     metrics = (nn.L1Loss(), nn.BCELoss(), nn.MSELoss())
     binary_metrics = (f1_score, accuracy_score)
 
@@ -83,6 +83,9 @@ def test_model(test_loader, model, criterion, device, occupancy_threshold=0.5):
                 metric_values[i] += metric(output_probs, target)
 
     print(f'Total testing loss: {test_loss}')
+    if outfile:
+        with open(outfile, 'a') as f:
+            f.write(f'{test_loss};')
     for i, metric in enumerate(metrics):
         loss_per_sample = metric_values[i] / num_samples
         loss_per_batch = metric_values[i] / num_batches
@@ -90,6 +93,12 @@ def test_model(test_loader, model, criterion, device, occupancy_threshold=0.5):
     for metric in binary_metrics:
         loss = metric(TP, FP, TN, FN)
         print(f'{metric.__name__}: {loss}')
+        if outfile:
+            with open(outfile, 'a') as f:
+                f.write(f'{loss};')
+    if outfile:
+        with open(outfile, 'a') as f:
+            f.write('\n')
 
     return np.concatenate(predicted_output, axis=0)
 
@@ -102,7 +111,6 @@ def visualize_grids(
         z_min_meters=0, z_max_meters=4
 ):
     fig = plt.figure(figsize=(12, 6))
-    cmap = plt.get_cmap('jet')
 
     # first subplot for true grids
     ax_true, ax_predicted = fig.add_subplot(121, projection='3d'), fig.add_subplot(122, projection='3d')
@@ -114,7 +122,7 @@ def visualize_grids(
                 odds = grid[threshold_indices]
                 xs, ys, zs = threshold_indices
                 xs, ys, zs = xs * resolution + x_min_meters, ys * resolution + y_min_meters, zs * resolution + z_min_meters
-                ax.scatter(xs, ys, zs, c=odds, s=1, cmap=cmap)
+                ax.scatter(xs, ys, zs, c=odds, s=1)
                 ax.set_xlabel('X')
                 ax.set_ylabel('Y')
                 ax.set_zlabel('Z')
@@ -134,13 +142,16 @@ def visualize_grids(
     plt.close()
 
 
-def test_1c2d(loss_alpha, loss_gamma, occupancy_threshold=0.5):
+def test_1c2d(loss_alpha, loss_gamma, occupancy_threshold=0.5, visualize=False, outfile=None):
     train_loader, valid_loader, test_loader = get_dataset_1C2D(dataset_filepath='dataset.pkl')
     device = get_device()
     model = Unet1C2D().double().to(device)
     model.load_state_dict(torch.load(f'model_1C2D_a{int(loss_alpha * 100)}g{loss_gamma}.pt'))
     criterion = FocalLoss(alpha=loss_alpha, gamma=loss_gamma)
-    predicted_output = test_model(test_loader, model, criterion, device, occupancy_threshold=occupancy_threshold)
+    predicted_output = test_model(
+        test_loader, model, criterion, device,
+        occupancy_threshold=occupancy_threshold, outfile=outfile
+    )
 
     resolution_meters = 0.25
     x_min_meters = -4
@@ -149,16 +160,29 @@ def test_1c2d(loss_alpha, loss_gamma, occupancy_threshold=0.5):
     y_max_meters = 8
     z_min_meters = -4
     z_max_meters = 4
-    visualize_grids(
-        true_grids=test_loader.dataset.Y, predicted_grids=predicted_output,
-        odds_threshold=occupancy_threshold, resolution=resolution_meters,
-        x_min_meters=x_min_meters, x_max_meters=x_max_meters,
-        y_min_meters=y_min_meters, y_max_meters=y_max_meters,
-        z_min_meters=z_min_meters, z_max_meters=z_max_meters
-    )
+
+    if visualize:
+        visualize_grids(
+            true_grids=test_loader.dataset.Y, predicted_grids=predicted_output,
+            odds_threshold=occupancy_threshold, resolution=resolution_meters,
+            x_min_meters=x_min_meters, x_max_meters=x_max_meters,
+            y_min_meters=y_min_meters, y_max_meters=y_max_meters,
+            z_min_meters=z_min_meters, z_max_meters=z_max_meters
+        )
 
 
 if __name__ == "__main__":
-    target_occupancy_threshold = 0.4
-    # test_1c2d(target_occupancy_threshold)
-    # train_2C()
+    alphas = (0.3, )
+    gammas = (1, 2, 3, 4, 5, 6, 7)
+    thresholds = (0.4, 0.5, 0.6)
+    outfile_name = 'test_scores_2d.csv'
+
+    for a in alphas:
+        for g in gammas:
+            for t in thresholds:
+                print('||======')
+                print(f'Alpha {a}, Gamma {g}, Threshold {t}, Evaluation:')
+                with open(outfile_name, 'a') as f:
+                    f.write(f'{a};{g};{t};')
+                test_1c2d(loss_alpha=a, loss_gamma=g, occupancy_threshold=t, visualize=False, outfile=outfile_name)
+                print()

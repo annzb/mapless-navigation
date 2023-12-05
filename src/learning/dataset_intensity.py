@@ -69,7 +69,7 @@ def get_dataset(dataset_filepath, visualize=False):
     # Output shape: (1042, 32, 32, 32)
 
     x_train, x_valid, x_test, y_train, y_valid, y_test = split_dataset(x_total=heatmaps, y_total=gt_grids)
-    print(len(y_train[0] > 0))
+    # print(len(y_train[0] > 0))
     # print('X train sample:', x_train[0])
     # print('Y train sample:', y_train[0])
     # print('X valid sample:', x_valid[0])

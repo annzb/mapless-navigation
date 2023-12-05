@@ -101,10 +101,11 @@ def train_1c2d(loss_alpha, loss_gamma, num_epochs=10):
 
 
 if __name__ == "__main__":
-    alphas = (0.05, 0.1, 0.3, 0.5, 0.8, 0.9, 0.95, 0.98)
-    gammas = (1, 2, 3, 4, 5, 6, 7, 8)
+    alphas = (0.5, 0.8, 0.9, 0.95, 0.98)
+    gammas = (1, 2, 3, 4, 5, 6, 7)
     thresholds = (0.4, 0.5, 0.6)
     n_epochs = 30
+    outfile = 'test_scores.csv'
 
     for a in alphas:
         for g in gammas:
@@ -112,5 +113,7 @@ if __name__ == "__main__":
             for t in thresholds:
                 print('||======')
                 print(f'Alpha {a}, Gamma {g}, Threshold {t}, Evaluation:')
-                test_1c2d(loss_alpha=a, loss_gamma=g, occupancy_threshold=t)
+                with open(outfile, 'a') as f:
+                    f.write(f'{a};{g};{t};')
+                test_1c2d(loss_alpha=a, loss_gamma=g, occupancy_threshold=t, outfile=outfile)
                 print()
