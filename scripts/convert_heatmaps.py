@@ -38,12 +38,19 @@ def get_localized_pointcloud(pose, true_map, x_max=5., y_max=10., z_max=5., fov_
             (local_points[:, 1] >= 0) & (local_points[:, 1] <= y_max) &
             (local_points[:, 2] >= -z_max) & (local_points[:, 2] <= z_max)
     )
-    cone_mask = (
-            local_points[:, 0] ** 2 + local_points[:, 2] ** 2 <=
-            (local_points[:, 1] * np.tan(np.radians(fov_angle / 2))) ** 2
+    # azimuth_mask = (
+    #     local_points[:, 0] ** 2 + local_points[:, 2] ** 2 <=
+    #     (local_points[:, 1] * np.tan(np.radians(fov_angle / 2))) ** 2
+    # )
+    # elevation_mask = (
+    #     local_points[:, 0] ** 2 + local_points[:, 1] ** 2 <=
+    #     (local_points[:, 2] * np.tan(np.radians(fov_angle / 2))) ** 2
+    # )
+    elevation_mask = (
+        local_points[:, 1] ** 2 >=
+        3 * (local_points[:, 0] ** 2 + local_points[:, 2] ** 2)
     )
-    fov_mask = box_mask & cone_mask
-
+    fov_mask = box_mask & elevation_mask
     points_in_fov = true_map[fov_mask]
     transformed_points = np.hstack((orientation.inv().apply(points_in_fov[:, :3] - pose[:3]), points_in_fov[:, 3].reshape(-1, 1)))
     return transformed_points
@@ -73,9 +80,9 @@ def points_to_grid(points, x_min=-5, x_max=5, y_min=0, y_max=10, z_min=-5, z_max
 
 def main():
     map_resolution = 0.25
-    x_min, x_max = -4, 4
-    y_min, y_max = 0, 8
-    z_min, z_max = -4, 4
+    x_min, x_max = -5, 5
+    y_min, y_max = 0, 10
+    z_min, z_max = -3, 3
     coloradar_dir = '/home/ann/mapping/coloradar'
     run_folder_name = 'hallways_run0'
     calib_folder_name = 'calib'
@@ -120,8 +127,8 @@ def main():
     pose_indices = associate_radar_with_pose(heatmap_timestamps, pose_timestamps)
 
     map_points = np.loadtxt(map_file_path, delimiter=',', skiprows=1)
-    print(map_points.shape)
-    print(map_points[0])
+    # print(map_points.shape)
+    # print(map_points[0])
     # print('Saving total map')
     save_total_map(map_points[:3], poses)
 
@@ -139,7 +146,11 @@ def main():
         # if heatmap_idx in set(range(10, 20)):
         #     save_heatmap_image(heatmap, idx=heatmap_idx)
 
-        localized_points = get_localized_pointcloud(poses[pose_idx], map_points, x_max=x_max, y_max=y_max, z_max=z_max)
+        localized_points = get_localized_pointcloud(
+            poses[pose_idx], map_points,
+            x_max=x_max, y_max=y_max, z_max=z_max,
+            fov_angle=120
+        )
         frame_grid = points_to_grid(
             localized_points, resolution=map_resolution,
             x_max=x_max, y_max=y_max, z_max=z_max,
@@ -147,7 +158,7 @@ def main():
         )
         map_frames.append(localized_points)
         frame_grids.append(frame_grid)
-        print(f'Non-zero probability points in grid out of 32768: {np.count_nonzero(frame_grid)}')
+        # print(f'Non-zero probability points in grid out of 32768: {np.count_nonzero(frame_grid)}')
         # print('Heatmap', heatmap_idx, heatmap.shape)
         # print('Pointcloud from pose', pose_idx, localized_points.shape)
 
@@ -243,7 +254,7 @@ def visualize_true_frames(frames, x_max=5., y_max=10., z_max=10.):
     colorbar = fig.colorbar(scatter, ax=ax, label='Probability')
 
     for frame in frames:
-        print(f'Total points in frame: {len(frame)}, non-zero probability points: {sum(frame[:, 3] > 0)}')
+        # print(f'Total points in frame: {len(frame)}, non-zero probability points: {sum(frame[:, 3] > 0)}')
         ax.clear()
         scatter = ax.scatter(frame[:, 0], frame[:, 1], frame[:, 2], c=frame[:, 3], s=point_size)
         ax.scatter([0], [0], [0], c='black', s=point_size * 2)

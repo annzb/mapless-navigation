@@ -6,11 +6,10 @@ from torch import nn
 
 # export PYTHONPATH=$PYTHONPATH:src/octomap_radar_analysis/src
 
-from dataset import get_dataset
-from dataset_intensity import get_dataset as get_dataset_1C2D
+from dataset_intensity import get_dataset
 from loss_focal import FocalLoss
-from model import BaseTransform
 from model_intensity import Unet1C2D
+from model_intensity_3d import Unet1C3D
 
 
 def get_device():
@@ -83,6 +82,7 @@ def test_model(test_loader, model, criterion, device, occupancy_threshold=0.5, o
                 metric_values[i] += metric(output_probs, target)
 
     print(f'Total testing loss: {test_loss}')
+    print(f'Occupancy threshold: {occupancy_threshold}')
     if outfile:
         with open(outfile, 'a') as f:
             f.write(f'{test_loss};')
@@ -142,11 +142,14 @@ def visualize_grids(
     plt.close()
 
 
-def test_1c2d(loss_alpha, loss_gamma, occupancy_threshold=0.5, visualize=False, outfile=None):
-    train_loader, valid_loader, test_loader = get_dataset_1C2D(dataset_filepath='dataset.pkl')
+def test(loss_alpha, loss_gamma, occupancy_threshold=0.5, is_3d=False, visualize=False, outfile=None):
+    train_loader, valid_loader, test_loader = get_dataset(dataset_filepath='dataset.pkl', is_3d=is_3d)
     device = get_device()
-    model = Unet1C2D().double().to(device)
-    model.load_state_dict(torch.load(f'model_1C2D_a{int(loss_alpha * 100)}g{loss_gamma}.pt'))
+    if is_3d:
+        model = Unet1C3D().double().to(device)
+    else:
+        model = Unet1C2D().double().to(device)
+    model.load_state_dict(torch.load(f'model_1C{3 if is_3d else 2}D_a{int(loss_alpha * 100)}g{loss_gamma}.pt'))
     criterion = FocalLoss(alpha=loss_alpha, gamma=loss_gamma)
     predicted_output = test_model(
         test_loader, model, criterion, device,
@@ -154,12 +157,12 @@ def test_1c2d(loss_alpha, loss_gamma, occupancy_threshold=0.5, visualize=False, 
     )
 
     resolution_meters = 0.25
-    x_min_meters = -4
-    x_max_meters = 4
+    x_min_meters = -5
+    x_max_meters = 5
     y_min_meters = 0
-    y_max_meters = 8
-    z_min_meters = -4
-    z_max_meters = 4
+    y_max_meters = 10
+    z_min_meters = -5
+    z_max_meters = 5
 
     if visualize:
         visualize_grids(
@@ -172,10 +175,10 @@ def test_1c2d(loss_alpha, loss_gamma, occupancy_threshold=0.5, visualize=False, 
 
 
 if __name__ == "__main__":
-    alphas = (0.3, )
-    gammas = (1, 2, 3, 4, 5, 6, 7)
+    alphas = (0.3, 0.5, 0.7, 0.9, 0.95)
+    gammas = (1, 2, 3, 4, 5)
     thresholds = (0.4, 0.5, 0.6)
-    outfile_name = 'test_scores_2d.csv'
+    outfile_name = 'test_scores_3d.csv'
 
     for a in alphas:
         for g in gammas:
@@ -184,5 +187,5 @@ if __name__ == "__main__":
                 print(f'Alpha {a}, Gamma {g}, Threshold {t}, Evaluation:')
                 with open(outfile_name, 'a') as f:
                     f.write(f'{a};{g};{t};')
-                test_1c2d(loss_alpha=a, loss_gamma=g, occupancy_threshold=t, visualize=False, outfile=outfile_name)
+                test(loss_alpha=a, loss_gamma=g, occupancy_threshold=t, visualize=False, outfile=outfile_name)
                 print()

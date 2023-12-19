@@ -7,25 +7,34 @@ from sklearn.model_selection import train_test_split
 from torch.utils.data import DataLoader, Dataset
 
 
-def normalize_heatmap(heatmap, mean_channel_1, std_channel_1):
+def normalize_heatmap(heatmap, mean_channel_1, std_channel_1, is_3d=False):
     heatmap_1c = (heatmap[:, :, :, 0] - mean_channel_1) / std_channel_1
+    if is_3d:
+        return np.expand_dims(heatmap_1c, axis=0)
     return heatmap_1c
 
 
-def process_heatmaps(heatmaps, mean_channel_1=None, std_channel_1=None):
+def process_heatmaps(heatmaps, mean_channel_1=None, std_channel_1=None, is_3d=False):
     if mean_channel_1 is None or std_channel_1 is None:
         heatmaps_flat = np.concatenate(heatmaps, axis=0)
         mean_channel_1 = np.mean(heatmaps_flat[:, :, :, 0])
         std_channel_1 = np.std(heatmaps_flat[:, :, :, 0])
 
-    normalized_heatmaps = np.array([normalize_heatmap(hm, mean_channel_1, std_channel_1) for hm in heatmaps])
+    normalized_heatmaps = np.array([normalize_heatmap(
+        hm, mean_channel_1, std_channel_1, is_3d=is_3d
+    ) for hm in heatmaps])
     return normalized_heatmaps, mean_channel_1, std_channel_1
 
 
+def process_grids(grids):
+    grids = grids.transpose(0, 3, 2, 1)
+    return grids
+
+
 class HeatmapTrainingDataset(Dataset):
-    def __init__(self, heatmaps, occupancy_grids):
-        self.X, self.mean_channel_1, self.std_channel_1 = process_heatmaps(heatmaps)
-        self.Y = occupancy_grids
+    def __init__(self, heatmaps, occupancy_grids, is_3d=False):
+        self.X, self.mean_channel_1, self.std_channel_1 = process_heatmaps(heatmaps, is_3d=is_3d)
+        self.Y = process_grids(occupancy_grids)
 
     def __getitem__(self, index):
         return self.X[index], self.Y[index]
@@ -35,9 +44,9 @@ class HeatmapTrainingDataset(Dataset):
 
 
 class HeatmapTestingDataset(Dataset):
-    def __init__(self, heatmaps, occupancy_grids, mean_channel_1, std_channel_1):
-        self.X, _, _ = process_heatmaps(heatmaps, mean_channel_1, std_channel_1)
-        self.Y = occupancy_grids
+    def __init__(self, heatmaps, occupancy_grids, mean_channel_1, std_channel_1, is_3d=False):
+        self.X, _, _ = process_heatmaps(heatmaps, mean_channel_1, std_channel_1, is_3d=is_3d)
+        self.Y = process_grids(occupancy_grids)
 
     def __getitem__(self, index):
         return self.X[index], self.Y[index]
@@ -58,7 +67,7 @@ def split_dataset(x_total, y_total):
     return x_train, x_valid, x_test, y_train, y_valid, y_test
 
 
-def get_dataset(dataset_filepath, visualize=False):
+def get_dataset(dataset_filepath, visualize=False, is_3d=False, batch_size=32):
     with open(dataset_filepath, 'rb') as f:
         data = pickle.load(f)
     heatmaps, gt_grids = np.array(data['heatmaps']), np.array(data['gt_grids'])
@@ -75,21 +84,22 @@ def get_dataset(dataset_filepath, visualize=False):
     # print('X valid sample:', x_valid[0])
     # print('Y valid sample:', y_valid[0])
 
-    train_dataset = HeatmapTrainingDataset(x_train, y_train)
+    train_dataset = HeatmapTrainingDataset(x_train, y_train, is_3d=is_3d)
     valid_dataset = HeatmapTestingDataset(
-        x_valid, y_valid,
+        x_valid, y_valid, is_3d=is_3d,
         mean_channel_1=train_dataset.mean_channel_1, std_channel_1=train_dataset.std_channel_1
     )
     test_dataset = HeatmapTestingDataset(
-        x_test, y_test,
+        x_test, y_test, is_3d=is_3d,
         mean_channel_1=train_dataset.mean_channel_1, std_channel_1=train_dataset.std_channel_1
     )
-    # print('Train input shape:', train_dataset.X.shape)
-    # print('Validate input shape:', valid_dataset.X.shape)
-    # print('Test input shape:', test_dataset.X.shape)
+    print('Train input shape:', train_dataset.X.shape)
+    print('Train output shape:', train_dataset.Y.shape)
+    print('Validate input shape:', valid_dataset.X.shape)
+    print('Test input shape:', test_dataset.X.shape)
 
-    train_loader = DataLoader(train_dataset, batch_size=32, shuffle=True)
-    valid_loader = DataLoader(valid_dataset, batch_size=32, shuffle=False)
-    test_loader = DataLoader(test_dataset, batch_size=32, shuffle=False)
+    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
+    valid_loader = DataLoader(valid_dataset, batch_size=batch_size, shuffle=False)
+    test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False)
 
     return train_loader, valid_loader, test_loader
