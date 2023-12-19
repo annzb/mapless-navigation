@@ -118,6 +118,6 @@ if __name__ == "__main__":
                     f.write(f'{a};{g};{t};')
                 test_model(
                     test_loader, model, criterion, device,
-                    occupancy_threshold=t, outfile=dataset_file
+                    occupancy_threshold=t, outfile=score_file
                 )
                 print()
