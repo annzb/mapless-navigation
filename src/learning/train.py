@@ -92,8 +92,8 @@ if __name__ == "__main__":
     # train(loss_alpha=0.1, loss_gamma=1, num_epochs=10, is_3d=True, occupancy_threshold=0.5)
     # raise ValueError('Finish')
 
-    alphas = (0.3, 0.5, 0.7, 0.9, 0.95)
-    gammas = (1, 2, 3, 4, 5)
+    alphas = (0.9, 0.95, 0.99, 0.1, 0.05)
+    gammas = (1, 2, 3)
     thresholds = (0.4, 0.5, 0.6)
     n_epochs = 30
 
