@@ -1,4 +1,5 @@
 #!/home/ann/mapping/venv/bin/python3
+import os
 
 import torch
 import torch.optim as optim
@@ -10,7 +11,7 @@ from dataset_intensity import get_dataset
 from loss_focal import FocalLoss
 from model_intensity import Unet1C2D
 from model_intensity_3d import Unet1C3D
-from evaluate import test
+from evaluate import test_model
 
 
 def get_device():
@@ -48,11 +49,16 @@ def validate_model(valid_loader, model, criterion, device):
     return valid_loss / len(valid_loader)
 
 
-def train(loss_alpha, loss_gamma, num_epochs=10, is_3d=False, occupancy_threshold=0.5):
+def train(
+        loss_alpha, loss_gamma, num_epochs=10, is_3d=False, occupancy_threshold=0.5,
+        dataset_filepath='dataset.pkl', model_folder='models'
+):
     learning_rate = 0.05
     best_valid_loss = float('inf')
+    os.makedirs(model_folder, exist_ok=True)
+    model_path = os.path.join(model_folder, f'model_1C{3 if is_3d else 2}D_a{int(loss_alpha * 100)}g{loss_gamma}.pt')
 
-    train_loader, valid_loader, test_loader = get_dataset(dataset_filepath='dataset.pkl', is_3d=is_3d)
+    train_loader, valid_loader, test_loader = get_dataset(dataset_filepath=dataset_filepath, is_3d=is_3d)
     device = get_device()
     if is_3d:
         model = Unet1C3D().double().to(device)
@@ -70,12 +76,16 @@ def train(loss_alpha, loss_gamma, num_epochs=10, is_3d=False, occupancy_threshol
         # Save the model if the validation loss decreased
         if valid_loss < best_valid_loss:
             print(f'Validation loss decreased ({best_valid_loss:.6f} --> {valid_loss:.6f}). Saving model ...')
-            torch.save(model.state_dict(), f'model_1C{3 if is_3d else 2}D_a{int(loss_alpha * 100)}g{loss_gamma}.pt')
+            torch.save(model.state_dict(), model_path)
             best_valid_loss = valid_loss
 
     # test(loss_alpha, loss_gamma, occupancy_threshold=occupancy_threshold - 0.1, is_3d=is_3d, visualize=False, outfile=None)
-    test(loss_alpha, loss_gamma, occupancy_threshold=occupancy_threshold, is_3d=is_3d, visualize=False, outfile=None)
+    test_model(
+        test_loader, model, criterion, device,
+        occupancy_threshold=occupancy_threshold, outfile=None
+    )
     # test(loss_alpha, loss_gamma, occupancy_threshold=occupancy_threshold + 0.1, is_3d=is_3d, visualize=False, outfile=None)
+    return test_loader, model, criterion, device
 
 
 if __name__ == "__main__":
@@ -85,17 +95,28 @@ if __name__ == "__main__":
     alphas = (0.3, 0.5, 0.7, 0.9, 0.95)
     gammas = (1, 2, 3, 4, 5)
     thresholds = (0.4, 0.5, 0.6)
-    n_epochs = 30
-    outfile = 'test_scores.csv'
+    n_epochs = 1
+
+    colab_root, local_root = '/content/drive/My Drive/training', '/home/ann/mapping/mn_ws/src/mapless-navigation'
+    root = colab_root if os.path.isdir(colab_root) else local_root
+    score_file = os.path.join(root, 'test_scores_3d.csv')
+    dataset_file = os.path.join(root, 'dataset.pkl')
 
     for a in alphas:
         for g in gammas:
             print(f'Alpha {a}, Gamma {g}, Training:')
-            train(loss_alpha=a, loss_gamma=g, num_epochs=n_epochs, is_3d=True, occupancy_threshold=0.4)
+            test_loader, model, criterion, device = train(
+                loss_alpha=a, loss_gamma=g,
+                num_epochs=n_epochs, is_3d=True, occupancy_threshold=0.4,
+                dataset_filepath=dataset_file, model_folder=root
+            )
             for t in thresholds:
                 print('||======')
                 print(f'Threshold {t}, Evaluation:')
-                with open(outfile, 'a') as f:
+                with open(score_file, 'a') as f:
                     f.write(f'{a};{g};{t};')
-                test(loss_alpha=a, loss_gamma=g, occupancy_threshold=t, outfile=outfile)
+                test_model(
+                    test_loader, model, criterion, device,
+                    occupancy_threshold=t, outfile=dataset_file
+                )
                 print()

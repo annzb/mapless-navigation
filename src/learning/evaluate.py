@@ -1,5 +1,6 @@
 import matplotlib.pyplot as plt
 import numpy as np
+import os
 
 import torch
 from torch import nn
@@ -142,15 +143,21 @@ def visualize_grids(
     plt.close()
 
 
-def test(loss_alpha, loss_gamma, occupancy_threshold=0.5, is_3d=False, visualize=False, outfile=None):
-    train_loader, valid_loader, test_loader = get_dataset(dataset_filepath='dataset.pkl', is_3d=is_3d)
+def test(
+        loss_alpha, loss_gamma, occupancy_threshold=0.5, is_3d=False,
+        visualize=False, outfile=None, dataset_filepath='dataset.pkl', model_folder='models'
+):
+    model_path = os.path.join(model_folder, f'model_1C{3 if is_3d else 2}D_a{int(loss_alpha * 100)}g{loss_gamma}.pt')
+    train_loader, valid_loader, test_loader = get_dataset(dataset_filepath=dataset_filepath, is_3d=is_3d)
+
     device = get_device()
     if is_3d:
         model = Unet1C3D().double().to(device)
     else:
         model = Unet1C2D().double().to(device)
-    model.load_state_dict(torch.load(f'model_1C{3 if is_3d else 2}D_a{int(loss_alpha * 100)}g{loss_gamma}.pt'))
+    model.load_state_dict(torch.load(model_path))
     criterion = FocalLoss(alpha=loss_alpha, gamma=loss_gamma)
+
     predicted_output = test_model(
         test_loader, model, criterion, device,
         occupancy_threshold=occupancy_threshold, outfile=outfile
@@ -163,7 +170,6 @@ def test(loss_alpha, loss_gamma, occupancy_threshold=0.5, is_3d=False, visualize
     y_max_meters = 10
     z_min_meters = -5
     z_max_meters = 5
-
     if visualize:
         visualize_grids(
             true_grids=test_loader.dataset.Y, predicted_grids=predicted_output,
