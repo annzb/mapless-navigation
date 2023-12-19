@@ -97,10 +97,10 @@ if __name__ == "__main__":
     thresholds = (0.4, 0.5, 0.6)
     n_epochs = 1
 
-    colab_root, local_root = '/content/drive/My Drive/training', '/home/ann/mapping/mn_ws/src/mapless-navigation'
+    colab_root, local_root = '/content/drive/My Drive', '/home/ann/mapping/mn_ws/src/mapless-navigation'
     root = colab_root if os.path.isdir(colab_root) else local_root
-    score_file = os.path.join(root, 'test_scores_3d.csv')
-    dataset_file = os.path.join(root, 'dataset.pkl')
+    score_file = os.path.join(root, 'training/test_scores_3d.csv')
+    dataset_file = os.path.join(root, 'training/dataset.pkl')
 
     for a in alphas:
         for g in gammas:
