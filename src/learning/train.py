@@ -50,15 +50,15 @@ def validate_model(valid_loader, model, criterion, device):
 
 
 def train(
+        train_loader, valid_loader, test_loader,
         loss_alpha, loss_gamma, num_epochs=10, is_3d=False, occupancy_threshold=0.5,
-        dataset_filepath='dataset.pkl', model_folder='models'
+         model_folder='models'
 ):
     learning_rate = 0.05
     best_valid_loss = float('inf')
     os.makedirs(model_folder, exist_ok=True)
     model_path = os.path.join(model_folder, f'model_1C{3 if is_3d else 2}D_a{int(loss_alpha * 100)}g{loss_gamma}.pt')
 
-    train_loader, valid_loader, test_loader = get_dataset(dataset_filepath=dataset_filepath, is_3d=is_3d)
     device = get_device()
     if is_3d:
         model = Unet1C3D().double().to(device)
@@ -95,20 +95,21 @@ if __name__ == "__main__":
     alphas = (0.3, 0.5, 0.7, 0.9, 0.95)
     gammas = (1, 2, 3, 4, 5)
     thresholds = (0.4, 0.5, 0.6)
-    n_epochs = 1
+    n_epochs = 30
 
     colab_root, local_root = '/content/drive/My Drive', '/home/ann/mapping/mn_ws/src/mapless-navigation'
     root = colab_root if os.path.isdir(colab_root) else local_root
     score_file = os.path.join(root, 'test_scores_3d.csv')
     dataset_file = os.path.join(root, 'dataset.pkl')
+    train_loader, valid_loader, test_loader = get_dataset(dataset_filepath=dataset_file, is_3d=True)
 
     for a in alphas:
         for g in gammas:
             print(f'Alpha {a}, Gamma {g}, Training:')
             test_loader, model, criterion, device = train(
+                train_loader, valid_loader, test_loader,
                 loss_alpha=a, loss_gamma=g,
-                num_epochs=n_epochs, is_3d=True, occupancy_threshold=0.4,
-                dataset_filepath=dataset_file, model_folder=root
+                num_epochs=n_epochs, is_3d=True, occupancy_threshold=0.4, model_folder=root
             )
             for t in thresholds:
                 print('||======')
