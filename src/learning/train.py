@@ -90,7 +90,7 @@ if __name__ == "__main__":
 
     for a in alphas:
         for g in gammas:
-            print(f'Alpha {a}, Gamma {g}, Threshold {t}, Training:')
+            print(f'Alpha {a}, Gamma {g}, Training:')
             train(loss_alpha=a, loss_gamma=g, num_epochs=n_epochs, is_3d=True, occupancy_threshold=0.4)
             for t in thresholds:
                 print('||======')
