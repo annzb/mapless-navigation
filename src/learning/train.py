@@ -92,10 +92,10 @@ if __name__ == "__main__":
     # train(loss_alpha=0.1, loss_gamma=1, num_epochs=10, is_3d=True, occupancy_threshold=0.5)
     # raise ValueError('Finish')
 
-    alphas = (0.9, 0.95, 0.99, 0.1, 0.05)
-    gammas = (1, 2, 3)
+    alphas = (0.7, 0.95, 0.1, 0.8, 0.92, 0.15)
+    gammas = (1, 0.9)
     thresholds = (0.4, 0.5, 0.6)
-    n_epochs = 30
+    n_epochs = (50, 50, 50, 30, 30, 30)
 
     colab_root, local_root = '/content/drive/My Drive', '/home/ann/mapping/mn_ws/src/mapless-navigation'
     root = colab_root if os.path.isdir(colab_root) else local_root
@@ -103,13 +103,13 @@ if __name__ == "__main__":
     dataset_file = os.path.join(root, 'dataset.pkl')
     train_loader, valid_loader, test_loader = get_dataset(dataset_filepath=dataset_file, is_3d=True)
 
-    for a in alphas:
-        for g in gammas:
+    for g in gammas:
+        for i, a in enumerate(alphas):
             print(f'Alpha {a}, Gamma {g}, Training:')
             test_loader, model, criterion, device = train(
                 train_loader, valid_loader, test_loader,
                 loss_alpha=a, loss_gamma=g,
-                num_epochs=n_epochs, is_3d=True, occupancy_threshold=0.4, model_folder=root
+                num_epochs=n_epochs[i], is_3d=True, occupancy_threshold=0.4, model_folder=root
             )
             for t in thresholds:
                 print('||======')
