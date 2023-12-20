@@ -92,10 +92,10 @@ if __name__ == "__main__":
     # train(loss_alpha=0.1, loss_gamma=1, num_epochs=10, is_3d=True, occupancy_threshold=0.5)
     # raise ValueError('Finish')
 
-    alphas = (0.7, 0.95, 0.1, 0.8, 0.92, 0.15)
-    gammas = (1, 0.9)
+    alphas = (0.8, 0.92, 0.85)
+    gammas = (1, )
     thresholds = (0.4, 0.5, 0.6)
-    n_epochs = (50, 50, 50, 30, 30, 30)
+    n_epochs = (50, 50, 50)
 
     colab_root, local_root = '/content/drive/My Drive', '/home/ann/mapping/mn_ws/src/mapless-navigation'
     root = colab_root if os.path.isdir(colab_root) else local_root
