@@ -8,8 +8,8 @@
 
     <node pkg="tf2_ros" type="static_transform_publisher" name="os1_link_joint" args="0.0 0.0 0.03618 3.14159 0 0 os1_sensor os1_lidar"/>
 
-	<node pkg="mapless_navigation" name="odom2tf" type="odom2tf"/>
-	<include file="$(find mapless_navigation)/launch/octomap_mapping.launch"/>
+	<node pkg="isrr_analysis" name="odom2tf" type="odom2tf"/>
+	<include file="$(find mapless-navigation)/launch/octomap_mapping.launch"/>
 
 	<node pkg="rosbag" type="play" name="player" output="screen" args="--clock $(env HOME)/mapping/coloradar/ec_hallways_run0.bag"/>
 

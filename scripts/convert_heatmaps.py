@@ -30,7 +30,7 @@ def associate_radar_with_pose(radar_timestamps, true_timestamps):
     return indices
 
 
-def get_localized_pointcloud(pose, true_map, x_max=5., y_max=10., z_max=5., fov_angle=45):
+def get_localized_pointcloud(pose, true_map, x_max=5., y_max=10., z_max=5.):
     orientation = R.from_quat(pose[3:])
     local_points = orientation.inv().apply(true_map[:, :3] - pose[:3])
 
@@ -39,14 +39,6 @@ def get_localized_pointcloud(pose, true_map, x_max=5., y_max=10., z_max=5., fov_
             (local_points[:, 1] >= 0) & (local_points[:, 1] <= y_max) &
             (local_points[:, 2] >= -z_max) & (local_points[:, 2] <= z_max)
     )
-    # azimuth_mask = (
-    #     local_points[:, 0] ** 2 + local_points[:, 2] ** 2 <=
-    #     (local_points[:, 1] * np.tan(np.radians(fov_angle / 2))) ** 2
-    # )
-    # elevation_mask = (
-    #     local_points[:, 0] ** 2 + local_points[:, 1] ** 2 <=
-    #     (local_points[:, 2] * np.tan(np.radians(fov_angle / 2))) ** 2
-    # )
     elevation_mask = (
         local_points[:, 1] ** 2 >=
         3 * (local_points[:, 0] ** 2 + local_points[:, 2] ** 2)
@@ -79,13 +71,32 @@ def points_to_grid(points, x_min=-5, x_max=5, y_min=0, y_max=10, z_min=-5, z_max
     return grid
 
 
-def main():
+def frame_grid_to_points(frame_grid, pose, timestamp, resolution=0.25, prob_threshold=0):
+    assert 0 <= prob_threshold <= 1
+    grid_size_x, grid_size_y, grid_size_z = frame_grid.shape
+    x_min, y_min, z_min = -grid_size_x * resolution / 2, 0, -grid_size_z * resolution / 2
+
+    # Find indices of non-zero occupancy probabilities
+    occupied_indices = np.argwhere(frame_grid > 0) if prob_threshold == 0 else np.argwhere(frame_grid >= prob_threshold)
+    world_coordinates = occupied_indices * resolution + np.array([x_min, y_min, z_min])
+    orientation = R.from_quat(pose[3:])
+    world_coordinates = orientation.apply(world_coordinates) + pose[:3]
+
+    probabilities = frame_grid[occupied_indices[:, 0], occupied_indices[:, 1], occupied_indices[:, 2]]
+    points_map = {
+        (world_coordinates[i, 0], world_coordinates[i, 1], world_coordinates[i, 2]
+         ): (probabilities[i], timestamp)
+        for i in range(len(occupied_indices))
+    }
+    return points_map
+
+
+def main(run_folder_name='ec_hallways_run0'):
     map_resolution = 0.25
     x_min, x_max = -5, 5
     y_min, y_max = 0, 10
     z_min, z_max = -3, 3
-    coloradar_dir = '/home/ann/mapping/coloradar'
-    run_folder_name = 'hallways_run0'
+    coloradar_dir = '/home/arpg/mapping/coloradar'
     calib_folder_name = 'calib'
     map_file_path = os.path.join(coloradar_dir, 'ec_hallways_run0_lidar_octomap_points.csv')
 
@@ -135,6 +146,7 @@ def main():
 
     print('Calculating frames')
     map_frames = []
+    reversed_map_frames = {}
     frame_grids = []
     heatmaps = []
     for heatmap_idx, pose_idx in tqdm(enumerate(pose_indices)):
@@ -149,8 +161,7 @@ def main():
 
         localized_points = get_localized_pointcloud(
             poses[pose_idx], map_points,
-            x_max=x_max, y_max=y_max, z_max=z_max,
-            fov_angle=120
+            x_max=x_max, y_max=y_max, z_max=z_max
         )
         frame_grid = points_to_grid(
             localized_points, resolution=map_resolution,
@@ -159,6 +170,13 @@ def main():
         )
         map_frames.append(localized_points)
         frame_grids.append(frame_grid)
+
+        reversed_points = frame_grid_to_points(
+            frame_grid=frame_grid,
+            pose=poses[pose_idx],
+            timestamp=pose_timestamps[pose_idx]
+        )
+        reversed_map_frames.update(reversed_points)
         # print(f'Non-zero probability points in grid out of 32768: {np.count_nonzero(frame_grid)}')
         # print('Heatmap', heatmap_idx, heatmap.shape)
         # print('Pointcloud from pose', pose_idx, localized_points.shape)
@@ -167,12 +185,21 @@ def main():
     print('GT frame shape', localized_points.shape)
     print('GT grid shape', frame_grid.shape)
 
-    with open('dataset.pkl', 'wb') as f:
-        pickle.dump({
-            'heatmaps': heatmaps,
-            'gt_grids': frame_grids,
-            # 'gt_points': map_frames
-        }, f)
+    save_total_map(np.array([np.array(point) for point in reversed_map_frames]), poses, filename='total_map_reversed')
+
+    if os.path.isfile('dataset.pkl'):
+        with open('dataset.pkl', 'wb') as f:
+            data = pickle.load(f)
+    else:
+        data = {}
+    data[run_folder_name] = {
+        'heatmaps': heatmaps,
+        'gt_grids': frame_grids,
+        'poses': poses,
+        'pose_timestamps': pose_timestamps
+        # 'gt_points': map_frames
+    }
+    pickle.dump(data, f)
 
     visualize_true_frames(map_frames, x_max=x_max, y_max=y_max, z_max=z_max)
 
