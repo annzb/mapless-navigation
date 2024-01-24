@@ -30,6 +30,17 @@ def associate_radar_with_pose(radar_timestamps, true_timestamps):
     return indices
 
 
+def select_points_from_pose(true_map, x_max=5., y_max=10., z_max=5.):
+    box_mask = (
+        (true_map[:, 0] >= -x_max) & (true_map[:, 0] <= x_max) &
+        (true_map[:, 1] >= 0) & (true_map[:, 1] <= y_max) &
+        (true_map[:, 2] >= -z_max) & (true_map[:, 2] <= z_max)
+    )
+    points_in_fov = true_map[box_mask]
+    points_dict = {(point[0], point[1], point[2]): 1.0 / (1 + np.exp(-point[3])) for point in points_in_fov}
+    return points_dict
+
+
 def get_localized_pointcloud(pose, true_map, x_max=5., y_max=10., z_max=5.):
     orientation = R.from_quat(pose[3:])
     local_points = orientation.inv().apply(true_map[:, :3] - pose[:3])
@@ -96,7 +107,7 @@ def main(run_folder_name='ec_hallways_run0'):
     x_min, x_max = -5, 5
     y_min, y_max = 0, 10
     z_min, z_max = -3, 3
-    coloradar_dir = '/home/arpg/mapping/coloradar'
+    coloradar_dir = '/home/ann/mapping/coloradar'
     calib_folder_name = 'calib'
     map_file_path = os.path.join(coloradar_dir, 'ec_hallways_run0_lidar_octomap_points.csv')
 
@@ -156,9 +167,10 @@ def main(run_folder_name='ec_hallways_run0'):
         )
         # print(calculate_heatmap_stats(heatmap))
         heatmaps.append(heatmap)
-        if heatmap_idx % 10 == 0:
-            save_heatmap_image(heatmap, idx=heatmap_idx)
+        # if heatmap_idx % 10 == 0:
+        #     save_heatmap_image(heatmap, idx=heatmap_idx)
 
+        # true_points = select_points_from_pose(map_points, x_max=x_max, y_max=y_max, z_max=z_max)
         localized_points = get_localized_pointcloud(
             poses[pose_idx], map_points,
             x_max=x_max, y_max=y_max, z_max=z_max
@@ -171,24 +183,41 @@ def main(run_folder_name='ec_hallways_run0'):
         map_frames.append(localized_points)
         frame_grids.append(frame_grid)
 
-        reversed_points = frame_grid_to_points(
-            frame_grid=frame_grid,
-            pose=poses[pose_idx],
-            timestamp=pose_timestamps[pose_idx]
-        )
-        reversed_map_frames.update(reversed_points)
+        # reversed_points = frame_grid_to_points(
+        #     frame_grid=frame_grid,
+        #     pose=poses[pose_idx],
+        #     timestamp=pose_timestamps[pose_idx]
+        # )
+        #
+        # print(len(true_points), len(reversed_points))
+        # print(len([val for val in true_points.values() if val > 0]))
+        # print(len([val[0] for val in reversed_points.values() if val[0] > 0]))
+        # save_total_map(
+        #     np.array([np.array(list(point_tuple) + [value]) for point_tuple, value in true_points.items()]),
+        #     poses, filename='first_frame'
+        # )
+        # save_total_map(
+        #     np.array([np.array(list(point_tuple) + [value[0]]) for point_tuple, value in reversed_points.items()]),
+        #     poses, filename='first_frame_reversed'
+        # )
+        # assert len(true_points) == len(reversed_points)
+        # for point_tuple in true_points:
+        #     assert point_tuple in reversed_points
+        #     assert true_points[point_tuple] == reversed_points[point_tuple]
+        #
+        # reversed_map_frames.update(reversed_points)
         # print(f'Non-zero probability points in grid out of 32768: {np.count_nonzero(frame_grid)}')
         # print('Heatmap', heatmap_idx, heatmap.shape)
         # print('Pointcloud from pose', pose_idx, localized_points.shape)
 
-    print('Heatmap shape', heatmaps[0].shape)
+    # print('Heatmap shape', heatmaps[0].shape)
     print('GT frame shape', localized_points.shape)
     print('GT grid shape', frame_grid.shape)
 
-    save_total_map(np.array([np.array(point) for point in reversed_map_frames]), poses, filename='total_map_reversed')
+    # save_total_map(np.array([np.array(point) for point in reversed_map_frames]), poses, filename='total_map_reversed')
 
     if os.path.isfile('dataset.pkl'):
-        with open('dataset.pkl', 'wb') as f:
+        with open('dataset.pkl', 'rb') as f:
             data = pickle.load(f)
     else:
         data = {}
@@ -199,18 +228,20 @@ def main(run_folder_name='ec_hallways_run0'):
         'pose_timestamps': pose_timestamps
         # 'gt_points': map_frames
     }
-    pickle.dump(data, f)
+    with open('dataset.pkl', 'wb') as f:
+        pickle.dump(data, f)
 
     visualize_true_frames(map_frames, x_max=x_max, y_max=y_max, z_max=z_max)
 
 
 def save_total_map(total_map, poses, filename='total_map'):
+    print('shape', total_map.shape)
     fig = plt.figure(figsize=(12, 10))
     ax = fig.add_subplot(111, projection='3d')
 
     # colors = (total_map[:, 2] - total_map[:, 2].min()) / (total_map[:, 2].max() - total_map[:, 2].min())
-    norm = plt.Normalize(vmin=total_map[:, 2].min(), vmax=total_map[:, 2].max())
-    colors = plt.cm.jet(norm(total_map[:, 2]))
+    norm = plt.Normalize(vmin=0, vmax=1)
+    colors = plt.cm.jet(norm(total_map[:, 3]))
     ax.scatter(total_map[:, 0], total_map[:, 1], total_map[:, 2], c=colors, s=1)
 
     # Draw the trajectory from poses as a line
@@ -218,13 +249,13 @@ def save_total_map(total_map, poses, filename='total_map'):
     ax.plot(trajectory[:, 0], trajectory[:, 1], trajectory[:, 2], color='green', linewidth=2)
 
     ax.view_init(elev=ax.elev - 5)
-    plt.savefig(filename + '.png', dpi=600)
+    plt.savefig(filename + '_jan.png', dpi=600)
 
     ax.view_init(azim=ax.azim + 45, elev=ax.elev - 5)
-    plt.savefig(filename + '_2.png', dpi=600)
+    plt.savefig(filename + '_2_jan.png', dpi=600)
 
     ax.view_init(azim=ax.azim + 90, elev=ax.elev - 15)
-    plt.savefig(filename + '_3.png', dpi=600)
+    plt.savefig(filename + '_3_jan.png', dpi=600)
 
     plt.close()
 

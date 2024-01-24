@@ -67,9 +67,9 @@ def split_dataset(x_total, y_total):
     return x_train, x_valid, x_test, y_train, y_valid, y_test
 
 
-def get_dataset(dataset_filepath, visualize=False, is_3d=False, batch_size=32):
-    with open(dataset_filepath, 'rb') as f:
-        data = pickle.load(f)
+def get_dataset(data, visualize=False, is_3d=False, batch_size=32):
+    # with open(dataset_filepath, 'rb') as f:
+    #     data = pickle.load(f)
     heatmaps, gt_grids = np.array(data['heatmaps']), np.array(data['gt_grids'])
 
     # print('Raw input shape:', heatmaps.shape)

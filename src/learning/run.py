@@ -2,6 +2,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import os
 import time
+import pickle
 
 import torch
 from scipy.spatial.transform import Rotation as R
@@ -96,7 +97,10 @@ def test(
         visualize=False, dataset_filepath='dataset.pkl', model_folder='models', resolution_meters=0.25
 ):
     model_path = os.path.join(model_folder, f'model_1C{3 if is_3d else 2}D_a{int(loss_alpha * 100)}g{loss_gamma}.pt')
-    _, _, test_loader = get_dataset(dataset_filepath=dataset_filepath, is_3d=is_3d)
+    with open(dataset_filepath, 'rb') as f:
+        data = pickle.load(f)['ec_hallways_run0']
+    poses = data['poses']
+    _, _, test_loader = get_dataset(data=data, is_3d=is_3d)
 
     device = get_device()
     if is_3d:
@@ -120,6 +124,11 @@ def test(
             )
             total_map.update(predicted_points)
 
+    save_total_map(
+        np.array([np.array(list(point_tuple) + [value[0]]) for point_tuple, value in total_map.items()]),
+        poses, filename='result_map'
+    )
+
     # x_min_meters = -5
     # x_max_meters = 5
     # y_min_meters = 0
@@ -136,8 +145,34 @@ def test(
     #     )
 
 
+def save_total_map(total_map, poses, filename='total_map'):
+    print('shape', total_map.shape)
+    fig = plt.figure(figsize=(12, 10))
+    ax = fig.add_subplot(111, projection='3d')
+
+    # colors = (total_map[:, 2] - total_map[:, 2].min()) / (total_map[:, 2].max() - total_map[:, 2].min())
+    norm = plt.Normalize(vmin=0, vmax=1)
+    colors = plt.cm.jet(norm(total_map[:, 3]))
+    ax.scatter(total_map[:, 0], total_map[:, 1], total_map[:, 2], c=colors, s=1)
+
+    # Draw the trajectory from poses as a line
+    trajectory = np.array([pose[:3] for pose in poses])
+    ax.plot(trajectory[:, 0], trajectory[:, 1], trajectory[:, 2], color='green', linewidth=2)
+
+    ax.view_init(elev=ax.elev - 5)
+    plt.savefig(filename + '_jan.png', dpi=600)
+
+    ax.view_init(azim=ax.azim + 45, elev=ax.elev - 5)
+    plt.savefig(filename + '_2_jan.png', dpi=600)
+
+    ax.view_init(azim=ax.azim + 90, elev=ax.elev - 15)
+    plt.savefig(filename + '_3_jan.png', dpi=600)
+
+    plt.close()
+
+
 if __name__ == "__main__":
     a = 0.7
     g = 1
     thresholds = (0.4, 0.5, 0.6)
-    test(loss_alpha=a, loss_gamma=g, occupancy_threshold=.6, is_3d=True, visualize=False)
+    test(loss_alpha=a, loss_gamma=g, occupancy_threshold=.4, is_3d=True, visualize=False)
