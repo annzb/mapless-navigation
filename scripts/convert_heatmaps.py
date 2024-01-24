@@ -3,6 +3,7 @@ import os
 import pickle
 import numpy as np
 
+from matplotlib.colors import Normalize
 from PIL import Image
 from tqdm import tqdm
 
@@ -130,7 +131,7 @@ def main():
     # print(map_points.shape)
     # print(map_points[0])
     # print('Saving total map')
-    save_total_map(map_points[:3], poses)
+    # save_total_map(map_points, poses)
 
     print('Calculating frames')
     map_frames = []
@@ -143,8 +144,8 @@ def main():
         )
         # print(calculate_heatmap_stats(heatmap))
         heatmaps.append(heatmap)
-        # if heatmap_idx in set(range(10, 20)):
-        #     save_heatmap_image(heatmap, idx=heatmap_idx)
+        if heatmap_idx % 10 == 0:
+            save_heatmap_image(heatmap, idx=heatmap_idx)
 
         localized_points = get_localized_pointcloud(
             poses[pose_idx], map_points,
@@ -202,20 +203,31 @@ def save_total_map(total_map, poses, filename='total_map'):
 
 
 def save_heatmap_image(heatmap, filename='heatmap', idx=0):
-    normalized_image_3d = np.zeros_like(heatmap)
-    for i in range(heatmap.shape[-1]):
-        channel = heatmap[:, :, :, i]
-        min_val = channel.min()
-        max_val = channel.max()
-        if max_val > min_val:
-            normalized_image_3d[:, :, :, i] = (channel - min_val) / (max_val - min_val)
+    print('Heatmap shape', heatmap.shape)
+    heatmap_slice = heatmap[7, :, :, 0]
+    print('Heatmap slice shape', heatmap_slice.shape)
 
-    reshaped_image = normalized_image_3d.transpose(1, 2, 0, 3).reshape(64, 64, -1)
-    image_2d_rgb = np.zeros((*reshaped_image.shape[:2], 3), dtype=np.uint8)
-    image_2d_rgb[..., 0] = reshaped_image[..., 0] * 255  # Red channel
-    image_2d_rgb[..., 1] = reshaped_image[..., 1] * 255  # Green channel
-    image_2d_rgb = image_2d_rgb.astype(np.uint8)
-    Image.fromarray(image_2d_rgb).save(filename + str(idx) + '.png')
+    normalized_slice = Normalize()(heatmap_slice)
+    colored_image = np.zeros((64, 64, 3))
+    colored_image[:, :, 0] = normalized_slice  # Red channel
+    colored_image[:, :, 1] = 0.5  # Constant value for Green channel
+    colored_image[:, :, 2] = 0.5  # Constant value for Blue channel
+    plt.imsave(filename + str(idx) + '.png', colored_image)
+    # normalized_image_3d = np.zeros_like(heatmap)
+    # for i in range(heatmap.shape[-1]):
+    #     channel = heatmap[:, :, :, i]
+    #     min_val = channel.min()
+    #     max_val = channel.max()
+    #     if max_val > min_val:
+    #         normalized_image_3d[:, :, :, i] = (channel - min_val) / (max_val - min_val)
+    #
+    # reshaped_image = normalized_image_3d.transpose(1, 2, 0, 3).reshape(64, 64, -1)
+    # image_2d_rgb = np.zeros((*reshaped_image.shape[:2], 3), dtype=np.uint8)
+    # image_2d_rgb[..., 0] = reshaped_image[..., 0] * 255  # Red channel
+    # image_2d_rgb[..., 1] = reshaped_image[..., 2] * 255  # Blue channel
+    # image_2d_rgb = image_2d_rgb.astype(np.uint8)
+    # print('Image shape', image_2d_rgb.shape)
+    # Image.fromarray(image_2d_rgb).save(filename + str(idx) + '.png')
 
 
 def calculate_heatmap_stats(heatmap):
@@ -251,22 +263,44 @@ def visualize_true_frames(frames, x_max=5., y_max=10., z_max=10.):
     ax = fig.add_subplot(111, projection='3d')
     point_size = 3
     scatter = ax.scatter([], [], [], c=[], s=point_size)
-    colorbar = fig.colorbar(scatter, ax=ax, label='Probability')
+    colorbar = fig.colorbar(scatter, ax=ax, label='Occupancy Log Likelihood')
+    init_azim, init_elev = ax.azim, ax.elev
 
-    for frame in frames:
+    for i, frame in enumerate(frames):
+        if i in (110, 140, 190):
+            ax.clear()
+            scatter = ax.scatter(frame[:, 0], frame[:, 1], frame[:, 2], c=frame[:, 3], s=point_size)
+            ax.scatter([0], [0], [0], c='black', s=point_size * 2)
+            colorbar.update_normal(scatter)
+            ax.set_xlabel('X')
+            ax.set_ylabel('Y')
+            ax.set_zlabel('Z')
+            ax.set_xlim([-x_max, x_max])
+            ax.set_ylim([0, y_max])
+            ax.set_zlim([-z_max, z_max])
+            plt.draw()
+
+            filename = f'gt_{i}'
+            ax.view_init(elev=ax.elev - 5)
+            plt.savefig(filename + '.png', dpi=600)
+            ax.view_init(azim=ax.azim + 15, elev=ax.elev + 5)
+            plt.savefig(filename + '_2.png', dpi=600)
+            ax.view_init(azim=ax.azim + 45, elev=ax.elev + 10)
+            plt.savefig(filename + '_3.png', dpi=600)
+            ax.view_init(azim=init_azim, elev=init_elev)
         # print(f'Total points in frame: {len(frame)}, non-zero probability points: {sum(frame[:, 3] > 0)}')
-        ax.clear()
-        scatter = ax.scatter(frame[:, 0], frame[:, 1], frame[:, 2], c=frame[:, 3], s=point_size)
-        ax.scatter([0], [0], [0], c='black', s=point_size * 2)
-        colorbar.update_normal(scatter)
-        ax.set_xlabel('X')
-        ax.set_ylabel('Y')
-        ax.set_zlabel('Z')
-        ax.set_xlim([-x_max, x_max])
-        ax.set_ylim([0, y_max])
-        ax.set_zlim([-z_max, z_max])
-        plt.draw()
-        plt.pause(0.2)
+        # ax.clear()
+        # scatter = ax.scatter(frame[:, 0], frame[:, 1], frame[:, 2], c=frame[:, 3], s=point_size)
+        # ax.scatter([0], [0], [0], c='black', s=point_size * 2)
+        # colorbar.update_normal(scatter)
+        # ax.set_xlabel('X')
+        # ax.set_ylabel('Y')
+        # ax.set_zlabel('Z')
+        # ax.set_xlim([-x_max, x_max])
+        # ax.set_ylim([0, y_max])
+        # ax.set_zlim([-z_max, z_max])
+        # plt.draw()
+        # plt.pause(0.2)
 
     plt.close()
 
