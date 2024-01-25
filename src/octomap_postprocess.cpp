@@ -13,7 +13,7 @@
 int main(int argc, char** argv) {
 // PROCESS PARAMETERS
     if (argc < 3) {
-        ROS_ERROR("Usage: octomap_processor <input_bag_path> <input_topic>");
+        ROS_ERROR("Usage: octomap_processor <input_bag_path> <octomap_topic>");
         return 1;
     }
     std::string input_bag_path = argv[1];
@@ -23,7 +23,7 @@ int main(int argc, char** argv) {
         return 1;
     }
     if (input_topic.empty()) {
-        ROS_ERROR("Input topic is empty.");
+        ROS_ERROR("Octomap topic is empty.");
         return 1;
     }
 

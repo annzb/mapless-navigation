@@ -26,7 +26,7 @@ def get_device():
 
 def train_model(train_loader, model, criterion, optimizer, device):
     model.train()
-    for batch_idx, (data, target) in enumerate(train_loader):
+    for batch_idx, (data, target, _) in enumerate(train_loader):
         data, target = data.to(device), target.to(device)
         output = model(data)
         loss = criterion(output, target)
@@ -40,7 +40,7 @@ def validate_model(valid_loader, model, criterion, device):
     valid_loss = 0
 
     with torch.no_grad():
-        for data, target in valid_loader:
+        for data, target, _ in valid_loader:
             data, target = data.to(device), target.to(device)
             output = model(data)
             loss = criterion(output, target)
@@ -92,7 +92,7 @@ if __name__ == "__main__":
     # train(loss_alpha=0.1, loss_gamma=1, num_epochs=10, is_3d=True, occupancy_threshold=0.5)
     # raise ValueError('Finish')
 
-    alphas = (0.8, 0.92, 0.85)
+    alphas = (0.7, 0.92, 0.8)
     gammas = (1, )
     thresholds = (0.4, 0.5, 0.6)
     n_epochs = (50, 50, 50)
@@ -100,7 +100,7 @@ if __name__ == "__main__":
     colab_root, local_root = '/content/drive/My Drive', '/home/ann/mapping/mn_ws/src/mapless-navigation'
     root = colab_root if os.path.isdir(colab_root) else local_root
     score_file = os.path.join(root, 'test_scores_3d.csv')
-    dataset_file = os.path.join(root, 'dataset.pkl')
+    dataset_file = os.path.join(root, 'dataset_4runs.pkl')
     train_loader, valid_loader, test_loader = get_dataset(dataset_filepath=dataset_file, is_3d=True)
 
     for g in gammas:

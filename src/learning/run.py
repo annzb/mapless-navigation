@@ -3,6 +3,7 @@ import numpy as np
 import os
 import time
 import pickle
+from tqdm import tqdm
 
 import torch
 from scipy.spatial.transform import Rotation as R
@@ -77,7 +78,6 @@ def frame_grid_to_points(frame_grid, pose, timestamp, resolution=0.25, prob_thre
     grid_size_x, grid_size_y, grid_size_z = frame_grid.shape
     x_min, y_min, z_min = -grid_size_x * resolution / 2, 0, -grid_size_z * resolution / 2
 
-    # Find indices of non-zero occupancy probabilities
     occupied_indices = np.argwhere(frame_grid > 0) if prob_threshold == 0 else np.argwhere(frame_grid >= prob_threshold)
     world_coordinates = occupied_indices * resolution + np.array([x_min, y_min, z_min])
     orientation = R.from_quat(pose[3:])
@@ -94,13 +94,23 @@ def frame_grid_to_points(frame_grid, pose, timestamp, resolution=0.25, prob_thre
 
 def test(
         loss_alpha, loss_gamma, occupancy_threshold=0.5, is_3d=False,
-        visualize=False, dataset_filepath='dataset.pkl', model_folder='models', resolution_meters=0.25
+        visualize=False, dataset_filepath='dataset_echall0.pkl', model_folder='models', resolution_meters=0.25
 ):
     model_path = os.path.join(model_folder, f'model_1C{3 if is_3d else 2}D_a{int(loss_alpha * 100)}g{loss_gamma}.pt')
-    with open(dataset_filepath, 'rb') as f:
-        data = pickle.load(f)['ec_hallways_run0']
-    poses = data['poses']
-    _, _, test_loader = get_dataset(data=data, is_3d=is_3d)
+    _, _, test_loader = get_dataset(dataset_filepath=dataset_filepath, is_3d=is_3d)
+
+    all_points = {}
+    for _, output_batch, pose_batch in test_loader:
+        output_batch_np = output_batch.numpy() if not isinstance(output_batch, np.ndarray) else output_batch
+        pose_batch_np = pose_batch.numpy() if not isinstance(pose_batch, np.ndarray) else pose_batch
+        for i in range(output_batch_np.shape[0]):
+            true_points = frame_grid_to_points(
+                frame_grid=output_batch_np[i], pose=pose_batch_np[i], timestamp=None,
+                resolution=resolution_meters, prob_threshold=0.6
+            )
+            all_points.update(true_points)
+    all_points_np = np.array([np.array(list(point_tuple) + [value[0]]) for point_tuple, value in all_points.items()])
+    save_total_map(all_points_np, poses=test_loader.dataset.true_poses, filename='result_true_map')
 
     device = get_device()
     if is_3d:
@@ -113,20 +123,24 @@ def test(
 
     model.eval()
     with torch.no_grad():
-        for input_frame, _ in test_loader:
+        for input_batch, _, pose_batch in tqdm(test_loader):
             timestamp = time.time()
-            input_frame = input_frame.to(device)
-            output = model(input_frame)
-            output_grid = torch.sigmoid(output)
-            predicted_points = frame_grid_to_points(
-                frame_grid=output_grid, pose=None, timestamp=timestamp,
-                resolution=resolution_meters, prob_threshold=occupancy_threshold
-            )
-            total_map.update(predicted_points)
+            input_batch = input_batch.to(device)
+            output = model(input_batch)
+            output_grids = torch.sigmoid(output)
+            for frame_grid, pose in zip(output_grids, pose_batch):
+                predicted_points = frame_grid_to_points(
+                    frame_grid=frame_grid.cpu().numpy(), pose=pose.numpy(), timestamp=timestamp,
+                    resolution=resolution_meters, prob_threshold=occupancy_threshold
+                )
+                total_map.update(predicted_points)
+
+    with open('result_echall0.pkl', 'wb') as f:
+        pickle.dump(total_map, f)
 
     save_total_map(
         np.array([np.array(list(point_tuple) + [value[0]]) for point_tuple, value in total_map.items()]),
-        poses, filename='result_map'
+        poses=test_loader.dataset.true_poses, filename='result_map'
     )
 
     # x_min_meters = -5
@@ -175,4 +189,4 @@ if __name__ == "__main__":
     a = 0.7
     g = 1
     thresholds = (0.4, 0.5, 0.6)
-    test(loss_alpha=a, loss_gamma=g, occupancy_threshold=.4, is_3d=True, visualize=False)
+    test(loss_alpha=a, loss_gamma=g, occupancy_threshold=.6, is_3d=True, visualize=False)

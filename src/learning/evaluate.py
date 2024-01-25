@@ -42,6 +42,11 @@ def accuracy_score(TP, FP, TN, FN):
     return accuracy
 
 
+def iou_score(TP, FP, TN, FN):
+    iou = TP / (TP + FP + FN)
+    return iou
+
+
 def calc_tfpn(predictions, targets):
     true_pos = (predictions & targets).sum().float()
     false_pos = (predictions & ~targets).sum().float()
@@ -52,7 +57,7 @@ def calc_tfpn(predictions, targets):
 
 def test_model(test_loader, model, criterion, device, occupancy_threshold=0.5, outfile=None):
     metrics = (nn.L1Loss(), nn.BCELoss(), nn.MSELoss())
-    binary_metrics = (f1_score, accuracy_score)
+    binary_metrics = (f1_score, accuracy_score, iou_score)
 
     model.eval()
     test_loss = 0
@@ -62,7 +67,7 @@ def test_model(test_loader, model, criterion, device, occupancy_threshold=0.5, o
     metric_values = [0 for _ in metrics]
 
     with torch.no_grad():
-        for data, target in test_loader:
+        for data, target, _ in test_loader:
             data, target = data.to(device), target.to(device)
             output = model(data)
             output_probs = torch.sigmoid(output)
@@ -181,17 +186,20 @@ def test(
 
 
 if __name__ == "__main__":
-    alphas = (0.3, 0.5, 0.7, 0.9, 0.95)
-    gammas = (1, 2, 3, 4, 5)
-    thresholds = (0.4, 0.5, 0.6)
-    outfile_name = 'test_scores_3d.csv'
+    alphas = (0.8, 0.7, 0.92)
+    gammas = (1, )
+    thresholds = (0.6, )
+    # outfile_name = 'test_scores_3d.csv'
 
     for a in alphas:
         for g in gammas:
             for t in thresholds:
                 print('||======')
                 print(f'Alpha {a}, Gamma {g}, Threshold {t}, Evaluation:')
-                with open(outfile_name, 'a') as f:
-                    f.write(f'{a};{g};{t};')
-                test(loss_alpha=a, loss_gamma=g, occupancy_threshold=t, visualize=False, outfile=outfile_name)
+                # with open(outfile_name, 'a') as f:
+                #     f.write(f'{a};{g};{t};')
+                test(
+                    loss_alpha=a, loss_gamma=g, occupancy_threshold=t, is_3d=True,
+                    visualize=False, dataset_filepath='dataset_echall0.pkl'
+                )
                 print()
