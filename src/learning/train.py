@@ -97,10 +97,15 @@ if __name__ == "__main__":
     thresholds = (0.4, 0.5, 0.6)
     n_epochs = (50, 50, 50)
 
-    colab_root, local_root = '/content/drive/My Drive', '/home/ann/mapping/mn_ws/src/mapless-navigation'
-    root = colab_root if os.path.isdir(colab_root) else local_root
+    colab_root, local_root, brute_root = '/content/drive/My Drive', '/home/ann/mapping/mn_ws/src/mapless-navigation', '/home/annz/mapping/mn_ws/src/mapless-navigation'
+    if os.path.isdir(colab_root):
+        root = colab_root
+    elif os.path.isdir(local_root):
+        root = local_root
+    else:
+        root = brute_root
     score_file = os.path.join(root, 'test_scores_3d.csv')
-    dataset_file = os.path.join(root, 'dataset_4runs.pkl')
+    dataset_file = '/media/giantdrive/coloradar/dataset_4runs.pkl' if root == brute_root else os.path.join(root, 'dataset_4runs.pkl')
     train_loader, valid_loader, test_loader = get_dataset(dataset_filepath=dataset_file, is_3d=True)
 
     for g in gammas:
