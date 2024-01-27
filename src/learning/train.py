@@ -17,7 +17,7 @@ from evaluate import test_model
 def get_device():
     if torch.cuda.is_available():
         print('GPU is available.')
-        device = torch.device("cuda")
+        device = torch.device("cuda:1")
     else:
         print('GPU is not available, using CPU.')
         device = torch.device("cpu")
@@ -54,7 +54,7 @@ def train(
         loss_alpha, loss_gamma, num_epochs=10, is_3d=False, occupancy_threshold=0.5,
          model_folder='models'
 ):
-    learning_rate = 0.05
+    learning_rate = 0.01
     best_valid_loss = float('inf')
     os.makedirs(model_folder, exist_ok=True)
     model_path = os.path.join(model_folder, f'model_1C{3 if is_3d else 2}D_a{int(loss_alpha * 100)}g{loss_gamma}.pt')
@@ -65,7 +65,7 @@ def train(
     else:
         model = Unet1C2D().double().to(device)
     criterion = FocalLoss(alpha=loss_alpha, gamma=loss_gamma)
-    optimizer = optim.Adam(model.parameters(), lr=learning_rate)
+    optimizer = optim.Adam(model.parameters(), lr=learning_rate, weight_decay=1e-5)
 
     for epoch in range(num_epochs):
         print(f'Epoch {epoch + 1}/{num_epochs}:')
@@ -92,10 +92,10 @@ if __name__ == "__main__":
     # train(loss_alpha=0.1, loss_gamma=1, num_epochs=10, is_3d=True, occupancy_threshold=0.5)
     # raise ValueError('Finish')
 
-    alphas = (0.7, 0.92, 0.8)
+    alphas = (0.8, 0.85, 0.78)
     gammas = (1, )
-    thresholds = (0.4, 0.5, 0.6)
-    n_epochs = (50, 50, 50)
+    thresholds = (0.4, 0.5, 0.6, 0.7)
+    n_epochs = (100, 100, 100)
 
     colab_root, local_root, brute_root = '/content/drive/My Drive', '/home/ann/mapping/mn_ws/src/mapless-navigation', '/home/annz/mapping/mn_ws/src/mapless-navigation'
     if os.path.isdir(colab_root):
@@ -105,7 +105,7 @@ if __name__ == "__main__":
     else:
         root = brute_root
     score_file = os.path.join(root, 'test_scores_3d.csv')
-    dataset_file = '/media/giantdrive/coloradar/dataset_4runs.pkl' if root == brute_root else os.path.join(root, 'dataset_4runs.pkl')
+    dataset_file = '/media/giantdrive/coloradar/dataset_5runs.pkl' if root == brute_root else os.path.join(root, 'dataset_5runs.pkl')
     train_loader, valid_loader, test_loader = get_dataset(dataset_filepath=dataset_file, is_3d=True)
 
     for g in gammas:

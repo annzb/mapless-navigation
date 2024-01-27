@@ -16,7 +16,7 @@ from model_intensity_3d import Unet1C3D
 def get_device():
     if torch.cuda.is_available():
         print('GPU is available.')
-        device = torch.device("cuda")
+        device = torch.device("cuda:1")
     else:
         print('GPU is not available, using CPU.')
         device = torch.device("cpu")
@@ -186,20 +186,37 @@ def test(
 
 
 if __name__ == "__main__":
-    alphas = (0.8, 0.7, 0.92)
+    is_3d = True
+    alphas = (0.8, 0.85, 0.78)
     gammas = (1, )
-    thresholds = (0.6, )
-    # outfile_name = 'test_scores_3d.csv'
+    thresholds = (0.4, 0.5, 0.6, 0.7)
+
+    colab_root, local_root, brute_root = '/content/drive/My Drive', '/home/ann/mapping/mn_ws/src/mapless-navigation', '/home/annz/mapping/mn_ws/src/mapless-navigation'
+    if os.path.isdir(colab_root):
+        root = colab_root
+    elif os.path.isdir(local_root):
+        root = local_root
+    else:
+        root = brute_root
+    score_file = os.path.join(root, 'test_scores_3d_jan_dropout.csv')
+    dataset_file = '/media/giantdrive/coloradar/dataset_5runs.pkl' if root == brute_root else os.path.join(root, 'dataset_5runs.pkl')
+    train_loader, valid_loader, test_loader = get_dataset(dataset_filepath=dataset_file, is_3d=is_3d)
+    device = get_device()
 
     for a in alphas:
         for g in gammas:
+            model_path = os.path.join('models', f'model_1C{3 if is_3d else 2}D_a{int(a * 100)}g{g}.pt')
+            model = Unet1C3D().double().to(device)
+            model.load_state_dict(torch.load(model_path))
+            criterion = FocalLoss(alpha=a, gamma=g)
+
             for t in thresholds:
                 print('||======')
                 print(f'Alpha {a}, Gamma {g}, Threshold {t}, Evaluation:')
                 # with open(outfile_name, 'a') as f:
                 #     f.write(f'{a};{g};{t};')
-                test(
-                    loss_alpha=a, loss_gamma=g, occupancy_threshold=t, is_3d=True,
-                    visualize=False, dataset_filepath='dataset_echall0.pkl'
+                test_model(
+                    test_loader, model, criterion, device,
+                    occupancy_threshold=t, outfile=score_file
                 )
                 print()

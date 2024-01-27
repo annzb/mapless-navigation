@@ -79,13 +79,14 @@ class DecoderBlock(nn.Module):
 
 
 class Unet1C3D(nn.Module):
-    def __init__(self):
+    def __init__(self, dropout_rate=0.1):
         super().__init__()
         # self.increase_depth = nn.Conv3d(
         #     1, 1,
         #     kernel_size=(2, 1, 1), dilation=(2, 1, 1),
         #     padding=(5, 0, 0), padding_mode='circular'
         # )
+        self.dropout = nn.Dropout3d(dropout_rate)
         self.reshape = InputReshape(1, 1)
         self.e1 = EncoderBlock(1, 32)
         self.e2 = EncoderBlock(32, 64)
@@ -109,6 +110,7 @@ class Unet1C3D(nn.Module):
         # print('shape after e3', p_final.shape)
         # s4, p4 = self.e4(p3)
         b = self.b(p_final)
+        b = self.dropout(b)
         # print('shape after bottleneck', b.shape)
         # d1 = self.d1(b, s4)
         d2 = self.d2(b, s_final)
