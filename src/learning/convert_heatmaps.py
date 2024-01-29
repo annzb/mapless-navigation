@@ -62,7 +62,7 @@ def points_to_grid(points, x_min=-5, x_max=5, y_min=0, y_max=10, z_min=-5, z_max
     return grid
 
 
-def main(run_folder_name='ec_hallways_run0'):
+def main(run_folder_name='ec_hallways_run0', dataset_filename='dataset.pkl'):
     print('Processing', run_folder_name)
     map_resolution = 0.25
     x_min, x_max = -5, 5
@@ -119,8 +119,8 @@ def main(run_folder_name='ec_hallways_run0'):
     print('GT frame shape', localized_points.shape)
     print('GT grid shape', frame_grid.shape)
 
-    if os.path.isfile('dataset.pkl'):
-        with open('dataset.pkl', 'rb') as f:
+    if os.path.isfile(dataset_filename):
+        with open(dataset_filename, 'rb') as f:
             data = pickle.load(f)
     else:
         data = {}
@@ -131,7 +131,8 @@ def main(run_folder_name='ec_hallways_run0'):
         'pose_timestamps': pose_timestamps_matched
         # 'gt_points': map_frames
     }
-    with open('dataset.pkl', 'wb') as f:
+    print('Writing runs:', data.keys())
+    with open(dataset_filename, 'wb') as f:
         pickle.dump(data, f)
 
     # visualize_true_frames(map_frames, x_max=x_max, y_max=y_max, z_max=z_max)
@@ -198,5 +199,8 @@ def visualize_true_frames(frames, x_max=5., y_max=10., z_max=10.):
 
 
 if __name__ == '__main__':
-    for f in ('ec_hallways_run0', 'arpg_lab_run0', 'longboard_run0', 'outdoors_run0'):
-        main(run_folder_name=f)
+    ds_file = '/home/ann/mapping/mn_ws/src/mapless-navigation/dataset_4runs.pkl'
+    assert os.path.isfile(ds_file)
+    # for f in ('ec_hallways_run0', 'arpg_lab_run0', 'longboard_run0', 'outdoors_run0'):
+    for f in ('edgar_classroom_run0', ):
+        main(run_folder_name=f, dataset_filename=ds_file)
