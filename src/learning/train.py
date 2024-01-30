@@ -94,12 +94,12 @@ def train(
 def run():
     # train(loss_alpha=0.1, loss_gamma=1, num_epochs=10, is_3d=True, occupancy_threshold=0.5)
     # raise ValueError('Finish')
-    learning_rate = 0.02
+    learning_rate = 0.01
     batch_size = 32
-    alphas = (0.8, 0.85, 0.78)
+    alphas = (0.8, 0.85, 0.7, 0.9)
     gammas = (1, )
     thresholds = (0.4, 0.5, 0.6, 0.7)
-    n_epochs = (100, 100, 100)
+    n_epochs = (100, 100, 100, 100)
     config = {
         'gamma': gammas[0],
         'learning_rate': learning_rate,

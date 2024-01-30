@@ -79,7 +79,7 @@ class DecoderBlock(nn.Module):
 
 
 class Unet1C3D(nn.Module):
-    def __init__(self, dropout_rate=0.1):
+    def __init__(self, dropout_rate=0.9):
         super().__init__()
         # self.increase_depth = nn.Conv3d(
         #     1, 1,
