@@ -21,20 +21,24 @@ def associate_radar_with_pose(radar_timestamps, true_timestamps):
     return indices
 
 
-def get_localized_pointcloud(pose, true_map, x_max=5., y_max=10., z_max=5.):
+def get_localized_pointcloud(pose, true_map, azimuth_angle=90., elevation_angle=90., x_max=5., y_max=10., z_max=5.):
     orientation = R.from_quat(pose[3:])
     local_points = orientation.inv().apply(true_map[:, :3] - pose[:3])
-
     box_mask = (
-            (local_points[:, 0] >= -x_max) & (local_points[:, 0] <= x_max) &
-            (local_points[:, 1] >= 0) & (local_points[:, 1] <= y_max) &
-            (local_points[:, 2] >= -z_max) & (local_points[:, 2] <= z_max)
+        (local_points[:, 0] >= -x_max) & (local_points[:, 0] <= x_max) &
+        (local_points[:, 1] >= 0) & (local_points[:, 1] <= y_max) &
+        (local_points[:, 2] >= -z_max) & (local_points[:, 2] <= z_max)
     )
+    tan_elevation = np.tan(np.radians(elevation_angle))
     elevation_mask = (
         local_points[:, 1] ** 2 >=
-        3 * (local_points[:, 0] ** 2 + local_points[:, 2] ** 2)
+        (tan_elevation ** 2) * (local_points[:, 0] ** 2 + local_points[:, 2] ** 2)
     )
-    fov_mask = box_mask & elevation_mask
+    tan_azimuth = np.tan(np.radians(azimuth_angle / 2))
+    azimuth_mask = (
+        np.abs(local_points[:, 0] / np.maximum(local_points[:, 1], np.finfo(float).eps)) <= tan_azimuth
+    )
+    fov_mask = box_mask & elevation_mask & azimuth_mask
     points_in_fov = true_map[fov_mask]
     transformed_points = np.hstack((orientation.inv().apply(points_in_fov[:, :3] - pose[:3]), points_in_fov[:, 3].reshape(-1, 1)))
     return transformed_points
@@ -44,7 +48,7 @@ def points_to_grid(points, x_min=-5, x_max=5, y_min=0, y_max=10, z_min=-5, z_max
     grid_size_x = int((x_max - x_min) / resolution)
     grid_size_y = int((y_max - y_min) / resolution)
     grid_size_z = int((z_max - z_min) / resolution)
-    grid = np.zeros((grid_size_x, grid_size_y, grid_size_z), dtype=float)
+    grid = np.zeros((grid_size_x, grid_size_y, grid_size_z), dtype=float) + 0.5
     coordinates = points[:, :3]
     occupancy_odds = points[:, 3]
 
@@ -54,7 +58,6 @@ def points_to_grid(points, x_min=-5, x_max=5, y_min=0, y_max=10, z_min=-5, z_max
             (point_indices[:, 1] >= 0) & (point_indices[:, 1] < grid_size_y) &
             (point_indices[:, 2] >= 0) & (point_indices[:, 2] < grid_size_z)
     )
-
     filtered_indices = point_indices[in_bounds_mask]
     filtered_odds = occupancy_odds[in_bounds_mask]
     for idx, odds in zip(filtered_indices, filtered_odds):
@@ -65,7 +68,7 @@ def points_to_grid(points, x_min=-5, x_max=5, y_min=0, y_max=10, z_min=-5, z_max
 def main(run_folder_name='ec_hallways_run0', dataset_filename='dataset.pkl'):
     print('Processing', run_folder_name)
     map_resolution = 0.25
-    x_min, x_max = -5, 5
+    x_min, x_max = -9, 9
     y_min, y_max = 0, 10
     z_min, z_max = -3, 3
     coloradar_dir = '/home/ann/mapping/coloradar'
@@ -105,6 +108,8 @@ def main(run_folder_name='ec_hallways_run0', dataset_filename='dataset.pkl'):
         # true_points = select_points_from_pose(map_points, x_max=x_max, y_max=y_max, z_max=z_max)
         localized_points = get_localized_pointcloud(
             poses[pose_idx], map_points,
+            azimuth_angle=152.6,    # 76.3 degrees
+            elevation_angle=135.4,  # 67.7 degrees
             x_max=x_max, y_max=y_max, z_max=z_max
         )
         frame_grid = points_to_grid(
@@ -135,7 +140,7 @@ def main(run_folder_name='ec_hallways_run0', dataset_filename='dataset.pkl'):
     with open(dataset_filename, 'wb') as f:
         pickle.dump(data, f)
 
-    # visualize_true_frames(map_frames, x_max=x_max, y_max=y_max, z_max=z_max)
+    visualize_true_frames(map_frames, x_max=x_max, y_max=y_max, z_max=z_max)
 
 
 def save_total_map(total_map, poses, filename='total_map'):
@@ -173,34 +178,33 @@ def visualize_true_frames(frames, x_max=5., y_max=10., z_max=10.):
     init_azim, init_elev = ax.azim, ax.elev
 
     for i, frame in enumerate(frames):
-        if i in (110, 140, 190):
-            ax.clear()
-            scatter = ax.scatter(frame[:, 0], frame[:, 1], frame[:, 2], c=frame[:, 3], s=point_size)
-            ax.scatter([0], [0], [0], c='black', s=point_size * 2)
-            colorbar.update_normal(scatter)
-            ax.set_xlabel('X')
-            ax.set_ylabel('Y')
-            ax.set_zlabel('Z')
-            ax.set_xlim([-x_max, x_max])
-            ax.set_ylim([0, y_max])
-            ax.set_zlim([-z_max, z_max])
-            plt.draw()
-
-            filename = f'gt_{i}'
-            ax.view_init(elev=ax.elev - 5)
-            plt.savefig(filename + '.png', dpi=600)
-            ax.view_init(azim=ax.azim + 15, elev=ax.elev + 5)
-            plt.savefig(filename + '_2.png', dpi=600)
-            ax.view_init(azim=ax.azim + 45, elev=ax.elev + 10)
-            plt.savefig(filename + '_3.png', dpi=600)
-            ax.view_init(azim=init_azim, elev=init_elev)
-
+        # if i in (110, 140, 190):
+        ax.clear()
+        scatter = ax.scatter(frame[:, 0], frame[:, 1], frame[:, 2], c=frame[:, 3], s=point_size)
+        ax.scatter([0], [0], [0], c='black', s=point_size * 2)
+        colorbar.update_normal(scatter)
+        ax.set_xlabel('X')
+        ax.set_ylabel('Y')
+        ax.set_zlabel('Z')
+        ax.set_xlim([-x_max, x_max])
+        ax.set_ylim([0, y_max])
+        ax.set_zlim([-z_max, z_max])
+        plt.draw()
+        plt.pause(0.2)
+            # filename = f'gt_{i}'
+            # ax.view_init(elev=ax.elev - 5)
+            # plt.savefig(filename + '.png', dpi=600)
+            # ax.view_init(azim=ax.azim + 15, elev=ax.elev + 5)
+            # plt.savefig(filename + '_2.png', dpi=600)
+            # ax.view_init(azim=ax.azim + 45, elev=ax.elev + 10)
+            # plt.savefig(filename + '_3.png', dpi=600)
+            # ax.view_init(azim=init_azim, elev=init_elev)
     plt.close()
 
 
 if __name__ == '__main__':
-    ds_file = '/home/ann/mapping/mn_ws/src/mapless-navigation/dataset_4runs.pkl'
-    assert os.path.isfile(ds_file)
+    ds_file = '/home/ann/mapping/mn_ws/src/mapless-navigation/dataset_5runs_widefov.pkl'
+    # assert os.path.isfile(ds_file)
     # for f in ('ec_hallways_run0', 'arpg_lab_run0', 'longboard_run0', 'outdoors_run0'):
-    for f in ('edgar_classroom_run0', ):
+    for f in ('arpg_lab_run0', ):
         main(run_folder_name=f, dataset_filename=ds_file)
