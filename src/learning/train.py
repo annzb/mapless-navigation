@@ -66,7 +66,7 @@ def train(
     else:
         model = Unet1C2D().double().to(device)
     criterion = FocalLoss(alpha=loss_alpha, gamma=loss_gamma)
-    optimizer = optim.Adam(model.parameters(), lr=learning_rate, weight_decay=1e-5)
+    optimizer = optim.Adam(model.parameters(), lr=learning_rate)
 
     for epoch in range(num_epochs):
         print(f'Epoch {epoch + 1}/{num_epochs}:')
@@ -103,8 +103,9 @@ def run():
     config = {
         'gamma': gammas[0],
         'learning_rate': learning_rate,
-        'architecture': 'UNet-3D-dropout',
-        'dataset': '5runs',
+        'architecture': 'UNet-3D-polar',
+        'dropout': 0.1,
+        'dataset': '7runs',
         'epochs': n_epochs[0],
         'batch_size': batch_size,
         "optimizer": "adam"

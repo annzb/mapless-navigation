@@ -1,5 +1,7 @@
 import torch
 import torch.nn as nn
+# Heatmap shape (2, 16, 64, 2)
+# GT grid shape (72, 32, 16)
 
 
 class InputReshape(nn.Module):

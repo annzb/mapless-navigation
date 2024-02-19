@@ -20,9 +20,9 @@ def select_points_from_pose(map_pcl, x_max=5., y_max=10., z_max=5.):
 
 
 def save_heatmap_image(heatmap, filename='heatmap.png'):
-    heatmap_slice = heatmap[7, :, :, 0]
+    heatmap_slice = heatmap[2, :, :, 0]
     normalized_slice = Normalize()(heatmap_slice)
-    colored_image = np.zeros((64, 64, 3))
+    colored_image = np.zeros((48, 64, 3))
     colored_image[:, :, 0] = normalized_slice  # Red channel
     colored_image[:, :, 1] = 0.5  # Constant value for Green channel
     colored_image[:, :, 2] = 0.5  # Constant value for Blue channel
