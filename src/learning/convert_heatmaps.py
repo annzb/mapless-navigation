@@ -11,7 +11,7 @@ matplotlib.use('TkAgg')
 import matplotlib.pyplot as plt
 
 from src.coloradar_tools import get_heatmap, get_single_chip_params
-from src.learning.utils import save_heatmap_image
+from src.learning.utils import cartesian_to_polar_grid, parse_polar_bins, save_heatmap_image
 
 
 def associate_radar_with_pose(radar_timestamps, true_timestamps):
@@ -26,7 +26,7 @@ def get_localized_pointcloud(pose, true_map, azimuth_angle=90., elevation_angle=
     tan_azimuth = np.tan(np.radians(90 - azimuth_angle / 2))
     tan_elevation = np.tan(np.radians(90 - elevation_angle / 2))
     orientation = R.from_quat(pose[3:])
-    local_points = orientation.inv().apply(true_map[:, :3] - pose[:3])
+    local_points = np.hstack((orientation.inv().apply(true_map[:, :3] - pose[:3]), true_map[:, 3].reshape(-1, 1)))  # ego-centric pointcloud
     box_mask = (
             (local_points[:, 0] >= -x_max) & (local_points[:, 0] <= x_max) &
             (local_points[:, 1] >= 0) & (local_points[:, 1] <= y_max) &
@@ -34,11 +34,9 @@ def get_localized_pointcloud(pose, true_map, azimuth_angle=90., elevation_angle=
     )
     azimuth_mask = local_points[:, 1] ** 2 >= (tan_azimuth * local_points[:, 0]) ** 2
     elevation_mask = local_points[:, 1] ** 2 >= (tan_elevation * local_points[:, 2]) ** 2
-    fov_mask = box_mask & azimuth_mask & elevation_mask
-    points_in_fov = true_map[fov_mask]
-    transformed_points = np.hstack(
-        (orientation.inv().apply(points_in_fov[:, :3] - pose[:3]), points_in_fov[:, 3].reshape(-1, 1)))
-    return transformed_points
+    range_mask = (local_points[:, 0] ** 2 + local_points[:, 1] ** 2 + local_points[:, 2] ** 2) ** 0.5 <= y_max
+    points_in_fov = local_points[box_mask & azimuth_mask & elevation_mask & range_mask]
+    return points_in_fov
 
 
 def points_to_grid(points, x_min=-5, x_max=5, y_min=0, y_max=10, z_min=-5, z_max=5, resolution=0.25):
@@ -49,29 +47,24 @@ def points_to_grid(points, x_min=-5, x_max=5, y_min=0, y_max=10, z_min=-5, z_max
     coordinates = points[:, :3]
     occupancy_odds = points[:, 3]
     point_indices = np.floor((coordinates - np.array([x_min, y_min, z_min])) / resolution).astype(int)
-    # print('grid size', grid.size, 'number of points', len(points))
-    # in_bounds_mask = (
-    #         (point_indices[:, 0] >= 0) & (point_indices[:, 0] < grid_size_x) &
-    #         (point_indices[:, 1] >= 0) & (point_indices[:, 1] < grid_size_y) &
-    #         (point_indices[:, 2] >= 0) & (point_indices[:, 2] < grid_size_z)
-    # )
-    # filtered_indices = point_indices[in_bounds_mask]
-    # filtered_odds = occupancy_odds[in_bounds_mask]
     probs = []
     for idx, odds in zip(point_indices, occupancy_odds):
         grid[tuple(idx)] = 1.0 / (1 + np.exp(-odds))
         probs.append(grid[tuple(idx)])
-    print(
-        'percent of 75+', occupancy_odds[occupancy_odds >= 0.75].size / occupancy_odds.size,
-        'percent of 25-', occupancy_odds[occupancy_odds <= 0.25].size / occupancy_odds.size,
-        'percent of uncertain', occupancy_odds[(0.25 < occupancy_odds) & (occupancy_odds < 0.75)].size / occupancy_odds.size
-    )
+
+    # print(
+    #     'percent of 75+', occupancy_odds[occupancy_odds >= 0.75].size / occupancy_odds.size,
+    #     'percent of 25-', occupancy_odds[occupancy_odds <= 0.25].size / occupancy_odds.size,
+    #     'percent of uncertain', occupancy_odds[(0.25 < occupancy_odds) & (occupancy_odds < 0.75)].size / occupancy_odds.size
+    # )
     return grid
 
 
 def main(dataset_filename='dataset.pkl'):
-    azimuth_angle = 94    # from 47 to 47, max 76.3 * 2 degrees
-    elevation_angle = 36  # from 18 to 18, max 67.7 * 2 degrees
+    # azimuth_angle = 94    # from 47 to 47, max 76.3 * 2 degrees
+    # elevation_angle = 36  # from 18 to 18, max 67.7 * 2 degrees
+    elevation_angle = 59  # from -29.5 to 29.5, max 76.3 * 2 degrees
+    azimuth_angle = 118  # from -59 to 59, max 79.8 * 2 degrees
     y_max = 8
     map_resolution = 0.25
     # x_min, x_max = -5.68, 5.68
@@ -79,22 +72,32 @@ def main(dataset_filename='dataset.pkl'):
     # z_max = int(y_max * np.tan(np.radians(elevation_angle / 2)))
     x_max = y_max * np.tan(np.radians(azimuth_angle / 2)) // map_resolution * map_resolution
     z_max = y_max * np.tan(np.radians(elevation_angle / 2)) // map_resolution * map_resolution
-    print('x_max', x_max, 'z_max', z_max)  # 8.5m, 2.75m
-    azimuth_from, azimuth_to = 8, 55  # from -46.46° to 46.46°
-    elevation_from, elevation_to = 5, 10  # from -17.97 to 17.97
+    print('x_max', x_max, 'z_max', z_max)  # 13.25m, 4.5m
+    azimuth_from, azimuth_to = 4, 59  # from -59.68° to 59.68°
+    elevation_from, elevation_to = 4, 11  # from -38° to 38°
     print('Azimuth indices:', azimuth_from, ':', azimuth_to)
     print('Elevation indices:', elevation_from, ':', elevation_to)
 
     coloradar_dir = '/home/ann/mapping/coloradar'
     calib_folder_name = 'calib'
     params = get_single_chip_params(calib_dir=os.path.join(coloradar_dir, calib_folder_name))
+    params['x_min'], params['x_max'] = -x_max, x_max
+    params['y_min'], params['y_max'] = 0, y_max
+    params['z_min'], params['z_max'] = -z_max, z_max
+    params['azimuth_from'], params['azimuth_to'] = azimuth_from, azimuth_to
+    params['elevation_from'], params['elevation_to'] = elevation_from, elevation_to
     data = {'params': params}
 
-    for run_folder_name in []: # ( 'ec_hallways_run1',
-        # 'arpg_lab_run0',
-        # 'aspen_run0', 'ec_hallways_run0', 'edgar_classroom_run0',
-        # 'longboard_run0', 'outdoors_run0'
-    # ):
+    range_bin_width = round(params['heatmap']['range_bin_width'], 3)
+    range_bins = np.arange(range_bin_width, y_max + range_bin_width, range_bin_width)
+    azimuth_bins = parse_polar_bins(params['heatmap']['azimuth_bins'])[azimuth_from:azimuth_to + 1]
+    elevation_bins = parse_polar_bins(params['heatmap']['elevation_bins'])[elevation_from:elevation_to + 1]
+
+    for run_folder_name in ('ec_hallways_run1',
+        'arpg_lab_run0',
+        'aspen_run0', 'ec_hallways_run0', 'edgar_classroom_run0',
+        'longboard_run0', 'outdoors_run0'
+    ):
         print('Processing', run_folder_name)
         map_file_path = os.path.join(coloradar_dir, run_folder_name + '_lidar_octomap_points.csv')
         run_dir = os.path.join(coloradar_dir, run_folder_name)
@@ -141,17 +144,24 @@ def main(dataset_filename='dataset.pkl'):
             map_frames.append(localized_points)
             frame_grids.append(frame_grid)
 
+        polar_grids = cartesian_to_polar_grid(
+            np.array(frame_grids), x_min=-x_max, x_max=x_max, y_max=y_max, z_min=-z_max, z_max=z_max,
+            azimuth_bins=azimuth_bins, elevation_bins=elevation_bins, range_bins=range_bins,
+            range_bin_width=range_bin_width
+        )
         data[run_folder_name] = {
             'heatmaps': heatmaps,
             'gt_grids': frame_grids,
+            'polar_grids': polar_grids,
             'poses': poses_matched,
             'pose_timestamps': pose_timestamps_matched
             # 'gt_points': map_frames
         }
-
-    # print('Heatmap shape', heatmaps[0].shape)
+    # visualize_true_frames(map_frames, x_max=x_max, y_max=y_max, z_max=z_max)
+    # return
+    print('Heatmap shape', heatmaps[0].shape)
     # print('GT frame shape', localized_points.shape)
-    # print('GT grid shape', frame_grid.shape)
+    print('GT grid shape', frame_grid.shape)
 
     if os.path.isfile(dataset_filename):
         with open(dataset_filename, 'rb') as f:
@@ -227,7 +237,7 @@ def visualize_true_frames(frames, x_max=5., y_max=10., z_max=10.):
 
 
 if __name__ == '__main__':
-    ds_file = '/home/ann/mapping/mn_ws/src/mapless-navigation/dataset_7runs_smallfov.pkl'
+    ds_file = '/home/ann/mapping/mn_ws/src/mapless-navigation/dataset_7runs_rangelimit.pkl'
     # assert os.path.isfile(ds_file)
     # for f in ('ec_hallways_run0', 'arpg_lab_run0', 'longboard_run0', 'outdoors_run0'):
     main(dataset_filename=ds_file)

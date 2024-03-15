@@ -55,40 +55,57 @@ def calc_tfpn(predictions, targets):
     return true_pos, false_pos, true_neg, false_neg
 
 
-def test_model(test_loader, model, criterion, device, occupancy_threshold=0.5, outfile=None):
-    metrics = (nn.L1Loss(), nn.BCELoss(), nn.MSELoss())
+def test_model(
+        test_loader, model, criterion, device,
+        occupied_threshold=0.5, empty_threshold=0.49,
+        outfile=None, output_is_prob=False
+):
+    metrics = (nn.L1Loss(), nn.MSELoss())
     binary_metrics = (f1_score, accuracy_score, iou_score)
 
     model.eval()
     test_loss = 0
     predicted_output = []
-    TP, FP, TN, FN = 0, 0, 0, 0
+    stats = {
+        'occupied': {'tp': [], 'tn': [], 'fp': [], 'fn': [], 'to_binary': lambda vals: vals >= occupied_threshold},
+        'empty': {'tp': [], 'tn': [], 'fp': [], 'fn': [], 'to_binary': lambda vals: vals <= empty_threshold},
+        'uncertain': {'tp': [], 'tn': [], 'fp': [], 'fn': [], 'to_binary': lambda vals: empty_threshold < vals < occupied_threshold}
+    }
+    # TP, FP, TN, FN = 0, 0, 0, 0
     num_samples, num_batches = 0, 0
     metric_values = [0 for _ in metrics]
+    num_accurate = 0
 
     with torch.no_grad():
         for data, target, _ in test_loader:
             data, target = data.to(device), target.to(device)
             output = model(data)
-            output_probs = torch.sigmoid(output)
-            output_binary, target_binary = output_probs > occupancy_threshold, target > occupancy_threshold
-
             loss = criterion(output, target)
             test_loss += loss
-            predicted_output.append(output_probs.cpu().numpy())
+
+            if not output_is_prob:
+                output = torch.sigmoid(output)
+            predicted_output.append(output.cpu().numpy())
+
+            output_cat, target_cat = torch.zeros_like(output, dtype=torch.int), torch.zeros_like(target, dtype=torch.int)
+            output_cat[output <= empty_threshold], output_cat[output >= occupied_threshold] = 1, 2
+            target_cat[target <= empty_threshold], target_cat[target >= occupied_threshold] = 1, 2
 
             num_samples += data.size(0)
             num_batches += 1
-            tp_batch, fp_batch, tn_batch, fn_batch = calc_tfpn(output_binary, target_binary)
-            TP += tp_batch
-            FP += fp_batch
-            TN += tn_batch
-            FN += fn_batch
+            num_accurate += (output_cat == target_cat).sum().int()
+            for class_name, class_stats in stats.items():
+                output_binary, target_binary = class_stats['to_binary'](output_cat), class_stats['to_binary'](target_cat)
+                tp_batch, fp_batch, tn_batch, fn_batch = calc_tfpn(output_binary, target_binary)
+                stats[class_name]['tp'] += tp_batch
+                stats[class_name]['fp'] += fp_batch
+                stats[class_name]['tn'] += tn_batch
+                stats[class_name]['fn'] += fn_batch
             for i, metric in enumerate(metrics):
-                metric_values[i] += metric(output_probs, target)
+                stats[class_name][i] += metric(output, target)
 
-    print(f'Total testing loss: {test_loss}')
-    print(f'Occupancy threshold: {occupancy_threshold}')
+    print(f'Total testing loss: {test_loss}, total accuracy {round(num_accurate / num_samples * 100, 3)}')
+    print(f'Occupancy threshold: {occupied_threshold}')
     if outfile:
         with open(outfile, 'a') as f:
             f.write(f'{test_loss};')
@@ -97,11 +114,12 @@ def test_model(test_loader, model, criterion, device, occupancy_threshold=0.5, o
         loss_per_batch = metric_values[i] / num_batches
         print(f'Avg {metric.__class__.__name__} loss: {loss_per_sample} per sample, {loss_per_batch} per batch')
     for metric in binary_metrics:
-        loss = metric(TP, FP, TN, FN)
-        print(f'{metric.__name__}: {loss}')
-        if outfile:
-            with open(outfile, 'a') as f:
-                f.write(f'{loss};')
+        for class_name, class_stats in stats.items():
+            loss = metric(class_stats['tp'], class_stats['fp'], class_stats['tn'], class_stats['fn'])
+            print(f'{metric.__name__} for class {class_name}: {loss}')
+            if outfile:
+                with open(outfile, 'a') as f:
+                    f.write(f'{class_name}.{loss};')
     if outfile:
         with open(outfile, 'a') as f:
             f.write('\n')

@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
-# Heatmap shape (2, 16, 64, 2)
-# GT grid shape (72, 32, 16)
+# Heatmap shape (1, 8, 56, 64)
+# GT grid shape (8, 56, 64)
 
 
 class InputReshape(nn.Module):
@@ -80,7 +80,7 @@ class DecoderBlock(nn.Module):
         return x
 
 
-class Unet1C3D(nn.Module):
+class Unet1C3DPolar(nn.Module):
     def __init__(self, dropout_rate=0.1):
         super().__init__()
         # self.increase_depth = nn.Conv3d(
@@ -102,7 +102,7 @@ class Unet1C3D(nn.Module):
         self.output = nn.Conv3d(32,  1, kernel_size=1)
 
     def forward(self, inputs):
-        inputs = self.reshape(inputs)
+        # inputs = self.reshape(inputs)
         # print('shape after reshape', inputs.shape)
         s1, p1 = self.e1(inputs)
         # print('shape after e1', p1.shape)
@@ -112,7 +112,7 @@ class Unet1C3D(nn.Module):
         # print('shape after e3', p_final.shape)
         # s4, p4 = self.e4(p3)
         b = self.b(p_final)
-        b = self.dropout(b)
+        # b = self.dropout(b)
         # print('shape after bottleneck', b.shape)
         # d1 = self.d1(b, s4)
         d2 = self.d2(b, s_final)
@@ -127,4 +127,5 @@ class Unet1C3D(nn.Module):
             outputs = outputs.squeeze(1)
             # print('shape after squeeze', outputs.shape)
         # print('---------')
+        outputs = torch.sigmoid(outputs)
         return outputs
