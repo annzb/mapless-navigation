@@ -60,9 +60,9 @@ def train(
         model_folder='models', learning_rate=0.01, monitor=None, use_polar=False
 ):
     if not (isinstance(occupied_threshold, float) and
-            isinstance(occupied_threshold, float) and
-            0 > occupied_threshold > 1 and
-            0 > empty_threshold > 1 and
+            isinstance(empty_threshold, float) and
+            0 < occupied_threshold < 1 and
+            0 < empty_threshold < 1 and
             occupied_threshold > empty_threshold
     ):
         raise ValueError('Invalid thresholds')
@@ -73,7 +73,7 @@ def train(
 
     device = get_device()
     if use_polar:
-        if not isinstance(loss_w, int) or not isinstance(loss_w, float):
+        if not isinstance(loss_w, int) and not isinstance(loss_w, float):
             raise ValueError('Invalid loss_w, expected a number')
         model_path += f'3D_w{loss_w}.pt'
         model = Unet1C3DPolar().double().to(device)
@@ -155,32 +155,31 @@ def run():
     dataset_file = f'/media/giantdrive/coloradar/{dataset_filename}' if root == brute_root else os.path.join(root, dataset_filename)
     train_loader, valid_loader, test_loader = get_dataset(dataset_filepath=dataset_file, is_3d=True, use_polar=use_polar, batch_size=batch_size)
 
-    for g in gammas:
-        for i, a in enumerate(alphas):
-            config.update({'alpha': a})
-            wandb.init(project='radar-occupancy', entity='annazabn', config=config)
+    # for g in gammas:
+    #     for i, a in enumerate(alphas):
+    #         config.update({'alpha': a})
+    wandb.init(project='radar-occupancy', entity='annazabn', config=config)
 
-            print(f'Alpha {a}, Gamma {g}, Training:')
-            test_loader, model, criterion, device = train(
-                train_loader, valid_loader, test_loader,
-                loss_alpha=a, loss_gamma=g, learning_rate=learning_rate,
-                num_epochs=n_epochs[i], is_3d=True, use_polar=use_polar,
-                occupied_threshold=occupied_threshold, empty_threshold=empty_threshold,
-                model_folder=root
-            )
-            wandb.watch(model, log="all")
-
-            # for t in thresholds:
-            #     print('||======')
-            #     print(f'Threshold {t}, Evaluation:')
-            #     with open(score_file, 'a') as f:
-            #         f.write(f'{a};{g};{t};')
-            #     test_model(
-            #         test_loader, model, criterion, device,
-            #         occupancy_threshold=t, outfile=score_file
-            #     )
-            #     print()
-            wandb.finish()
+    # print(f'Alpha {a}, Gamma {g}, Training:')
+    test_loader, model, criterion, device = train(
+        train_loader, valid_loader, test_loader,
+        loss_w=5, learning_rate=learning_rate,
+        num_epochs=30, is_3d=True, use_polar=use_polar,
+        occupied_threshold=occupied_threshold, empty_threshold=empty_threshold,
+        model_folder=root
+    )
+    wandb.watch(model, log="all")
+    wandb.finish()
+    # for t in thresholds:
+    #     print('||======')
+    #     print(f'Threshold {t}, Evaluation:')
+    #     with open(score_file, 'a') as f:
+    #         f.write(f'{a};{g};{t};')
+    #     test_model(
+    #         test_loader, model, criterion, device,
+    #         occupancy_threshold=t, outfile=score_file
+    #     )
+    #     print()
 
 
 if __name__ == "__main__":
