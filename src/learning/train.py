@@ -20,7 +20,7 @@ from evaluate import test_model
 def get_device():
     if torch.cuda.is_available():
         print('GPU is available.')
-        device = torch.device("cuda")
+        device = torch.device("cuda:1")
     else:
         print('GPU is not available, using CPU.')
         device = torch.device("cpu")
@@ -151,7 +151,7 @@ def run():
     else:
         root = brute_root
     score_file = os.path.join(root, 'test_scores_3d.csv')
-    dataset_filename = 'dataset_7runs_rangelimit_subset100_polar.pkl'
+    dataset_filename = 'dataset_7runs_rangelimit.pkl'
     dataset_file = f'/media/giantdrive/coloradar/{dataset_filename}' if root == brute_root else os.path.join(root, dataset_filename)
     train_loader, valid_loader, test_loader = get_dataset(dataset_filepath=dataset_file, is_3d=True, use_polar=use_polar, batch_size=batch_size)
 
