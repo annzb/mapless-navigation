@@ -76,7 +76,7 @@ def get_dataset(dataset_filepath, visualize=False, is_3d=False, use_polar=False,
         heatmaps.extend(data[run_name]['heatmaps'])
         gt_grids.extend(data[run_name][gt_key])
         poses.extend(data[run_name]['poses'])
-    heatmaps, gt_grids, poses = np.array(heatmaps[100]), np.array(gt_grids[100]), np.array(poses[100])
+    heatmaps, gt_grids, poses = np.array(heatmaps), np.array(gt_grids), np.array(poses)
 
     print('Raw input shape:', heatmaps.shape)
     print('Raw output shape:', gt_grids.shape)

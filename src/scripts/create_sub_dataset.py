@@ -17,19 +17,18 @@ if __name__ == '__main__':
     
     with open(dataset_filepath, 'rb') as f:
         data = pickle.load(f)
-    data.pop('params')
     print('Runs in dataset:', ', '.join(data.keys()))
-    heatmaps, gt_grids, poses = [], [], []
+
+    params = data.pop('params')
     gt_key = 'polar_grids'
+    subset = {'params': params}
     for run_name in data:
-        heatmaps.extend(data[run_name]['heatmaps'][:subset_size])
-        gt_grids.extend(data[run_name][gt_key][:subset_size])
-        poses.extend(data[run_name]['poses'][:subset_size])
+        subset[run_name] = {
+            'heatmaps': data[run_name]['heatmaps'][:subset_size],
+            gt_key: data[run_name][gt_key][:subset_size],
+            'poses': data[run_name]['poses'][:subset_size]
+        }
         
     subset_file_name = dataset_filepath.replace('.pkl', f'_subset{subset_size}_polar.pkl')
     with open(subset_file_name, 'wb') as f:
-        pickle.dump({
-            run_name: {'heatmaps': heatmaps, 'gt_grids': gt_grids, 'poses': poses}
-            for run_name in data
-        }, f)
-
+        pickle.dump(subset, f)
