@@ -20,7 +20,7 @@ from evaluate import test_model
 def get_device():
     if torch.cuda.is_available():
         print('GPU is available.')
-        device = torch.device("cuda")
+        device = torch.device("cuda:1")
     else:
         print('GPU is not available, using CPU.')
         device = torch.device("cpu")
@@ -69,7 +69,7 @@ def train(
 
     best_valid_loss = float('inf')
     os.makedirs(model_folder, exist_ok=True)
-    model_path = os.path.join(model_folder, f'model_march24_1C')
+    model_path = os.path.join(model_folder, f'model_april2_1C')
 
     device = get_device()
     if use_polar:
