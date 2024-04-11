@@ -22,7 +22,7 @@ class WeightedBceLoss(nn.Module):
         mse = (y_pred - y_true) ** 2
         # print('bce', bce)
         # certainty_weights = ((torch.abs(y_pred - 0.5) * 2 + self.epsilon) ** (-self.w)).detach()  # ensure no gradients for weights
-        certainty_weights = (np.abs(a - 0.5) / 0.5) ** 2
+        certainty_weights = (torch.abs(y_pred - 0.5) / 0.5) ** 2
         weighted_loss = mse * certainty_weights
         # print('certainty_weights', certainty_weights)
         # print('weighted_loss', weighted_loss.mean())
