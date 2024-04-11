@@ -1,3 +1,4 @@
+import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -21,9 +22,23 @@ class WeightedBceLoss(nn.Module):
         mse = (y_pred - y_true) ** 2
         # print('bce', bce)
         # certainty_weights = ((torch.abs(y_pred - 0.5) * 2 + self.epsilon) ** (-self.w)).detach()  # ensure no gradients for weights
-        certainty_weights = 1 / (torch.abs(y_pred - 0.5) + self.epsilon)
+        certainty_weights = (np.abs(a - 0.5) / 0.5) ** 2
         weighted_loss = mse * certainty_weights
         # print('certainty_weights', certainty_weights)
         # print('weighted_loss', weighted_loss.mean())
         # print()
         return weighted_loss.mean()
+
+
+if __name__ == '__main__':
+    a = np.linspace(0, 1, 100)
+    certainty_weights = (np.abs(a - 0.5) / 0.5) ** 2
+    from pprint import pprint
+    import matplotlib.pyplot as plt
+    plt.plot(a, certainty_weights)
+    plt.xlabel('probability')
+    plt.ylabel('importance')
+    plt.show()
+    pprint(a)
+    print()
+    pprint(certainty_weights)

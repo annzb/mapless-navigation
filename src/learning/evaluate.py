@@ -71,7 +71,6 @@ def test_model(
         'empty': {'tp': 0, 'tn': 0, 'fp': 0, 'fn': 0, 'to_binary': lambda vals: vals == 1},
         'uncertain': {'tp': 0, 'tn': 0, 'fp': 0, 'fn': 0, 'to_binary': lambda vals: vals == 0}
     }
-    # TP, FP, TN, FN = 0, 0, 0, 0
     num_samples, num_batches = 0, 0
     metric_values = [0 for _ in metrics]
     num_points, num_accurate = 0, 0
@@ -92,13 +91,13 @@ def test_model(
             target_cat[target <= empty_threshold], target_cat[target >= occupied_threshold] = 1, 2
 
             num_samples += data.size(0)
-            num_points += num_samples *  data.size(1) * data.size(2) * data.size(3) * data.size(4)
+            num_points += num_samples * data.size(1) * data.size(2) * data.size(3) * data.size(4)
             num_batches += 1
             num_accurate += (output_cat == target_cat).sum().int().item()
-            print('num_accurate', num_accurate)
-            print('num_points', num_points)
-            print('data size', data.size())
-            print('output_cat size', output_cat.size())
+            # print('num_accurate', num_accurate)
+            # print('num_points', num_points)
+            # print('data size', data.size())
+            # print('output_cat size', output_cat.size())
             # print('output_cat', output_cat)
             # print('target_cat', target_cat)
             for class_name, class_stats in stats.items():

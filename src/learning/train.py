@@ -125,23 +125,9 @@ def run():
     # raise ValueError('Finish')
     use_polar = True
     occupied_threshold, empty_threshold = 0.8, 0.2
+    n_epochs = 40
     learning_rate = 0.01
     batch_size = 32
-    alphas = (0.8, 0.85, 0.7, 0.9)
-    gammas = (1, )
-    thresholds = (0.4, 0.5, 0.6, 0.7)
-    n_epochs = (100, 100, 100, 100)
-    config = {
-        'gamma': gammas[0],
-        'learning_rate': learning_rate,
-        'architecture': 'UNet-3D-polar',
-        'dropout': 0.1,
-        'dataset': '7runs_polar',
-        'epochs': n_epochs[0],
-        'batch_size': batch_size,
-        "optimizer": "adam",
-        'use_polar': use_polar
-    }
 
     colab_root, local_root, brute_root = '/content/drive/My Drive', '/home/ann/mapping/mn_ws/src/mapless-navigation', '/home/annz/mapping/mn_ws/src/mapless-navigation'
     if os.path.isdir(colab_root):
@@ -155,18 +141,26 @@ def run():
     dataset_file = f'/media/giantdrive/coloradar/{dataset_filename}' if root == brute_root else os.path.join(root, dataset_filename)
     train_loader, valid_loader, test_loader = get_dataset(dataset_filepath=dataset_file, is_3d=True, use_polar=use_polar, batch_size=batch_size)
 
-    # for g in gammas:
-    #     for i, a in enumerate(alphas):
-    #         config.update({'alpha': a})
+    config = {
+        'learning_rate': learning_rate,
+        'architecture': 'UNet-3D-polar',
+        'loss': 'weighted-mse',
+        'dropout': None,
+        'epochs': n_epochs,
+        'batch_size': batch_size,
+        "optimizer": "adam",
+        'use_polar': use_polar,
+        'dataset_file': dataset_file
+    }
     wandb.init(project='radar-occupancy', entity='annazabn', config=config)
 
     # print(f'Alpha {a}, Gamma {g}, Training:')
     test_loader, model, criterion, device = train(
         train_loader, valid_loader, test_loader,
         loss_w=5, learning_rate=learning_rate,
-        num_epochs=30, is_3d=True, use_polar=use_polar,
+        num_epochs=n_epochs, is_3d=True, use_polar=use_polar,
         occupied_threshold=occupied_threshold, empty_threshold=empty_threshold,
-        model_folder=root
+        model_folder=root, monitor=wandb
     )
     wandb.watch(model, log="all")
     wandb.finish()
