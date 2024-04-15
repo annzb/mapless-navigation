@@ -58,7 +58,7 @@ def calc_tfpn(predictions, targets):
 def test_model(
         test_loader, model, criterion, device,
         occupied_threshold=0.5, empty_threshold=0.49,
-        outfile=None, output_is_prob=False
+        outfile=None, output_is_prob=False, monitor=None
 ):
     metrics = (nn.L1Loss(), nn.MSELoss())
     binary_metrics = (f1_score, accuracy_score, iou_score)
@@ -115,12 +115,23 @@ def test_model(
 
     print(f'Total testing loss: {test_loss}, total accuracy {round(num_accurate / num_points, 4)}')
     print(f'Occupancy threshold: {occupied_threshold}')
+    if monitor is not None:
+        monitor.log({
+            'evaluation_loss_total': test_loss, 
+            'occupied_threshold': occupied_threshold, 
+            'empty_threshold': empty_threshold
+        })
     if outfile:
         with open(outfile, 'a') as f:
             f.write(f'{test_loss};')
     for i, metric in enumerate(metrics):
         loss_per_sample = metric_values[i] / num_samples
         loss_per_batch = metric_values[i] / num_batches
+        if monitor is not None:
+            monitor.log({
+                f'{metric.__class__.__name__}_loss_per_sample': loss_per_sample, 
+                f'{metric.__class__.__name__}_loss_per_batch': loss_per_batch     
+            })
         print(f'Avg {metric.__class__.__name__} loss: {loss_per_sample} per sample, {loss_per_batch} per batch')
     for metric in binary_metrics:
         for class_name, class_stats in stats.items():
@@ -129,6 +140,9 @@ def test_model(
             if outfile:
                 with open(outfile, 'a') as f:
                     f.write(f'{class_name}.{loss};')
+            if monitor is not None:
+                monitor.log({f'{class_name}_{metric.__name__}': loss})
+
     if outfile:
         with open(outfile, 'a') as f:
             f.write('\n')

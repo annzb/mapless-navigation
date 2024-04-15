@@ -114,7 +114,7 @@ def train(
     test_model(
         test_loader, model, criterion, device,
         occupied_threshold=occupied_threshold, empty_threshold=empty_threshold,
-        outfile=None, output_is_prob=output_is_prob
+        outfile=None, output_is_prob=output_is_prob, monitor=wandb
     )
     # test(loss_alpha, loss_gamma, occupancy_threshold=occupancy_threshold + 0.1, is_3d=is_3d, visualize=False, outfile=None)
     return test_loader, model, criterion, device
@@ -125,8 +125,8 @@ def run():
     # raise ValueError('Finish')
     use_polar = True
     occupied_threshold, empty_threshold = 0.8, 0.2
-    n_epochs = 40
-    learning_rate = 0.01
+    n_epochs = 80
+    learning_rate = 0.001
     batch_size = 32
 
     colab_root, local_root, brute_root = '/content/drive/My Drive', '/home/ann/mapping/mn_ws/src/mapless-navigation', '/home/annz/mapping/mn_ws/src/mapless-navigation'
