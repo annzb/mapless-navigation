@@ -1,22 +1,24 @@
-cmake_minimum_required(VERSION 3.0.2)
-project(mapless-navigation)
+cmake_minimum_required(VERSION 3.5)
+project(mapless_navigation)
 
-find_package(catkin REQUIRED COMPONENTS
-  roscpp
-  rosbag
-  std_msgs
-  octomap_ros
-  octomap_msgs
-)
+# Find dependencies
+find_package(ament_cmake REQUIRED)
+find_package(rclcpp REQUIRED)
+find_package(std_msgs REQUIRED)
+find_package(octomap_ros REQUIRED)
+find_package(octomap_msgs REQUIRED)
 
-catkin_package(
-  CATKIN_DEPENDS roscpp rosbag std_msgs octomap_ros octomap_msgs
-)
+# Include directories
+include_directories(include)
 
-include_directories(
-  ${catkin_INCLUDE_DIRS}
-)
-
+# Executable and link libraries
 add_executable(octomap_processor src/octomap_postprocess.cpp)
-target_link_libraries(octomap_processor ${catkin_LIBRARIES})
-add_dependencies(octomap_processor ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
+ament_target_dependencies(octomap_processor rclcpp std_msgs octomap_ros octomap_msgs)
+
+# Install executable
+install(TARGETS octomap_processor
+  DESTINATION lib/${PROJECT_NAME})
+
+# ament package macro
+ament_package()
+
