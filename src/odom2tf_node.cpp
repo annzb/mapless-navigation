@@ -13,7 +13,7 @@ public:
         : Node("odom2tf")
     {
         // Customize QoS settings to ensure compatibility
-        rclcpp::QoS qos_settings = rclcpp::QoS(rclcpp::QoSInitialization::from_rmw(rmw_qos_profile_default)).reliable().transient_local();
+        rclcpp::QoS qos_settings = rclcpp::QoS(rclcpp::QoSInitialization::from_rmw(rmw_qos_profile_default)).reliable().durability_volatile();
 
         // Create a subscription to the /lidar_ground_truth topic with compatible QoS settings
         sub_odom_ = this->create_subscription<nav_msgs::msg::Odometry>(

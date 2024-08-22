@@ -21,7 +21,7 @@ touch ./venv/COLCON_IGNORE
 #### 2.2 Python packages
 Make sure to install these Python packages:
 ```bash
-(.venv) pip install catkin_pkg rosbags
+(.venv) pip install catkin_pkg rosbags lark empy==3.3.4
 ```
 
 #### 2.3 OpenCV path

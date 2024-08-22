@@ -16,6 +16,7 @@ find_package(Eigen3 REQUIRED)
 find_package(rosbag2_cpp REQUIRED)
 find_package(rosbag2_storage REQUIRED)
 find_package(PCL REQUIRED COMPONENTS common io)
+find_package(rosidl_default_generators REQUIRED)
 
 # Manually specify OpenCV paths from pkg-config output
 set(OpenCV_INCLUDE_DIRS "/usr/include/opencv4")
@@ -23,6 +24,15 @@ set(OpenCV_LIBRARIES "-lopencv_stitching -lopencv_aruco -lopencv_bgsegm -lopencv
 
 # Include directories
 include_directories(include ${EIGEN3_INCLUDE_DIR} ${OpenCV_INCLUDE_DIRS} ${PCL_INCLUDE_DIRS})
+
+
+# Generate the message files
+rosidl_generate_interfaces(${PROJECT_NAME}
+  "msg/MimoMsg.msg"
+  "msg/RadarCubeMsg.msg"
+  DEPENDENCIES std_msgs builtin_interfaces
+)
+
 
 # Add library for octree_diff
 add_library(octree_diff_lib SHARED src/octree_diff.cpp)
@@ -91,6 +101,8 @@ install(
   DIRECTORY launch/
   DESTINATION share/${PROJECT_NAME}/
 )
+
+ament_export_dependencies(rosidl_default_runtime)
 
 # ament package macro
 ament_package()
