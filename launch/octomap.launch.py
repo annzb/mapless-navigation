@@ -1,8 +1,21 @@
 import os
 from launch import LaunchDescription
-from launch.actions import ExecuteProcess, DeclareLaunchArgument, Shutdown
+from launch.actions import ExecuteProcess, DeclareLaunchArgument, Shutdown, RegisterEventHandler, OpaqueFunction
+from launch.event_handlers import OnProcessExit
 from launch.substitutions import LaunchConfiguration, PathJoinSubstitution
 from launch_ros.actions import Node
+
+
+def ensure_output_directory_exists(context, output_folder):
+    input_bag_name = LaunchConfiguration('input_bag_name').perform(context)
+    output_directory_name = os.path.join(output_folder, input_bag_name)
+    if not os.path.exists(output_directory_name):
+        os.makedirs(output_directory_name)
+        print(f"Created output directory: {output_directory_name}")
+    else:
+        print(f"Output directory already exists: {output_directory_name}")
+    return []
+
 
 def generate_launch_description():
     # Declare the input bag argument
@@ -15,57 +28,49 @@ def generate_launch_description():
     # Directories
     bag_folder = os.path.join(os.environ['HOME'], 'coloradar/bags2')
     output_bag_folder = os.path.join(os.environ['HOME'], 'coloradar/octomap_bags2')
-
-    # Ensure the output directory exists
     os.makedirs(output_bag_folder, exist_ok=True)
-
-    # Define LaunchConfigurations
     input_bag_name = LaunchConfiguration('input_bag_name')
+    output_file_name = PathJoinSubstitution([output_bag_folder, input_bag_name, 'octomap.bt'])
 
-    # Derive the correct output directory and bag file name
-    output_directory_name = PathJoinSubstitution([
-        output_bag_folder,
-        input_bag_name
-    ])
-
-    # Define a QoS profile with VOLATILE durability
-    # qos_volatile = {
-    #     'durability': 'volatile',
-    #     'reliability': 'reliable',
-    #     'depth': 10,
-    # }
+    launch_file_dir = os.path.dirname(__file__)
+    qos_profile_path = os.path.join(launch_file_dir, 'reliability_override.yaml')
 
     return LaunchDescription([
-        # Declare the input bag name argument
         input_bag_name_arg,
+        OpaqueFunction(function=ensure_output_directory_exists, args=[output_bag_folder]),
 
-        # Play the input bag using ExecuteProcess
+        # Play the input bag using ExecuteProcess with Transient QoS and QoS profile override
         ExecuteProcess(
-            cmd=['ros2', 'bag', 'play', PathJoinSubstitution([bag_folder, input_bag_name]), '--clock'],
+            cmd=['ros2', 'bag', 'play', PathJoinSubstitution([bag_folder, input_bag_name]), '--clock', '--qos-profile-overrides-path', qos_profile_path],
             output='screen',
             on_exit=[Shutdown()]
         ),
 
-        # Static transform publisher with VOLATILE QoS
+        # Static transform publisher with Transient QoS
         # Node(
         #     package='tf2_ros',
         #     executable='static_transform_publisher',
         #     name='os1_link_joint',
-        #     arguments=['0.0', '0.0', '0.03618', '3.14159', '0', '0', 'os1_sensor', 'os1_lidar'],
-        #     parameters=[{'qos_overrides./tf_static': qos_volatile}],
+        #     arguments=['0.0', '0.0', '0.03618', '0', '0', '0', '1', 'os1_sensor', 'os1_lidar'],
+        #     parameters=[{
+        #         'qos_overrides./tf_static': {
+        #             'durability': 'transient_local',
+        #             'reliability': 'reliable',
+        #             'depth': 1
+        #         }
+        #     }],
         #     on_exit=[Shutdown()]
         # ),
 
-        # Odom to TF node with VOLATILE QoS
+        # Odom to TF node with Transient QoS
         Node(
             package='mapless_navigation',
             executable='odom2tf',
             name='odom2tf',
-            # parameters=[{'qos_overrides./lidar_ground_truth': qos_volatile}],
             on_exit=[Shutdown()]
         ),
 
-        # Octomap server node with VOLATILE QoS
+        # Octomap server node with Transient QoS
         Node(
             package='octomap_server',
             executable='octomap_server_node',
@@ -73,12 +78,11 @@ def generate_launch_description():
             parameters=[
                 {'resolution': 0.25},
                 {'frame_id': 'world'},
-                {'base_frame_id': 'imu_viz_link'},
+                {'base_frame_id': 'world'},
                 {'sensor_model/max_range': 7.0},
                 {'sensor_model/min_range': 0.0},
                 {'sensor_model/hit': 0.95},
-                {'sensor_model/miss': 0.45},
-                # {'qos_overrides./cloud_in': qos_volatile}
+                {'sensor_model/miss': 0.45}
             ],
             remappings=[
                 ('cloud_in', '/os1_cloud_node/points')
@@ -86,14 +90,15 @@ def generate_launch_description():
             on_exit=[Shutdown()]
         ),
 
-        # Record the rosbag using ExecuteProcess
-        ExecuteProcess(
-            cmd=['ros2', 'bag', 'record', '-o', output_directory_name,
-                 '/tf', '/tf_static', '/lidar_ground_truth',
-                 '/lidar_filtered/occupied_cells_vis_array', '/lidar_filtered/octomap_full',
-                 '/lidar_filtered/octomap_point_cloud_centers', '/lidar_filtered/octomap_server/parameter_descriptions',
-                 '/lidar_filtered/octomap_server/parameter_updates', '/lidar_filtered/projected_map'],
-            output='screen',
-            on_exit=[Shutdown()]
-        ),
+        # Save the octomap to a file after the octomap server shuts down
+        RegisterEventHandler(
+            OnProcessExit(
+                target_action=Node(package='octomap_server', executable='octomap_server_node', name='octomap_server'),
+                on_exit=[ExecuteProcess(
+                    cmd=['ros2', 'service', 'call', '/octomap_server/save_map', 'octomap_msgs/srv/SaveMap',
+                         f'{{filename: "{output_file_name}"}}'],
+                    output='screen'
+                )]
+            )
+        )
     ])
