@@ -1,30 +1,33 @@
 # mapless-navigation
 
 ## Requirements
-### 1. Install `ROS2` and `colcon`
 
-### 2. Install dependencies
+[//]: # (### 1. Install `ROS2` and `colcon`)
+
+### 1. Install dependencies
 ```bash
 apt install ros-<version>-octomap
 apt install ros-<version>-octomap-ros
-apt install ros-<version>-octomap-server
 ```
 
-#### 2.1 Optional Python venv
+#### 1.1 Optional Python venv
 Create virtual environment:
 ```bash
 virtualenv -p python3 ./venv
 source ./venv/bin/activate
-touch ./venv/COLCON_IGNORE
+touch ./venv/COLCON_IGNORE  # if using ros2
 ```
 
 #### 2.2 Python packages
-Make sure to install these Python packages:
 ```bash
-(.venv) pip install catkin_pkg rosbags lark empy==3.3.4
+pip install numpy open3d matplotlib pandas
+```
+If using `ros2`, install:
+```bash
+pip install catkin_pkg rosbags lark empy==3.3.4
 ```
 
-#### 2.3 OpenCV path
+#### 2.3 OpenCV path with ros2
 In `CMakeLists.txt`, change the path to the library here
 ```text
 set(OpenCV_INCLUDE_DIRS "/usr/include/opencv4")
@@ -36,7 +39,7 @@ pkg-config --cflags opencv4
 pkg-config --libs opencv4
 ```
 
-### 3. Get dataset
+### 2. Get dataset
 Download from
 ```
 https://arpg.github.io/coloradar
@@ -45,17 +48,22 @@ or
 ```
 http://arpg-storage.cs.colorado.edu:8080/
 ```
-Put `utils/calib`, `bags`, `kitti` into `<HOME>/coloradar`.
+Put `utils/calib`, `kitti` into `<HOME>/coloradar`.
 
-#### 3.1 Convert bags into ros2 bags
-```bash
-chmod +x src/scripts/convert_bags_to_ros2.sh
-./src/scripts/convert_bags_to_ros2.sh
-```
+[//]: # (#### 3.1 Convert bags into ros2 bags)
+
+[//]: # (```bash)
+
+[//]: # (chmod +x src/scripts/convert_bags_to_ros2.sh)
+
+[//]: # (./src/scripts/convert_bags_to_ros2.sh)
+
+[//]: # (```)
 
 
 ## Usage
-Build and test package:
+### 0. Build and test the package
+Example using `ros2` + Python `venv`:
 ```bash
 source venv/bin/activate
 colcon build
@@ -70,4 +78,4 @@ Source the workspace:
 source install/setup.bash
 ```
 
-### 1. Build lidar octomaps
+### 1. Open `run.ipynb` and follow the instructions
