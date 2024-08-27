@@ -1,7 +1,7 @@
 #include <octomap/octomap.h>
 #include <unordered_set>
 #include <cmath>
-#include <functional>
+#include <vector>
 
 #include "octree_diff.h"
 
@@ -17,43 +17,35 @@ struct Point3DHash {
     }
 };
 
-std::pair<octomap::OcTree, octomap::OcTree> calcOctreeDiff(
+
+std::vector<DiffNode> calcOctreeDiff(
     const octomap::OcTree& tree1,
     const octomap::OcTree& tree2,
-    const double updateEps
+    double nodeDiffEps
 ) {
-    double resolution = tree1.getResolution();
-    octomap::OcTree diffTree(resolution);
-    octomap::OcTree updateTree(resolution);
-
+    std::vector<DiffNode> diffNodes;
     std::unordered_set<octomap::point3d, Point3DHash> checkedNodes;
 
     for (auto it = tree2.begin_leafs(), end = tree2.end_leafs(); it != end; ++it) {
-        double logOdds = it->getLogOdds();
         octomap::point3d nodeCoords = it.getCoordinate();
-        bool nodeOccupied = it->getValue();
-
+        float logOdds2 = it->getLogOdds();
         auto nodeInTree1 = tree1.search(nodeCoords);
-        double occupancyUpdate = logOdds - (nodeInTree1 ? nodeInTree1->getLogOdds() : 0.0);
-
-        if (std::fabs(occupancyUpdate) >= updateEps) {
-            updateTree.updateNode(nodeCoords, nodeOccupied)->setLogOdds(logOdds);
-            diffTree.updateNode(nodeCoords, nodeOccupied)->setLogOdds(occupancyUpdate);
+        float logOdds1 = nodeInTree1 ? nodeInTree1->getLogOdds() : 0.0f;
+        float occupancyUpdate = logOdds2 - logOdds1;
+        if (std::fabs(occupancyUpdate) >= nodeDiffEps) {
+            diffNodes.emplace_back(nodeCoords, logOdds2, occupancyUpdate);
         }
-
         checkedNodes.insert(nodeCoords);
     }
 
     for (auto it = tree1.begin_leafs(), end = tree1.end_leafs(); it != end; ++it) {
         octomap::point3d nodeCoords = it.getCoordinate();
         if (checkedNodes.find(nodeCoords) == checkedNodes.end()) {
-            double occupancyUpdate = -(it->getLogOdds());
-            if (std::fabs(occupancyUpdate) >= updateEps) {
-                diffTree.updateNode(nodeCoords, false)->setLogOdds(occupancyUpdate);
+            float occupancyUpdate = -it->getLogOdds();
+            if (std::fabs(occupancyUpdate) >= nodeDiffEps) {
+                diffNodes.emplace_back(nodeCoords, std::numeric_limits<float>::quiet_NaN(), occupancyUpdate);
             }
         }
     }
-
-    return std::make_pair(updateTree, diffTree);
+    return diffNodes;
 }
-
