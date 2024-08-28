@@ -1,5 +1,8 @@
 #include <pcl/io/pcd_io.h>
 #include <pcl/point_types.h>
+#include <pcl/point_cloud.h>
+#include <pcl/impl/instantiate.hpp>
+#include <pcl/point_traits.h>
 #include <pcl/common/transforms.h>
 #include <pcl/filters/frustum_culling.h>
 #include <octomap/octomap.h>
@@ -13,12 +16,10 @@
 #include <stdexcept>
 #include <iomanip>
 
+#include "octree_diff.h"
+
+
 namespace fs = std::filesystem;
-
-
-struct Pose {
-    double x, y, z, qx, qy, qz, qw;
-};
 
 
 void createDirectoryIfNotExists(const std::string& directoryPath) {
@@ -27,28 +28,6 @@ void createDirectoryIfNotExists(const std::string& directoryPath) {
         std::filesystem::create_directories(dirPath);
     }
 }
-
-
-void displayProgressBar(size_t progress, size_t total) {
-    int barWidth = 50;  // The width of the progress bar
-    float progressPercent = (float)progress / total;
-
-    std::cout << "[";
-    int pos = barWidth * progressPercent;
-    for (int i = 0; i < barWidth; ++i) {
-        if (i < pos) std::cout << "=";
-        else if (i == pos) std::cout << ">";
-        else std::cout << " ";
-    }
-    std::cout << "] " << int(progressPercent * 100.0) << " %\r";
-    std::cout.flush();
-
-    // When progress is complete, print a newline to clear the bar
-    if (progress == total) {
-        std::cout << std::endl;
-    }
-}
-
 
 std::unordered_map<std::string, std::string> parseArguments(int argc, char** argv) {
     std::unordered_map<std::string, std::string> arguments;
@@ -64,17 +43,21 @@ std::unordered_map<std::string, std::string> parseArguments(int argc, char** arg
     return arguments;
 }
 
-std::vector<Pose> readGroundTruthPoses(const std::string& filepath) {
+std::vector<Eigen::Affine3f> readGroundTruthPoses(const std::string& filepath) {
     if (!fs::exists(filepath)) {
         throw std::runtime_error("Ground truth poses file not found: " + filepath);
     }
-    std::vector<Pose> poses;
+    std::vector<Eigen::Affine3f> poses;
     std::ifstream infile(filepath);
     std::string line;
     while (std::getline(infile, line)) {
         std::istringstream iss(line);
-        Pose pose;
-        iss >> pose.x >> pose.y >> pose.z >> pose.qx >> pose.qy >> pose.qz >> pose.qw;
+        Eigen::Vector3f translation;
+        Eigen::Quaternionf quat;
+        iss >> translation.x() >> translation.y() >> translation.z() >> quat.x() >> quat.y() >> quat.z() >> quat.w();
+        Eigen::Affine3f pose = Eigen::Affine3f::Identity();
+        pose.translate(translation);
+        pose.rotate(quat);
         poses.push_back(pose);
     }
     return poses;
@@ -108,14 +91,14 @@ pcl::PointCloud<pcl::PointXYZ>::Ptr readPointCloudFromBin(const std::string& fil
     return cloud;
 }
 
-// Filter point cloud based on FOV and range
-void filterPointCloudWithFOV(pcl::PointCloud<pcl::PointXYZ>::Ptr cloud, float horizontal_fov, float vertical_fov, float range) {
+
+void filterFov(pcl::PointCloud<pcl::PointXYZ>::Ptr cloud, float horizontalFov, float verticalFov, float range) {
     pcl::FrustumCulling<pcl::PointXYZ> fc;
     fc.setInputCloud(cloud);
-    fc.setVerticalFOV(vertical_fov);     // vertical FOV in degrees
-    fc.setHorizontalFOV(horizontal_fov); // horizontal FOV in degrees
-    fc.setNearPlaneDistance(0.0);        // near plane distance
-    fc.setFarPlaneDistance(range);       // maximum range
+    fc.setVerticalFOV(verticalFov);
+    fc.setHorizontalFOV(horizontalFov);
+    fc.setNearPlaneDistance(0.0);
+    fc.setFarPlaneDistance(range);
     Eigen::Matrix4f camera_pose = Eigen::Matrix4f::Identity();
     fc.setCameraPose(camera_pose);
     pcl::PointCloud<pcl::PointXYZ> filtered_cloud;
@@ -123,90 +106,123 @@ void filterPointCloudWithFOV(pcl::PointCloud<pcl::PointXYZ>::Ptr cloud, float ho
     cloud->swap(filtered_cloud);  // Replace original cloud with the filtered one
 }
 
-// Apply transformations to the point cloud
-void applyTransformations(octomap::OcTree& tree, pcl::PointCloud<pcl::PointXYZ>::Ptr cloud, const Pose& pose) {
-    // Static transform: lidar to sensor frame
+void transformGlobal(octomap::OcTree& tree, pcl::PointCloud<pcl::PointXYZ>::Ptr cloud, const Eigen::Affine3f& pose) {
     Eigen::Affine3f static_transform = Eigen::Affine3f::Identity();
     static_transform.translation() << 0.0, 0.0, 0.03618;
     static_transform.rotate(Eigen::AngleAxisf(M_PI, Eigen::Vector3f::UnitZ()));
     pcl::transformPointCloud(*cloud, *cloud, static_transform);
-
-    // Dynamic transform: sensor frame to global frame
-    Eigen::Affine3f dynamic_transform = Eigen::Affine3f::Identity();
-    dynamic_transform.translation() << pose.x, pose.y, pose.z;
-    Eigen::Quaternionf quat(pose.qw, pose.qx, pose.qy, pose.qz);
-    dynamic_transform.rotate(quat);
-    pcl::transformPointCloud(*cloud, *cloud, dynamic_transform);
+    pcl::transformPointCloud(*cloud, *cloud, pose);
 }
 
-// Save octomap leaf nodes to a CSV file
-void saveLeafNodesAsCSV(const octomap::OcTree& tree, const std::string& output_file) {
-    std::ofstream outfile(output_file);
-    if (!outfile) {
-        throw std::runtime_error("Failed to open output file: " + output_file);
-    }
+//void saveLeafNodesAsCSV(const octomap::OcTree& tree, const std::string& output_file) {
+//    std::ofstream outfile(output_file);
+//    if (!outfile) {
+//        throw std::runtime_error("Failed to open output file: " + output_file);
+//    }
+//
+//    outfile << "x,y,z,log_odds,probability,occupied\n";
+//    for (octomap::OcTree::leaf_iterator it = tree.begin_leafs(), end = tree.end_leafs(); it != end; ++it) {
+//        double x = it.getX();
+//        double y = it.getY();
+//        double z = it.getZ();
+//        float log_odds = it->getLogOdds();
+//        float probability = 1.0 / (1.0 + exp(-log_odds)); // Convert log-odds to probability
+//        bool occupied = tree.isNodeOccupied(*it);
+//        outfile << x << "," << y << "," << z << "," << log_odds << "," << probability << "," << occupied << "\n";
+//    }
+//    outfile.close();
+//    std::cout << "Saved leaf nodes to " << output_file << std::endl;
+//}
 
-    outfile << "x,y,z,log_odds,probability,occupied\n";
-    for (octomap::OcTree::leaf_iterator it = tree.begin_leafs(), end = tree.end_leafs(); it != end; ++it) {
-        double x = it.getX();
-        double y = it.getY();
-        double z = it.getZ();
-        float log_odds = it->getLogOdds();
-        float probability = 1.0 / (1.0 + exp(-log_odds)); // Convert log-odds to probability
-        bool occupied = tree.isNodeOccupied(*it);
-        outfile << x << "," << y << "," << z << "," << log_odds << "," << probability << "," << occupied << "\n";
+pcl::PointCloud<pcl::PointXYZI> octreeToPcl(const octomap::OcTree& tree) {
+    pcl::PointCloud<pcl::PointXYZI> cloud;
+    for (auto it = tree.begin_leafs(), end = tree.end_leafs(); it != end; ++it) {
+        octomap::point3d coords = it.getCoordinate();
+        pcl::PointXYZI point;
+        point.x = coords.x();
+        point.y = coords.y();
+        point.z = coords.z();
+        point.intensity = it->getLogOdds();
+        cloud.push_back(point);
     }
-    outfile.close();
-    std::cout << "Saved leaf nodes to " << output_file << std::endl;
+    return cloud;
 }
+
+pcl::PointCloud<pcl::PointXYZI> sampleFrameFromMap(pcl::PointCloud<pcl::PointXYZI>::Ptr map_pcl, const Eigen::Affine3f& pose, double horizontalFov, double verticalFov, double range) {
+    pcl::FrustumCulling<pcl::PointXYZI> fc;
+    fc.setInputCloud(map_pcl);
+    fc.setVerticalFOV(verticalFov);
+    fc.setHorizontalFOV(horizontalFov);
+    fc.setNearPlaneDistance(0.0);
+    fc.setFarPlaneDistance(range);
+    fc.setCameraPose(pose.inverse().matrix());
+    pcl::PointCloud<pcl::PointXYZI> filtered_cloud;
+    fc.filter(filtered_cloud);
+    return filtered_cloud;
+}
+
+void printPointCloud(const pcl::PointCloud<pcl::PointXYZI>& cloud, std::size_t num_points = 5) {
+    std::cout << "Point cloud has " << cloud.size() << " points." << std::endl;
+    for (std::size_t i = 0; i < std::min(num_points, cloud.size()); ++i) {
+        const auto& point = cloud.points[i];
+        std::cout << "Point " << i << ": "
+                  << "x = " << point.x << ", "
+                  << "y = " << point.y << ", "
+                  << "z = " << point.z << ", "
+                  << "intensity = " << point.intensity << std::endl;
+    }
+}
+
 
 int main(int argc, char** argv) {
     auto args = parseArguments(argc, argv);
-    std::string input_data_path;
-    if (args.find("input_data_path") != args.end()) {
-        input_data_path = args["input_data_path"];
+    std::string inputDataPath;
+    if (args.find("inputDataPath") != args.end()) {
+        inputDataPath = args["inputDataPath"];
     } else if (argc > 1) {
-        input_data_path = argv[1];
+        inputDataPath = argv[1];
     } else {
-        std::cerr << "Usage: " << argv[0] << " <input_data_path> [vertical_fov=<degrees>] [horizontal_fov=<degrees>] [range=<meters>]" << std::endl;
+        std::cerr << "Usage: " << argv[0] << " <inputDataPath> [mapResolution=<meters>] [verticalFov=<degrees>] [horizontalFov=<degrees>] [range=<meters>]" << std::endl;
         return -1;
     }
 
-    std::string output_folder = std::string(getenv("HOME")) + "/coloradar/lidar_maps";
-    createDirectoryIfNotExists(output_folder);
-    std::string output_run_folder = output_folder + "/" + fs::path(input_data_path).stem().string();
-    createDirectoryIfNotExists(output_run_folder);
+    std::string outputFolder = std::string(getenv("HOME")) + "/coloradar/lidar_maps";
+    createDirectoryIfNotExists(outputFolder);
+    std::string outputRunFolder = outputFolder + "/" + fs::path(inputDataPath).stem().string();
+    createDirectoryIfNotExists(outputRunFolder);
 
-    double vertical_fov = args.find("vertical_fov") != args.end() ? std::stod(args["vertical_fov"]) : 30.0;   // Default: 60 degrees total (30 up, 30 down)
-    double horizontal_fov = args.find("horizontal_fov") != args.end() ? std::stod(args["horizontal_fov"]) : 60.0; // Default: 120 degrees total (60 left, 60 right)
-    double range = args.find("range") != args.end() ? std::stod(args["range"]) : 10.0;                         // Default: 10 meters
-    if (horizontal_fov <= 0 || horizontal_fov > 180 || vertical_fov <= 0 || vertical_fov > 180 || range < 0) {
+    double mapResolution = args.find("mapResolution") != args.end() ? std::stod(args["mapResolution"]) : 0.1;
+    double verticalFov = args.find("verticalFov") != args.end() ? std::stod(args["verticalFov"]) : 30.0;       // Default: 60 degrees total (30 up, 30 down)
+    double horizontalFov = args.find("horizontalFov") != args.end() ? std::stod(args["horizontalFov"]) : 60.0; // Default: 120 degrees total (60 left, 60 right)
+    double range = args.find("range") != args.end() ? std::stod(args["range"]) : 10.0;                            // Default: 10 meters
+    if (horizontalFov <= 0 || horizontalFov > 180 || verticalFov <= 0 || verticalFov > 180 || range < 0) {
         std::cerr << "FOV values must be between 0 and 180 degrees, range must be positive" << std::endl;
         return -1;
     }
 
-    // Read lidar timestamps and ground truth poses
-    std::string lidar_timestamps_path = input_data_path + "/lidar/timestamps.txt";
-    std::string groundtruth_poses_path = input_data_path + "/groundtruth/groundtruth_poses.txt";
+    // std::string lidarTimestampsPath = inputDataPath + "/lidar/timestamps.txt";
+    std::string groundtruthPosesPath = inputDataPath + "/groundtruth/groundtruth_poses.txt";
 
-    std::vector<double> lidar_timestamps = readTimestamps(lidar_timestamps_path);
-    std::vector<Pose> groundtruth_poses = readGroundTruthPoses(groundtruth_poses_path);
-    octomap::OcTree tree(0.1);  // 0.1m resolution
+    // std::vector<double> lidarTimestamps = readTimestamps(lidarTimestampsPath);
+    std::vector<Eigen::Affine3f> groundtruthPoses = readGroundTruthPoses(groundtruthPosesPath);
+    octomap::OcTree tree(0.25);
 
-    // Process point clouds one by one
-    for (size_t i = 0; i < lidar_timestamps.size(); ++i) {
-        displayProgressBar(i + 1, lidar_timestamps.size());
-
-        std::string lidar_bin_file = input_data_path + "/lidar/pointclouds/lidar_pointcloud_" + std::to_string(i) + ".bin";
-        pcl::PointCloud<pcl::PointXYZ>::Ptr cloud = readPointCloudFromBin(lidar_bin_file);
+    // Build map
+    for (size_t i = 0; i < groundtruthPoses.size(); ++i) {
+        std::string lidarBinFile = inputDataPath + "/lidar/pointclouds/lidar_pointcloud_" + std::to_string(i) + ".bin";
+        pcl::PointCloud<pcl::PointXYZ>::Ptr cloud = readPointCloudFromBin(lidarBinFile);
         if (!cloud || cloud->empty()) {
-            throw std::runtime_error("Failed to read or empty point cloud: " + lidar_bin_file);
+            throw std::runtime_error("Failed to read or empty point cloud: " + lidarBinFile);
         }
 
-        double lidar_timestamp = lidar_timestamps[i];
-        Pose closest_pose = groundtruth_poses[i];
-        filterPointCloudWithFOV(cloud, horizontal_fov, vertical_fov, range);
-        applyTransformations(tree, cloud, closest_pose);
+        // double lidarTimestamp = lidarTimestamps[i];
+        Eigen::Affine3f pose = groundtruthPoses[i];
+        // std::cout << "pose" << pose.translation() << std::endl;
+        filterFov(cloud, horizontalFov, verticalFov, range);
+        // filterFov(cloud, 90, 45, 50);
+        //std::cout << "points after filter" << cloud->size() << std::endl;
+        transformGlobal(tree, cloud, pose);
+        //std::cout << "points after transform" << cloud->size() << std::endl << std::endl;
 
         for (const auto& point : cloud->points) {
             tree.updateNode(octomap::point3d(point.x, point.y, point.z), true);
@@ -214,13 +230,26 @@ int main(int argc, char** argv) {
         cloud->clear();
         cloud.reset();
     }
-
     std::cout << "Total number of nodes in the octomap: " << tree.size() << std::endl;
-    std::cout << "Total number of leaf nodes (occupied space) in the octomap: " << tree.getNumLeafNodes() << std::endl;
+    std::cout << "Total number of leaf nodes in the octomap: " << tree.getNumLeafNodes() << std::endl;
+    
+    std::string outputMapFile = outputRunFolder + "/map.pcd";
+    pcl::PointCloud<pcl::PointXYZI> treePcl = octreeToPcl(tree);
+    std::cout << "Tree point cloud size: " << treePcl.size() << std::endl;
+    pcl::io::savePCDFile(outputMapFile, treePcl); 
 
-    // Save leaf nodes to CSV
-    std::string output_csv_file = output_run_folder + "/total_octomap.csv";
-    saveLeafNodesAsCSV(tree, output_csv_file);
+    // Sample frames for every pose
+    //pcl::PointCloud<pcl::PointXYZI>::Ptr treePclPtr = boost::make_shared<pcl::PointCloud<pcl::PointXYZI>>(treePcl);
+//    for (size_t i = 0; i < groundtruthPoses.size(); ++i) {
+//        std::stringstream ss;
+//        ss << outputRunFolder << "/map_frame_" << i << ".pcd";
+//        pcl::PointCloud<pcl::PointXYZI> frame = sampleFrameFromMap(treePclPtr, groundtruthPoses[i], horizontalFov, verticalFov, range);
+//        std::cout << "Frame " << i << " size: " << frame.size() << std::endl;
+//        pcl::io::savePCDFile(ss.str(), frame);
+//    }
+
+//    std::string output_csv_file = outputRunFolder + "/total_octomap.csv";
+//    saveLeafNodesAsCSV(tree, output_csv_file);
 
     return 0;
 }

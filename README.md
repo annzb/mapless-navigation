@@ -40,7 +40,7 @@ virtualenv -p python3 ./venv
 source ./venv/bin/activate
 touch ./venv/COLCON_IGNORE 
 pip install catkin_pkg rosbags lark empy==3.3.4
-pip install numpy open3d matplotlib pandas
+pip install numpy open3d-python matplotlib pandas
 ```
 
 #### 4. Check OpenCV Path
