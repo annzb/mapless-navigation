@@ -13,6 +13,9 @@
 namespace fs = std::filesystem;
 
 
+pcl::PointCloud<pcl::PointXYZ> filterFov(pcl::PointCloud<pcl::PointXYZ> cloud, float horizontalFov, float verticalFov, float range);
+
+
 class ColoradarRun {
 public:
     ColoradarRun(const fs::path& runPath);
@@ -22,8 +25,10 @@ public:
     std::vector<double> getRadarTimestamps();
     std::vector<Eigen::Affine3f> getPoses();
 
-    pcl::PointCloud<pcl::PointXYZ>::Ptr getLidarPointCloud(const fs::path& binPath);
-    pcl::PointCloud<pcl::PointXYZ>::Ptr getLidarPointCloud(int cloudIdx);
+    pcl::PointCloud<pcl::PointXYZ> getPclLidarPointCloud(const fs::path& binPath) { return getLidarPointCloud<pcl::PointCloud<pcl::PointXYZ>, pcl::PointXYZ>(binPath); }
+    pcl::PointCloud<pcl::PointXYZ> getPclLidarPointCloud(int cloudIdx) { return getLidarPointCloud<pcl::PointCloud<pcl::PointXYZ>, pcl::PointXYZ>(cloudIdx); }
+    octomap::Pointcloud getOctoLidarPointCloud(const fs::path& binPath) { return getLidarPointCloud<octomap::Pointcloud, octomap::point3d>(binPath); }
+    octomap::Pointcloud getOctoLidarPointCloud(int cloudIdx) { return getLidarPointCloud<octomap::Pointcloud, octomap::point3d>(cloudIdx); }
 
     octomap::OcTree buildLidarOctomap(
         const double& mapResolution,
@@ -42,8 +47,11 @@ private:
 
     std::vector<double> readTimestamps(const fs::path& path);
     int findClosestEarlierTimestamp(const double& targetTs, const std::vector<double>& timestamps);
-    void filterFov(pcl::PointCloud<pcl::PointXYZ>::Ptr cloud, float horizontalFov, float verticalFov, float range);
-    void filterRange(pcl::PointCloud<pcl::PointXYZ>::Ptr cloud, float range)
+
+    template<typename CloudT, typename PointT>
+    CloudT getLidarPointCloud(const fs::path& binPath);
+    template<typename CloudT, typename PointT>
+    CloudT getLidarPointCloud(int cloudIdx);
 };
 
 

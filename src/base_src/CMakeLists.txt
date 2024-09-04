@@ -18,7 +18,10 @@ target_link_libraries(octree_diff ${OCTOMAP_LIBRARIES})
 add_executable(build_octomap data_prep/build_octomap.cpp)
 target_link_libraries(build_octomap coloradar_tools octree_diff ${PCL_LIBRARIES} ${OCTOMAP_LIBRARIES})
 
-add_executable(tests test/test_octree_diff.cpp)
-target_link_libraries(tests octree_diff ${PCL_LIBRARIES} ${OpenCV_LIBS} gtest gtest_main pthread)
+add_executable(octree_diff_tests test/test_octree_diff.cpp)
+target_link_libraries(octree_diff_tests octree_diff ${PCL_LIBRARIES} ${OpenCV_LIBS} gtest gtest_main pthread)
+
+add_executable(coloradar_tests test/test_coloradar_tools.cpp)
+target_link_libraries(coloradar_tests coloradar_tools ${PCL_LIBRARIES} gtest gtest_main pthread)
 
 add_definitions(${PCL_DEFINITIONS})

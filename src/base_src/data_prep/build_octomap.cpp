@@ -116,14 +116,14 @@ int main(int argc, char** argv) {
         return -1;
     }
     double mapResolution = args.find("mapResolution") != args.end() ? std::stod(args["mapResolution"]) : 0.1;
-    double verticalFov = args.find("verticalFov") != args.end() ? std::stod(args["verticalFov"]) : 30.0;       // Default: 30 degrees total (15 up, 15 down)
-    double horizontalFov = args.find("horizontalFov") != args.end() ? std::stod(args["horizontalFov"]) : 60.0; // Default: 60 degrees total (30 left, 30 right)
-    double range = args.find("range") != args.end() ? std::stod(args["range"]) : 10.0;                         // Default: 10 meters
-    if (horizontalFov <= 0 || horizontalFov > 360 || verticalFov <= 0 || verticalFov > 360 || range < 0) {
-        std::cerr << "FOV values must be between 0 and 360 degrees, range must be positive" << std::endl;
-        return -1;
-    }
-    // std::cout << "Using FOV H " << horizontalFov << ", V " << verticalFov << ", R " << range << std::endl;
+    double verticalFov = args.find("verticalFov") != args.end() ? std::stod(args["verticalFov"]) : 360.0;       // Default: 30 degrees total (15 up, 15 down)
+    double horizontalFov = args.find("horizontalFov") != args.end() ? std::stod(args["horizontalFov"]) : 360.0; // Default: 60 degrees total (30 left, 30 right)
+    double range = args.find("range") != args.end() ? std::stod(args["range"]) : 0.0;                         // Default: 10 meters
+//    if (horizontalFov <= 0 || horizontalFov > 360 || verticalFov <= 0 || verticalFov > 360 || range < 0) {
+//        std::cerr << "FOV values must be between 0 and 360 degrees, range must be positive" << std::endl;
+//        return -1;
+//    }
+    std::cout << "Using FOV H " << horizontalFov << ", V " << verticalFov << ", R " << range << std::endl;
     fs::path coloradarPath(coloradarDir);
     ColoradarDataset dataset(coloradarPath);
     fs::path mapsPath = coloradarPath / "lidar_maps";
