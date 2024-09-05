@@ -8,12 +8,36 @@
 #include <filesystem>
 #include <string>
 #include <vector>
+#include <functional>
 
 
 namespace fs = std::filesystem;
 
 
-pcl::PointCloud<pcl::PointXYZ> filterFov(pcl::PointCloud<pcl::PointXYZ> cloud, float horizontalFov, float verticalFov, float range);
+namespace coloradar {
+
+pcl::PointCloud<pcl::PointXYZ> filterFov(pcl::PointCloud<pcl::PointXYZ> cloud, float horizontalFovTan, float verticalFovTan, float range);
+
+
+class OctoPointcloud : public octomap::Pointcloud {
+public:
+    OctoPointcloud() = default;
+    OctoPointcloud(const OctoPointcloud& other) : octomap::Pointcloud(other) {}
+    OctoPointcloud(const pcl::PointCloud<pcl::PointXYZ>& cloud);
+
+    pcl::PointCloud<pcl::PointXYZ> toPcl();
+
+    void filterFov(const float& horizontalFovTan, const float& verticalFovTan, const float& range);
+    void transform(const Eigen::Affine3f& transformMatrix);
+    using octomap::Pointcloud::transform;
+
+protected:
+    typedef std::function<bool(const octomap::point3d&, float)> FovCheck;
+    static bool checkAzimuthFrontOnly(const octomap::point3d& point, float horizontalFovTan);
+    static bool checkAzimuthFrontBack(const octomap::point3d& point, float horizontalFovTan);
+    static bool checkElevationFrontOnly(const octomap::point3d& point, float verticalFovTan);
+    static bool checkElevationFrontBack(const octomap::point3d& point, float verticalFovTan);
+};
 
 
 class ColoradarRun {
@@ -23,12 +47,12 @@ public:
     std::vector<double> getPoseTimestamps();
     std::vector<double> getLidarTimestamps();
     std::vector<double> getRadarTimestamps();
-    std::vector<Eigen::Affine3f> getPoses();
+    std::vector<octomath::Pose6D> getPoses();
 
     pcl::PointCloud<pcl::PointXYZ> getPclLidarPointCloud(const fs::path& binPath) { return getLidarPointCloud<pcl::PointCloud<pcl::PointXYZ>, pcl::PointXYZ>(binPath); }
     pcl::PointCloud<pcl::PointXYZ> getPclLidarPointCloud(int cloudIdx) { return getLidarPointCloud<pcl::PointCloud<pcl::PointXYZ>, pcl::PointXYZ>(cloudIdx); }
-    octomap::Pointcloud getOctoLidarPointCloud(const fs::path& binPath) { return getLidarPointCloud<octomap::Pointcloud, octomap::point3d>(binPath); }
-    octomap::Pointcloud getOctoLidarPointCloud(int cloudIdx) { return getLidarPointCloud<octomap::Pointcloud, octomap::point3d>(cloudIdx); }
+    OctoPointcloud getOctoLidarPointCloud(const fs::path& binPath) { return getLidarPointCloud<OctoPointcloud, octomap::point3d>(binPath); }
+    OctoPointcloud getOctoLidarPointCloud(int cloudIdx) { return getLidarPointCloud<OctoPointcloud, octomap::point3d>(cloudIdx); }
 
     octomap::OcTree buildLidarOctomap(
         const double& mapResolution,
@@ -38,7 +62,7 @@ public:
         Eigen::Affine3f lidarTransform = Eigen::Affine3f::Identity()
     );
 
-private:
+protected:
     fs::path runDirPath;
     fs::path posesDirPath;
     fs::path lidarScansDirPath;
@@ -64,7 +88,7 @@ public:
     std::vector<std::string> listRuns();
     ColoradarRun getRun(const std::string& runName);
 
-private:
+protected:
     fs::path coloradarDirPath;
     fs::path calibDirPath;
     fs::path transformsDirPath;
@@ -72,5 +96,7 @@ private:
 
     Eigen::Affine3f loadTransform(const fs::path& filePath);
 };
+
+}
 
 #endif
