@@ -248,6 +248,7 @@ class ColoradarDataset:
             self, run_name, map_resolution=0.1,
             horizontal_fov=360, vertical_fov=180, max_range=0
     ):
+        print('Building map for ', run_name, '...')
         command = [
             './build/build_octomap', self.coloradar_path, run_name,
             f'map_resolution={map_resolution}',
@@ -272,7 +273,7 @@ def _run_command(command):
 def filter_cloud(
         pcd_file_path, output_dir=None,
         random_pcl_radius=10, random_pcl_step=0.5, random_pcl_empty_portion=0.5,
-        horizontal_fov=360, vertical_fov=180, max_range=0
+        horizontal_fov=360, vertical_fov=33.2, max_range=20
 ):
     command = [
         './build/filter_cloud', pcd_file_path,

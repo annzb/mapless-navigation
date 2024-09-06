@@ -11,11 +11,14 @@ include_directories(${PROJECT_SOURCE_DIR}/include ${PCL_INCLUDE_DIRS} ${OCTOMAP_
 
 
 ### LIBS
-add_library(coloradar_tools SHARED data_prep/coloradar_tools.cpp)
+add_library(coloradar_tools SHARED libs/utils.cpp libs/coloradar_dataset.cpp libs/coloradar_run.cpp libs/octo_pointcloud.cpp libs/pcl_functions.cpp)
 target_link_libraries(coloradar_tools ${PCL_LIBRARIES} ${OCTOMAP_LIBRARIES})
 
-add_library(octree_diff SHARED data_prep/octree_diff.cpp)
-target_link_libraries(octree_diff ${OCTOMAP_LIBRARIES})
+# add_library(coloradar_tools SHARED data_prep/coloradar_tools.cpp)
+# target_link_libraries(coloradar_tools ${PCL_LIBRARIES} ${OCTOMAP_LIBRARIES})
+
+# add_library(octree_diff SHARED data_prep/octree_diff.cpp)
+# target_link_libraries(octree_diff ${OCTOMAP_LIBRARIES})
 
 
 ### SCRIPTS
