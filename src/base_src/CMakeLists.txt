@@ -22,8 +22,8 @@ target_link_libraries(octree_diff ${OCTOMAP_LIBRARIES})
 add_executable(filter_cloud data_prep/filter_cloud.cpp)
 target_link_libraries(filter_cloud coloradar_tools ${PCL_LIBRARIES} ${OCTOMAP_LIBRARIES})
 
-# add_executable(build_octomap data_prep/build_octomap.cpp)
-# target_link_libraries(build_octomap coloradar_tools octree_diff ${PCL_LIBRARIES} ${OCTOMAP_LIBRARIES})
+add_executable(build_octomap data_prep/build_octomap.cpp)
+target_link_libraries(build_octomap coloradar_tools octree_diff ${PCL_LIBRARIES} ${OCTOMAP_LIBRARIES})
 
 
 ### TESTS

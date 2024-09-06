@@ -60,10 +60,9 @@ int main(int argc, char** argv) {
     float randomPclRadius = args.find("randomPclRadius") != args.end() ? std::stod(args["randomPclRadius"]) : 10.0;
     float randomPclStep = args.find("randomPclStep") != args.end() ? std::stod(args["randomPclStep"]) : 0.5;
     float randomPclEmptyPortion = args.find("randomPclEmptyPortion") != args.end() ? std::stod(args["randomPclEmptyPortion"]) : 0.5;
-    float verticalFov = args.find("verticalFov") != args.end() ? std::stod(args["verticalFov"]) : 360.0;
+    float verticalFov = args.find("verticalFov") != args.end() ? std::stod(args["verticalFov"]) : 180.0;
     float horizontalFov = args.find("horizontalFov") != args.end() ? std::stod(args["horizontalFov"]) : 360.0;
     float maxRange = args.find("range") != args.end() ? std::stod(args["range"]) : 0.0;
-    std::cout << "Using FOV H " << horizontalFov << ", V " << verticalFov << ", R " << maxRange << std::endl;
 
     fs::path outputDirPath;
     coloradar::OctoPointcloud octoCloud;

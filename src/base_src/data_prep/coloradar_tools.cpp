@@ -1,11 +1,13 @@
 #include "coloradar_tools.h"
 
 #include <pcl/common/transforms.h>
+#include <pcl/common/distances.h>
 #include <cmath>
 #include <iostream>
 #include <fstream>
 #include <sstream>
 #include <stdexcept>
+#include <functional>
 
 
 void checkPathExists(const fs::path& path) {
@@ -15,20 +17,86 @@ void checkPathExists(const fs::path& path) {
 }
 
 
-pcl::PointCloud<pcl::PointXYZ> coloradar::filterFov(pcl::PointCloud<pcl::PointXYZ> cloud, float horizontalFovTan, float verticalFovTan, float range) {
-    Eigen::Matrix3Xf points = cloud.getMatrixXfMap(3, 4, 0);
-    Eigen::Array<bool, Eigen::Dynamic, 1> azimuthMask = (points.row(1).array().square() >= (horizontalFovTan * points.row(0).array()).square());
-    Eigen::Array<bool, Eigen::Dynamic, 1> elevationMask = (points.row(1).array().square() >= (verticalFovTan * points.row(2).array()).square());
-    Eigen::Array<bool, Eigen::Dynamic, 1> rangeMask = (points.row(0).array().square() + points.row(1).array().square() + points.row(2).array().square()).sqrt().array() <= range;
-    Eigen::Array<bool, Eigen::Dynamic, 1> filter = azimuthMask && elevationMask && rangeMask;
+template<typename PointT>
+float getX(const PointT& point) {
+    return point.x;
+}
+template<>
+float getX<octomap::point3d>(const octomap::point3d& point) {
+    return point.x();
+}
+template<typename PointT>
+float getY(const PointT& point) {
+    return point.y;
+}
+template<>
+float getY<octomap::point3d>(const octomap::point3d& point) {
+    return point.y();
+}
+template<typename PointT>
+float getZ(const PointT& point) {
+    return point.z;
+}
+template<>
+float getZ<octomap::point3d>(const octomap::point3d& point) {
+    return point.z();
+}
 
-    pcl::PointCloud<pcl::PointXYZ> filteredCloud;
-    for (int i = 0; i < cloud.size(); ++i) {
-        if (filter(i)) {
-            filteredCloud.push_back(cloud.points[i]);
+template<typename PointT>
+using FovCheck = std::function<bool(const PointT&, const float&)>;
+
+template<typename PointT>
+bool checkAzimuthFrontOnly(const PointT& point, const float& horizontalHalfFovRad) {
+    float horizontalFovTan = std::tan(horizontalHalfFovRad);
+    return (getY(point) >= getX(point) / horizontalFovTan && getY(point) >= -getX(point) / horizontalFovTan);
+}
+template<typename PointT>
+bool checkAzimuthFrontBack(const PointT& point, const float& horizontalHalfFovRad) {
+    float horizontalFovTan = std::tan(horizontalHalfFovRad);
+    return (getY(point) >= getX(point) / horizontalFovTan || getY(point) >= -getX(point) / horizontalFovTan);
+}
+
+template<typename CloudT, typename PointT>
+void filterFov(CloudT& cloud, const float& horizontalFov, const float& verticalFov, const float& range) {
+    if (horizontalFov <= 0 || horizontalFov > 360) {
+        throw std::runtime_error("Invalid horizontal FOV value: expected 0 < FOV <= 360, got " + std::to_string(horizontalFov));
+    }
+    if (verticalFov <= 0 || verticalFov > 180) {
+        throw std::runtime_error("Invalid vertical FOV value: expected 0 < FOV <= 180, got " + std::to_string(verticalFov));
+    }
+    if (range <= 0) {
+        throw std::runtime_error("Invalid max range value: expected R > 0, got " + std::to_string(range));
+    }
+    float horizontalHalfFovRad = horizontalFov / 2 * M_PI / 180.0f;
+    float verticalHalfFovRad = verticalFov / 2 * M_PI / 180.0f;
+    FovCheck<PointT> checkAzimuth = horizontalFov <= 180 ? checkAzimuthFrontOnly<PointT> : checkAzimuthFrontBack<PointT>;
+
+    CloudT unfilteredCloud(cloud);
+    cloud.clear();
+    const PointT origin(0, 0, 0);
+
+    for (size_t i = 0; i < unfilteredCloud.size(); ++i) {
+        const PointT& point = unfilteredCloud[i];
+        float distance = std::sqrt(
+            std::pow(getX(point) - getX(origin), 2) +
+            std::pow(getY(point) - getY(origin), 2) +
+            std::pow(getZ(point) - getZ(origin), 2)
+        );
+        if (distance > range) {
+            continue;
+        }
+        float elevationSin = std::sin(verticalHalfFovRad);
+        if (checkAzimuth(point, horizontalHalfFovRad) &&
+           (getZ(point) <= distance * elevationSin) &&
+           (getZ(point) >= -distance * elevationSin)
+        ) {
+            cloud.push_back(point);
         }
     }
-    return filteredCloud;
+}
+
+void coloradar::filterFov(pcl::PointCloud<pcl::PointXYZ>& cloud, const float& horizontalFov, const float& verticalFov, const float& range) {
+    return ::filterFov<pcl::PointCloud<pcl::PointXYZ>, pcl::PointXYZ>(cloud, horizontalFov, verticalFov, range);
 }
 
 
@@ -60,105 +128,9 @@ void coloradar::OctoPointcloud::transform(const Eigen::Affine3f& transformMatrix
     this->transform(transformPose);
 }
 
-bool coloradar::OctoPointcloud::checkAzimuthFrontOnly(const octomap::point3d& point, float horizontalFovTan) {
-    return (point.y() >= point.x() / horizontalFovTan && point.y() >= -point.x() / horizontalFovTan);
-}
-bool coloradar::OctoPointcloud::checkAzimuthFrontBack(const octomap::point3d& point, float horizontalFovTan) {
-    return (point.y() >= point.x() / horizontalFovTan || point.y() >= -point.x() / horizontalFovTan);
-}
-bool coloradar::OctoPointcloud::checkElevationFrontOnly(const octomap::point3d& point, float verticalFovTan) {
-    return (point.y() >= point.z() / verticalFovTan && point.y() >= -point.z() / verticalFovTan);
-}
-bool coloradar::OctoPointcloud::checkElevationFrontBack(const octomap::point3d& point, float verticalFovTan) {
-    return (point.y() >= point.z() / verticalFovTan || point.y() >= -point.z() / verticalFovTan);
-}
-
 void coloradar::OctoPointcloud::filterFov(const float& horizontalFov, const float& verticalFov, const float& range) {
-    if (horizontalFov <= 0 || horizontalFov > 360) {
-        throw std::runtime_error("Invalid horizontal FOV value: expected 0 < FOV <= 360, got " + std::to_string(horizontalFov));
-    }
-    if (verticalFov <= 0 || verticalFov > 360) {
-        throw std::runtime_error("Invalid vertical FOV value: expected 0 < FOV <= 360, got " + std::to_string(verticalFov));
-    }
-    if (range <= 0) {
-        throw std::runtime_error("Invalid max range value: expected R > 0, got " + std::to_string(range));
-    }
-
-    coloradar::OctoPointcloud unfilteredCloud(*this);
-    this->clear();
-
-    float horizontalFovTan = std::tan(horizontalFov / 2 * M_PI / 360.0f);
-    float verticalFovTan = std::tan(verticalFov / 2 * M_PI / 360.0f);
-    FovCheck checkAzimuth = horizontalFov <= 180 ? checkAzimuthFrontOnly : checkAzimuthFrontBack;
-    FovCheck checkElevation = verticalFov <= 180 ? checkElevationFrontOnly : checkElevationFrontBack;
-
-    for (size_t i = 0; i < unfilteredCloud.size(); ++i) {
-        const octomap::point3d& point = unfilteredCloud.getPoint(i);
-        float distance = point.norm();
-        if (distance > range) {
-            continue;
-        }
-        if (checkAzimuth(point, horizontalFovTan) && checkElevation(point, verticalFovTan)) {
-            this->push_back(point);
-        }
-    }
+    ::filterFov<coloradar::OctoPointcloud, octomap::point3d>(*this, horizontalFov, verticalFov, range);
 }
-
-
-// GPT VERSION
-
-//bool coloradar::OctoPointcloud::checkAzimuthFrontOnly(const octomap::point3d& point, float horizontalFovTan) {
-//    return (std::abs(point.y()) <= std::abs(point.x()) * horizontalFovTan);
-//}
-//
-//bool coloradar::OctoPointcloud::checkAzimuthFrontBack(const octomap::point3d& point, float horizontalFovTan) {
-//    return true;  // No limitation for 360° FOV
-//}
-//
-//bool coloradar::OctoPointcloud::checkElevationFrontOnly(const octomap::point3d& point, float verticalFovTan) {
-//    return (std::abs(point.y()) <= std::abs(point.z()) * verticalFovTan);
-//}
-//
-//bool coloradar::OctoPointcloud::checkElevationFrontBack(const octomap::point3d& point, float verticalFovTan) {
-//    return true;  // No limitation for 360° FOV
-//}
-//
-//void coloradar::OctoPointcloud::filterFov(const float& horizontalFov, const float& verticalFov, const float& range) {
-//    if (horizontalFov <= 0 || horizontalFov > 360) {
-//        throw std::runtime_error("Invalid horizontal FOV value: expected 0 < FOV <= 360, got " + std::to_string(horizontalFov));
-//    }
-//    if (verticalFov <= 0 || verticalFov > 360) {
-//        throw std::runtime_error("Invalid vertical FOV value: expected 0 < FOV <= 360, got " + std::to_string(verticalFov));
-//    }
-//    if (range <= 0) {
-//        throw std::runtime_error("Invalid max range value: expected R > 0, got " + std::to_string(range));
-//    }
-//
-//    coloradar::OctoPointcloud unfilteredCloud(*this);
-//    this->clear();
-//
-//    // Correct tangent calculation (dividing by 180 to convert degrees to radians)
-//    float horizontalFovTan = std::tan(horizontalFov / 2 * M_PI / 180.0f);
-//    float verticalFovTan = std::tan(verticalFov / 2 * M_PI / 180.0f);
-//
-//    // Determine which function to use for azimuth and elevation checks
-//    FovCheck checkAzimuth = (horizontalFov < 360) ? checkAzimuthFrontOnly : checkAzimuthFrontBack;
-//    FovCheck checkElevation = (verticalFov < 360) ? checkElevationFrontOnly : checkElevationFrontBack;
-//
-//    for (size_t i = 0; i < unfilteredCloud.size(); ++i) {
-//        const octomap::point3d& point = unfilteredCloud.getPoint(i);
-//        float distance = point.norm();
-//        if (distance > range) {
-//            continue;  // Skip points outside the maximum range
-//        }
-//
-//        // Perform azimuth and elevation checks
-//        if (checkAzimuth(point, horizontalFovTan) && checkElevation(point, verticalFovTan)) {
-//            this->push_back(point);  // Point is inside the FOV
-//        }
-//    }
-//}
-
 
 
 // ColoradarRun class

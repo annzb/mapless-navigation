@@ -55,31 +55,32 @@ TEST_F(PclFilterTest, RangeTest) {
     }
     std::cout << std::endl;
 
-    auto cloudInRange = coloradar::filterFov(cloud, 360, 360, 10);
-    std::cout << "Cloud after range: " << cloudInRange.size() << " points,";
-    for (size_t i = 0; i < cloudInRange.size(); ++i) {
-        std::cout << " " << cloudInRange.points[i];
+    coloradar::filterFov(cloud, 360, 360, 10);
+    std::cout << "Cloud after range: " << cloud.size() << " points,";
+    for (size_t i = 0; i < cloud.size(); ++i) {
+        std::cout << " " << cloud.points[i];
     }
     std::cout << std::endl;
 
-    auto cloudInAzimuth = coloradar::filterFov(cloudInRange, 90, 360, 0);
+    coloradar::filterFov(cloud, 90, 360, 0);
     std::cout << "Cloud after azimuth:";
-    for (size_t i = 0; i < cloudInAzimuth.size(); ++i) {
-        std::cout << " " << cloudInAzimuth.points[i];
+    for (size_t i = 0; i < cloud.size(); ++i) {
+        std::cout << " " << cloud.points[i];
     }
     std::cout << std::endl;
 
-    auto cloudInElevation = coloradar::filterFov(cloudInAzimuth, 360, 90, 0);
+    coloradar::filterFov(cloud, 360, 90, 0);
     std::cout << "Cloud after elevation:";
-    for (size_t i = 0; i < cloudInElevation.size(); ++i) {
-        std::cout << " " << cloudInElevation.points[i];
+    for (size_t i = 0; i < cloud.size(); ++i) {
+        std::cout << " " << cloud.points[i];
     }
     std::cout << std::endl;
 
-    auto cloudFiltered = coloradar::filterFov(cloud, 90, 90, 10);
+    cloud = createPcl1();
+    coloradar::filterFov(cloud, 90, 90, 10);
     std::cout << "Cloud filtered:";
-    for (size_t i = 0; i < cloudFiltered.size(); ++i) {
-        std::cout << " " << cloudFiltered.points[i];
+    for (size_t i = 0; i < cloud.size(); ++i) {
+        std::cout << " " << cloud.points[i];
     }
     std::cout << std::endl;
 }

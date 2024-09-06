@@ -1,23 +1,13 @@
+#include "coloradar_tools.h"
+#include "octree_diff.h"
+
 #include <pcl/io/pcd_io.h>
-#include <pcl/point_types.h>
-#include <pcl/point_cloud.h>
-#include <pcl/impl/instantiate.hpp>
-#include <pcl/point_traits.h>
-#include <pcl/common/transforms.h>
-#include <pcl/filters/frustum_culling.h>
-#include <octomap/octomap.h>
-#include <octomap/OcTree.h>
 #include <fstream>
 #include <sstream>
 #include <iostream>
-#include <filesystem>
-#include <vector>
 #include <unordered_map>
 #include <stdexcept>
 #include <iomanip>
-
-#include "coloradar_tools.h"
-#include "octree_diff.h"
 
 
 namespace fs = std::filesystem;
@@ -77,19 +67,6 @@ pcl::PointCloud<pcl::PointXYZI> octreeToPcl(const octomap::OcTree& tree) {
     return cloud;
 }
 
-pcl::PointCloud<pcl::PointXYZI> sampleFrameFromMap(pcl::PointCloud<pcl::PointXYZI>::Ptr map_pcl, const Eigen::Affine3f& pose, double horizontalFov, double verticalFov, double range) {
-    pcl::FrustumCulling<pcl::PointXYZI> fc;
-    fc.setInputCloud(map_pcl);
-    fc.setVerticalFOV(verticalFov);
-    fc.setHorizontalFOV(horizontalFov);
-    fc.setNearPlaneDistance(0.0);
-    fc.setFarPlaneDistance(range);
-    fc.setCameraPose(pose.inverse().matrix());
-    pcl::PointCloud<pcl::PointXYZI> filtered_cloud;
-    fc.filter(filtered_cloud);
-    return filtered_cloud;
-}
-
 void printPointCloud(const pcl::PointCloud<pcl::PointXYZI>& cloud, std::size_t num_points = 5) {
     std::cout << "Point cloud has " << cloud.size() << " points." << std::endl;
     for (std::size_t i = 0; i < std::min(num_points, cloud.size()); ++i) {
@@ -105,6 +82,7 @@ void printPointCloud(const pcl::PointCloud<pcl::PointXYZI>& cloud, std::size_t n
 
 int main(int argc, char** argv) {
     auto args = parseArguments(argc, argv);
+    //std::cout << argc << " " << args << std::endl;
     std::string coloradarDir = (args.find("coloradarDir") != args.end())
                                ? args["coloradarDir"]
                                : (argc > 1 ? argv[1] : "");
@@ -116,16 +94,12 @@ int main(int argc, char** argv) {
         return -1;
     }
     double mapResolution = args.find("mapResolution") != args.end() ? std::stod(args["mapResolution"]) : 0.1;
-    double verticalFov = args.find("verticalFov") != args.end() ? std::stod(args["verticalFov"]) : 360.0;       // Default: 30 degrees total (15 up, 15 down)
-    double horizontalFov = args.find("horizontalFov") != args.end() ? std::stod(args["horizontalFov"]) : 360.0; // Default: 60 degrees total (30 left, 30 right)
-    double range = args.find("range") != args.end() ? std::stod(args["range"]) : 0.0;                         // Default: 10 meters
-//    if (horizontalFov <= 0 || horizontalFov > 360 || verticalFov <= 0 || verticalFov > 360 || range < 0) {
-//        std::cerr << "FOV values must be between 0 and 360 degrees, range must be positive" << std::endl;
-//        return -1;
-//    }
-    std::cout << "Using FOV H " << horizontalFov << ", V " << verticalFov << ", R " << range << std::endl;
+    double verticalFov = args.find("verticalFov") != args.end() ? std::stod(args["verticalFov"]) : 180.0;
+    double horizontalFov = args.find("horizontalFov") != args.end() ? std::stod(args["horizontalFov"]) : 360.0;
+    double range = args.find("range") != args.end() ? std::stod(args["range"]) : 0.0;
+
     fs::path coloradarPath(coloradarDir);
-    ColoradarDataset dataset(coloradarPath);
+    coloradar::ColoradarDataset dataset(coloradarPath);
     fs::path mapsPath = coloradarPath / "lidar_maps";
     createDirectoryIfNotExists(mapsPath);
 
@@ -135,12 +109,12 @@ int main(int argc, char** argv) {
     } else {
         targetRuns.push_back(runName);
     }
-    Eigen::Affine3f transform = dataset.getBaseToLidarTransform();  // * dataset.getBaseToRadarTransform();
+    Eigen::Affine3f transform = dataset.getBaseToLidarTransform();
 
     for (size_t i = 0; i < targetRuns.size(); ++i) {
-        ColoradarRun run = dataset.getRun(targetRuns[i]);
+        coloradar::ColoradarRun run = dataset.getRun(targetRuns[i]);
         octomap::OcTree tree = run.buildLidarOctomap(mapResolution, horizontalFov, verticalFov, range, transform);
-        std::cout << "Built map for run " << targetRuns[i] << ", total number of nodes in the octomap: " << tree.size() << ", number of leaf nodes in the octomap: " << tree.getNumLeafNodes() << std::endl;
+        // std::cout << "Built map for run " << targetRuns[i] << ", total number of nodes in the octomap: " << tree.size() << ", number of leaf nodes in the octomap: " << tree.getNumLeafNodes() << std::endl;
 
         fs::path outputPath = mapsPath / runName;
         createDirectoryIfNotExists(outputPath);

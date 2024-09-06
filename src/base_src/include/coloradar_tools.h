@@ -8,7 +8,6 @@
 #include <filesystem>
 #include <string>
 #include <vector>
-#include <functional>
 
 
 namespace fs = std::filesystem;
@@ -16,7 +15,7 @@ namespace fs = std::filesystem;
 
 namespace coloradar {
 
-pcl::PointCloud<pcl::PointXYZ> filterFov(pcl::PointCloud<pcl::PointXYZ> cloud, float horizontalFovTan, float verticalFovTan, float range);
+void filterFov(pcl::PointCloud<pcl::PointXYZ>& cloud, const float& horizontalFov, const float& verticalFov, const float& range);
 
 
 class OctoPointcloud : public octomap::Pointcloud {
@@ -30,13 +29,6 @@ public:
     void filterFov(const float& horizontalFovTan, const float& verticalFovTan, const float& range);
     void transform(const Eigen::Affine3f& transformMatrix);
     using octomap::Pointcloud::transform;
-
-protected:
-    typedef std::function<bool(const octomap::point3d&, float)> FovCheck;
-    static bool checkAzimuthFrontOnly(const octomap::point3d& point, float horizontalFovTan);
-    static bool checkAzimuthFrontBack(const octomap::point3d& point, float horizontalFovTan);
-    static bool checkElevationFrontOnly(const octomap::point3d& point, float verticalFovTan);
-    static bool checkElevationFrontBack(const octomap::point3d& point, float verticalFovTan);
 };
 
 

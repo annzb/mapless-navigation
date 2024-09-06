@@ -5,6 +5,7 @@ import subprocess
 import matplotlib.cm as cm
 import matplotlib.pyplot as plt
 import numpy as np
+import open3d as o3d
 
 
 def read_tf_file(filename):
@@ -231,13 +232,63 @@ class RadarParameters:
         }
 
 
-def build_octomap(run_dir: str, fov_params: dict):
-    command = f"""
-    source /opt/ros/galactic/setup.bash && \
-    source ~/your_ros_workspace/install/setup.bash && \
-    ros2 run mapless_navigation octomap_node /home/arpg/coloradar/kitti/longboard_run0 \
-    horizontal_fov={fov_params['horizontal_fov']} vertical_fov={fov_params['vertical_fov']} range={fov_params['range']}
-    """
-    result = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, shell=True, executable='/bin/bash')
-    print(result.stdout)
-    print(result.stderr)
+class ColoradarDataset:
+    def __init__(self, dataset_path):
+        if not os.path.isdir(dataset_path):
+            raise ValueError(f'Dataset path {dataset_path} does not exist')
+        self.coloradar_path = dataset_path
+        self.runs_path = os.path.join(self.coloradar_path, 'kitti')
+        if not os.path.isdir(self.runs_path):
+            raise ValueError(f'Data path {self.runs_path} does not exist')
+
+    def list_runs(self):
+        return os.listdir(self.runs_path)
+
+    def build_octomap(
+            self, run_name, map_resolution=0.1,
+            horizontal_fov=360, vertical_fov=180, max_range=0
+    ):
+        command = [
+            './build/build_octomap', self.coloradar_path, run_name,
+            f'map_resolution={map_resolution}',
+            f'horizontalFov={horizontal_fov}',
+            f'verticalFov={vertical_fov}',
+            f'range={max_range}'
+        ]
+        _run_command(command)
+
+
+def _run_command(command):
+    process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, bufsize=1)
+    for line in process.stdout:
+        print(line, end='')
+    for line in process.stderr:
+        print(line, end='')
+    process.stdout.close()
+    process.stderr.close()
+    process.wait()
+
+
+def filter_cloud(
+        pcd_file_path, output_dir=None,
+        random_pcl_radius=10, random_pcl_step=0.5, random_pcl_empty_portion=0.5,
+        horizontal_fov=360, vertical_fov=180, max_range=0
+):
+    command = [
+        './build/filter_cloud', pcd_file_path,
+        f'randomPclRadius={random_pcl_radius}',
+        f'randomPclStep={random_pcl_step}',
+        f'randomPclEmptyPortion={random_pcl_empty_portion}',
+        f'horizontalFov={horizontal_fov}',
+        f'verticalFov={vertical_fov}',
+        f'range={max_range}'
+    ]
+    if output_dir:
+        command.append(f'outputDir={output_dir}')
+    _run_command(command)
+
+
+def show_pcl(pcd_file_path):
+    pcd = o3d.io.read_point_cloud(pcd_file_path)
+    axes = o3d.geometry.TriangleMesh.create_coordinate_frame(size=10.0)
+    o3d.visualization.draw_geometries([pcd, axes])
