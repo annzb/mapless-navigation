@@ -31,15 +31,15 @@ Eigen::Affine3f readPose<Eigen::Affine3f>(std::istringstream* iss) {
 
 
 coloradar::ColoradarRun::ColoradarRun(const std::filesystem::path& runPath) : runDirPath(runPath), name(runDirPath.filename()) {
-    checkPathExists(runDirPath);
+    coloradar_utils::checkPathExists(runDirPath);
     posesDirPath = runDirPath / "groundtruth";
-    checkPathExists(posesDirPath);
+    coloradar_utils::checkPathExists(posesDirPath);
     lidarScansDirPath = runDirPath / "lidar";
-    checkPathExists(lidarScansDirPath);
+    coloradar_utils::checkPathExists(lidarScansDirPath);
     radarScansDirPath = runDirPath / "single_chip";
-    checkPathExists(radarScansDirPath);
+    coloradar_utils::checkPathExists(radarScansDirPath);
     pointcloudsDirPath = lidarScansDirPath / "pointclouds";
-    checkPathExists(pointcloudsDirPath);
+    coloradar_utils::checkPathExists(pointcloudsDirPath);
     lidarMapsDirPath = runDirPath / "lidar_maps";
 }
 
@@ -61,7 +61,7 @@ std::vector<double> coloradar::ColoradarRun::getRadarTimestamps() {
 template<typename PoseT>
 std::vector<PoseT> coloradar::ColoradarRun::getPoses() {
     std::filesystem::path posesFilePath = posesDirPath / "groundtruth_poses.txt";
-    checkPathExists(posesFilePath);
+    coloradar_utils::checkPathExists(posesFilePath);
 
     std::vector<PoseT> poses;
     std::ifstream infile(posesFilePath);
@@ -77,7 +77,7 @@ std::vector<PoseT> coloradar::ColoradarRun::getPoses() {
 
 template<typename CloudT, typename PointT>
 CloudT coloradar::ColoradarRun::getLidarPointCloud(const std::filesystem::path& binPath) {
-    checkPathExists(binPath);
+    coloradar_utils::checkPathExists(binPath);
     std::ifstream infile(binPath, std::ios::binary);
     if (!infile) {
         throw std::runtime_error("Failed to open file: " + binPath.string());
@@ -138,7 +138,7 @@ octomap::OcTree coloradar::ColoradarRun::buildLidarOctomap(
 
 void coloradar::ColoradarRun::saveLidarOctomap(const octomap::OcTree& tree) {
     pcl::PointCloud<pcl::PointXYZI> treePcl = coloradar::octreeToPcl(tree);
-    createDirectoryIfNotExists(lidarMapsDirPath);
+    coloradar_utils::createDirectoryIfNotExists(lidarMapsDirPath);
     std::filesystem::path outputMapFile = lidarMapsDirPath / "map.pcd";
     pcl::io::savePCDFile(outputMapFile, treePcl);
 }
@@ -146,7 +146,7 @@ void coloradar::ColoradarRun::saveLidarOctomap(const octomap::OcTree& tree) {
 pcl::PointCloud<pcl::PointXYZI> coloradar::ColoradarRun::readLidarOctomap() {
     pcl::PointCloud<pcl::PointXYZI> cloud;
     std::filesystem::path mapFilePath = lidarMapsDirPath / "map.pcd";
-    checkPathExists(mapFilePath);
+    coloradar_utils::checkPathExists(mapFilePath);
     pcl::io::loadPCDFile<pcl::PointXYZI>(mapFilePath.string(), cloud);
     return cloud;
 }
@@ -163,7 +163,7 @@ void coloradar::ColoradarRun::sampleMapFrames(const float& horizontalFov, const 
 }
 
 std::vector<double> coloradar::ColoradarRun::readTimestamps(const std::filesystem::path& path) {
-    checkPathExists(path);
+    coloradar_utils::checkPathExists(path);
     std::vector<double> timestamps;
     std::ifstream infile(path);
     std::string line;

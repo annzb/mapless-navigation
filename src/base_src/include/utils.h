@@ -4,10 +4,14 @@
 #include <filesystem>
 
 
+namespace coloradar_utils {
+
 void checkPathExists(const std::filesystem::path& path);
 void createDirectoryIfNotExists(const std::filesystem::path& dirPath);
 
 template<typename CloudT, typename PointT>
 void filterFov(CloudT& cloud, const float& horizontalFov, const float& verticalFov, const float& range);
+
+}
 
 #endif

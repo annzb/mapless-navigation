@@ -1,19 +1,19 @@
 #include "utils.h"
 
 #include <stdexcept>
-// #include <cmath>
 #include <pcl/point_cloud.h>
+#include <pcl/point_types.h>
 #include <octomap/octomap.h>
 #include <functional>
 
 
-void checkPathExists(const std::filesystem::path& path) {
+void coloradar_utils::checkPathExists(const std::filesystem::path& path) {
     if (!std::filesystem::exists(path)) {
         throw std::runtime_error("Directory or file not found: " + path.string());
     }
 }
 
-void createDirectoryIfNotExists(const std::filesystem::path& dirPath) {
+void coloradar_utils::createDirectoryIfNotExists(const std::filesystem::path& dirPath) {
     if (!std::filesystem::exists(dirPath)) {
         std::filesystem::create_directories(dirPath);
     }
@@ -60,7 +60,7 @@ template<typename PointT>
 using FovCheck = std::function<bool(const PointT&, const float&)>;
 
 template<typename CloudT, typename PointT>
-void filterFov(CloudT& cloud, const float& horizontalFov, const float& verticalFov, const float& range) {
+void coloradar_utils::filterFov(CloudT& cloud, const float& horizontalFov, const float& verticalFov, const float& range) {
     if (horizontalFov <= 0 || horizontalFov > 360) {
         throw std::runtime_error("Invalid horizontal FOV value: expected 0 < FOV <= 360, got " + std::to_string(horizontalFov));
     }
@@ -92,3 +92,5 @@ void filterFov(CloudT& cloud, const float& horizontalFov, const float& verticalF
         }
     }
 }
+template void coloradar_utils::filterFov<pcl::PointCloud<pcl::PointXYZ>, pcl::PointXYZ>(pcl::PointCloud<pcl::PointXYZ>& cloud, const float& horizontalFov, const float& verticalFov, const float& range);
+template void coloradar_utils::filterFov<pcl::PointCloud<pcl::PointXYZI>, pcl::PointXYZI>(pcl::PointCloud<pcl::PointXYZI>& cloud, const float& horizontalFov, const float& verticalFov, const float& range);

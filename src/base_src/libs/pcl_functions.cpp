@@ -19,7 +19,7 @@ pcl::PointCloud<pcl::PointXYZI> coloradar::octreeToPcl(const octomap::OcTree& tr
 
 template<typename PointT>
 void coloradar::filterFov(pcl::PointCloud<PointT>& cloud, const float& horizontalFov, const float& verticalFov, const float& range) {
-    return ::filterFov<pcl::PointCloud<PointT>, PointT>(cloud, horizontalFov, verticalFov, range);
+    return coloradar_utils::filterFov<pcl::PointCloud<PointT>, PointT>(cloud, horizontalFov, verticalFov, range);
 }
 template void coloradar::filterFov<pcl::PointXYZ>(pcl::PointCloud<pcl::PointXYZ>& cloud, const float& horizontalFov, const float& verticalFov, const float& range);
 template void coloradar::filterFov<pcl::PointXYZI>(pcl::PointCloud<pcl::PointXYZI>& cloud, const float& horizontalFov, const float& verticalFov, const float& range);

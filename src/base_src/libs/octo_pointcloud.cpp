@@ -30,5 +30,5 @@ void coloradar::OctoPointcloud::transform(const Eigen::Affine3f& transformMatrix
 }
 
 void coloradar::OctoPointcloud::filterFov(const float& horizontalFov, const float& verticalFov, const float& range) {
-    ::filterFov<coloradar::OctoPointcloud, octomap::point3d>(*this, horizontalFov, verticalFov, range);
+    coloradar_utils::filterFov<coloradar::OctoPointcloud, octomap::point3d>(*this, horizontalFov, verticalFov, range);
 }

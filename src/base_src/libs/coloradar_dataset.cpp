@@ -7,13 +7,13 @@
 
 
 coloradar::ColoradarDataset::ColoradarDataset(const std::filesystem::path& coloradarPath) : coloradarDirPath(coloradarPath) {
-    checkPathExists(coloradarDirPath);
+    coloradar_utils::checkPathExists(coloradarDirPath);
     calibDirPath = coloradarDirPath / "calib";
-    checkPathExists(calibDirPath);
+    coloradar_utils::checkPathExists(calibDirPath);
     transformsDirPath = calibDirPath / "transforms";
-    checkPathExists(transformsDirPath);
+    coloradar_utils::checkPathExists(transformsDirPath);
     runsDirPath = coloradarDirPath / "kitti";
-    checkPathExists(runsDirPath);
+    coloradar_utils::checkPathExists(runsDirPath);
 }
 
 Eigen::Affine3f coloradar::ColoradarDataset::getBaseToLidarTransform() {
@@ -44,7 +44,7 @@ coloradar::ColoradarRun coloradar::ColoradarDataset::getRun(const std::string& r
 }
 
 Eigen::Affine3f coloradar::ColoradarDataset::loadTransform(const std::filesystem::path& filePath) {
-    checkPathExists(filePath);
+    coloradar_utils::checkPathExists(filePath);
     Eigen::Affine3f transform = Eigen::Affine3f::Identity();
     Eigen::Vector3f translation;
     Eigen::Quaternionf rotation;
