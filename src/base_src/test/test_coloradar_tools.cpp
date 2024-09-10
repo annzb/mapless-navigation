@@ -6,18 +6,6 @@
 #include "coloradar_tools.h"
 
 
-pcl::PointCloud<pcl::PointXYZ> createPcl1() {
-    pcl::PointCloud<pcl::PointXYZ> cloud;
-    cloud.points.push_back(pcl::PointXYZ(0, 0, 0));
-    cloud.points.push_back(pcl::PointXYZ(1, 1, 1));
-    cloud.points.push_back(pcl::PointXYZ(10, 10, 10));
-    cloud.points.push_back(pcl::PointXYZ(2, 1, 0));
-    cloud.points.push_back(pcl::PointXYZ(-2, 1, 3));
-    cloud.points.push_back(pcl::PointXYZ(1, 5, 0));
-    cloud.points.push_back(pcl::PointXYZ(0, 1, 2));
-    return cloud;
-}
-
 bool generateRandomEmptySpace(float probability) {
     static std::mt19937 gen(42);  // seed
     static std::uniform_real_distribution<> dis(0.0, 1.0);
@@ -42,48 +30,112 @@ octomap::Pointcloud generateSpherePointCloud(float radius, float step, float emp
 }
 
 
-class PclFilterTest : public ::testing::Test {
+class CompileTest : public ::testing::Test {
+public:
+    CompileTest() : gen(randomSeed) {}
+
+    pcl::PointCloud<pcl::PointXYZ> create3dPcl() {
+        pcl::PointCloud<pcl::PointXYZ> cloud;
+        cloud.points.push_back(pcl::PointXYZ(0.f, 0.f, 0.f));
+        cloud.points.push_back(pcl::PointXYZ(1.f, 1.f, 1.f));
+        cloud.points.push_back(pcl::PointXYZ(2.f, 1.f, 0.f));
+        cloud.points.push_back(pcl::PointXYZ(1.f, 5.f, 0.f));
+        cloud.points.push_back(pcl::PointXYZ(0.f, 1.f, 2.f));
+        cloud.points.push_back(pcl::PointXYZ(-2.f, 1.f, 3.f));
+        cloud.points.push_back(pcl::PointXYZ(10.f, 10.f, 10.f));
+        return cloud;
+    }
+
+pcl::PointCloud<pcl::PointXYZI> create4dPcl() {
+    pcl::PointCloud<pcl::PointXYZI> cloud;
+    pcl::PointXYZI point;
+    point.x = 0.f; point.y = 0.f; point.z = 0.f; point.intensity = generateIntensity();
+    cloud.points.push_back(point);
+    point.x = 1.f; point.y = 1.f; point.z = 1.f; point.intensity = generateIntensity();
+    cloud.points.push_back(point);
+    point.x = 2.f; point.y = 1.f; point.z = 0.f; point.intensity = generateIntensity();
+    cloud.points.push_back(point);
+    point.x = 1.f; point.y = 5.f; point.z = 0.f; point.intensity = generateIntensity();
+    cloud.points.push_back(point);
+    point.x = 0.f; point.y = 1.f; point.z = 2.f; point.intensity = generateIntensity();
+    cloud.points.push_back(point);
+    point.x = 10.f; point.y = 10.f; point.z = 10.f; point.intensity = generateIntensity();
+    cloud.points.push_back(point);
+    point.x = -2.f; point.y = 1.f; point.z = 3.f; point.intensity = generateIntensity();
+    cloud.points.push_back(point);
+    return cloud;
+}
+
+
 protected:
-    double nearEps = 0.01;
+    const float treeResolution = 0.25;
+    const int randomSeed = 42;
+    std::mt19937 gen;
+    std::uniform_real_distribution<> dis{-1.0, 1.0};
+    float generateIntensity() { return dis(gen) * 10; }
 };
 
-TEST_F(PclFilterTest, RangeTest) {
-    auto cloud = createPcl1();
-    std::cout << "Cloud before: " << cloud.size() << " points,";
-    for (size_t i = 0; i < cloud.size(); ++i) {
-        std::cout << " " << cloud.points[i];
-    }
-    std::cout << std::endl;
 
+TEST_F(CompileTest, BasicFunctions) {
+    octomap::OcTree tree(treeResolution);
+    pcl::PointCloud<pcl::PointXYZI> cloud;
+    coloradar::octreeToPcl(tree, cloud);
     coloradar::filterFov(cloud, 360, 360, 10);
-    std::cout << "Cloud after range: " << cloud.size() << " points,";
-    for (size_t i = 0; i < cloud.size(); ++i) {
-        std::cout << " " << cloud.points[i];
-    }
-    std::cout << std::endl;
-
-    coloradar::filterFov(cloud, 90, 360, 0);
-    std::cout << "Cloud after azimuth:";
-    for (size_t i = 0; i < cloud.size(); ++i) {
-        std::cout << " " << cloud.points[i];
-    }
-    std::cout << std::endl;
-
-    coloradar::filterFov(cloud, 360, 90, 0);
-    std::cout << "Cloud after elevation:";
-    for (size_t i = 0; i < cloud.size(); ++i) {
-        std::cout << " " << cloud.points[i];
-    }
-    std::cout << std::endl;
-
-    cloud = createPcl1();
-    coloradar::filterFov(cloud, 90, 90, 10);
-    std::cout << "Cloud filtered:";
-    for (size_t i = 0; i < cloud.size(); ++i) {
-        std::cout << " " << cloud.points[i];
-    }
-    std::cout << std::endl;
 }
+
+TEST_F(CompileTest, OctoPointcloud) {
+    auto cloud3d = create3dPcl();
+    coloradar::OctoPointcloud octoCloud(cloud3d);
+    octoCloud.filterFov(360, 360, 10);
+    auto otherCloud = octoCloud.toPcl<pcl::PointCloud<pcl::PointXYZI>>();
+
+    auto cloud4d = create4dPcl();
+    octoCloud = coloradar::OctoPointcloud(cloud4d);
+}
+
+
+//class PclFilterTest : public ::testing::Test {
+//protected:
+//    double nearEps = 0.01;
+//};
+//
+//TEST_F(PclFilterTest, RangeTest) {
+//    pcl::PointCloud<pcl::PointXYZ> cloud = createPcl();
+//    std::cout << "Cloud before: " << cloud.size() << " points,";
+//    for (size_t i = 0; i < cloud.size(); ++i) {
+//        std::cout << " " << cloud.points[i];
+//    }
+//    std::cout << std::endl;
+//
+//    coloradar::filterFov(cloud, 360, 360, 10);
+//    std::cout << "Cloud after range: " << cloud.size() << " points,";
+//    for (size_t i = 0; i < cloud.size(); ++i) {
+//        std::cout << " " << cloud.points[i];
+//    }
+//    std::cout << std::endl;
+//
+//    coloradar::filterFov(cloud, 90, 360, 0);
+//    std::cout << "Cloud after azimuth:";
+//    for (size_t i = 0; i < cloud.size(); ++i) {
+//        std::cout << " " << cloud.points[i];
+//    }
+//    std::cout << std::endl;
+//
+//    coloradar::filterFov(cloud, 360, 90, 0);
+//    std::cout << "Cloud after elevation:";
+//    for (size_t i = 0; i < cloud.size(); ++i) {
+//        std::cout << " " << cloud.points[i];
+//    }
+//    std::cout << std::endl;
+//
+//    cloud = createPcl();
+//    coloradar::filterFov(cloud, 90, 90, 10);
+//    std::cout << "Cloud filtered:";
+//    for (size_t i = 0; i < cloud.size(); ++i) {
+//        std::cout << " " << cloud.points[i];
+//    }
+//    std::cout << std::endl;
+//}
 
 
 //void savePointCloudToPCD(const std::string& filename, const octomap::Pointcloud& cloud) {
