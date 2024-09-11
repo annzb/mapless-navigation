@@ -10,17 +10,17 @@
 
 namespace coloradar {
 
-template<PclCloudType<Pcl4dPointType> CloudT> void octreeToPcl(const octomap::OcTree& tree, CloudT& cloud);
-template<PclCloudType<PclPointType> CloudT> void filterFov(CloudT& cloud, const float& horizontalFov, const float& verticalFov, const float& range);
+template <Pcl4dPointType PointT, template <PclCloudType> class CloudT> void octreeToPcl(const octomap::OcTree& tree, CloudT<PointT>& cloud);
+template <PclPointType PointT, template <PclCloudType> class CloudT> void filterFov(CloudT<PointT>& cloud, const float& horizontalFov, const float& verticalFov, const float& range);
 
 
 class OctoPointcloud : public octomap::Pointcloud {
 public:
     OctoPointcloud() = default;
     OctoPointcloud(const OctoPointcloud& other) : octomap::Pointcloud(other) {}
-    template<PclCloudType<PclPointType> CloudT> OctoPointcloud(const CloudT& cloud);
+    template <PclPointType PointT, template <PclCloudType> class CloudT> OctoPointcloud(const CloudT<PointT>& cloud);
 
-    template<PclCloudType<PclPointType> CloudT> CloudT toPcl();
+    template <PclCloudType CloudT> CloudT toPcl();
 
     void filterFov(const float& horizontalFovTan, const float& verticalFovTan, const float& range);
     void transform(const Eigen::Affine3f& transformMatrix);

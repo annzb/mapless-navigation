@@ -3,7 +3,7 @@
 ## Standard Build
 #### 1. Install dependencies:
 ```bash
-apt install libpcl-dev liboctomap-dev
+apt install libpcl-dev liboctomap-dev libgtest-dev
 ```
 
 #### 2. Build:

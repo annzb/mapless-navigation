@@ -1,11 +1,9 @@
 #ifndef OCTO_POINTCLOUD_HPP
 #define OCTO_POINTCLOUD_HPP
 
-// #include "utils.cpp"
 
-
-template<coloradar::PclCloudType<coloradar::PclPointType> CloudT>
-coloradar::OctoPointcloud::OctoPointcloud(const CloudT& cloud) {
+template <coloradar::PclPointType PointT, template <coloradar::PclCloudType> class CloudT>
+coloradar::OctoPointcloud::OctoPointcloud(const CloudT<PointT>& cloud) {
     this->clear();
     this->reserve(cloud.size());
     for (const auto& point : cloud.points) {
@@ -13,7 +11,7 @@ coloradar::OctoPointcloud::OctoPointcloud(const CloudT& cloud) {
     }
 }
 
-template<coloradar::PclCloudType<coloradar::PclPointType> CloudT>
+template <coloradar::PclCloudType CloudT>
 CloudT coloradar::OctoPointcloud::toPcl() {
     using PointT = typename CloudT::PointType;
     CloudT cloud;

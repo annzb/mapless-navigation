@@ -46,26 +46,17 @@ public:
         return cloud;
     }
 
-pcl::PointCloud<pcl::PointXYZI> create4dPcl() {
-    pcl::PointCloud<pcl::PointXYZI> cloud;
-    pcl::PointXYZI point;
-    point.x = 0.f; point.y = 0.f; point.z = 0.f; point.intensity = generateIntensity();
-    cloud.points.push_back(point);
-    point.x = 1.f; point.y = 1.f; point.z = 1.f; point.intensity = generateIntensity();
-    cloud.points.push_back(point);
-    point.x = 2.f; point.y = 1.f; point.z = 0.f; point.intensity = generateIntensity();
-    cloud.points.push_back(point);
-    point.x = 1.f; point.y = 5.f; point.z = 0.f; point.intensity = generateIntensity();
-    cloud.points.push_back(point);
-    point.x = 0.f; point.y = 1.f; point.z = 2.f; point.intensity = generateIntensity();
-    cloud.points.push_back(point);
-    point.x = 10.f; point.y = 10.f; point.z = 10.f; point.intensity = generateIntensity();
-    cloud.points.push_back(point);
-    point.x = -2.f; point.y = 1.f; point.z = 3.f; point.intensity = generateIntensity();
-    cloud.points.push_back(point);
-    return cloud;
-}
-
+    pcl::PointCloud<pcl::PointXYZI> create4dPcl() {
+        pcl::PointCloud<pcl::PointXYZI> cloud;
+        cloud.points.push_back(pcl::PointXYZI(0.f, 0.f, 0.f, generateIntensity()));
+        cloud.points.push_back(pcl::PointXYZI(1.f, 1.f, 1.f, generateIntensity()));
+        cloud.points.push_back(pcl::PointXYZI(2.f, 1.f, 0.f, generateIntensity()));
+        cloud.points.push_back(pcl::PointXYZI(1.f, 5.f, 0.f, generateIntensity()));
+        cloud.points.push_back(pcl::PointXYZI(0.f, 1.f, 2.f, generateIntensity()));
+        cloud.points.push_back(pcl::PointXYZI(10.f, 10.f, 10.f, generateIntensity()));
+        cloud.points.push_back(pcl::PointXYZI(-2.f, 1.f, 3.f, generateIntensity()));
+        return cloud;
+    }
 
 protected:
     const float treeResolution = 0.25;
@@ -80,15 +71,19 @@ TEST_F(CompileTest, BasicFunctions) {
     octomap::OcTree tree(treeResolution);
     pcl::PointCloud<pcl::PointXYZI> cloud;
     coloradar::octreeToPcl(tree, cloud);
-    coloradar::filterFov(cloud, 360, 360, 10);
+    coloradar::filterFov(cloud, 360, 180, 10);
+
+//    Compile Error
+//    pcl::PointCloud<pcl::PointXYZ> cloud3d;
+//    coloradar::octreeToPcl(tree, cloud3d);
+//    coloradar::filterFov(cloud3d, 360, 180, 10);
 }
 
 TEST_F(CompileTest, OctoPointcloud) {
     auto cloud3d = create3dPcl();
     coloradar::OctoPointcloud octoCloud(cloud3d);
-    octoCloud.filterFov(360, 360, 10);
+    octoCloud.filterFov(360, 180, 10);
     auto otherCloud = octoCloud.toPcl<pcl::PointCloud<pcl::PointXYZI>>();
-
     auto cloud4d = create4dPcl();
     octoCloud = coloradar::OctoPointcloud(cloud4d);
 }

@@ -1,12 +1,10 @@
 #ifndef PCL_FUNCTIONS_HPP
 #define PCL_FUNCTIONS_HPP
 
-// #include "utils.cpp"
 
-
-template<coloradar::PclCloudType<coloradar::Pcl4dPointType> CloudT>
-void coloradar::octreeToPcl(const octomap::OcTree& tree, CloudT& cloud) {
-    using PointT = typename CloudT::PointType;
+template <coloradar::Pcl4dPointType PointT, template <coloradar::PclCloudType> class CloudT>
+void coloradar::octreeToPcl(const octomap::OcTree& tree, CloudT<PointT>& cloud) {
+    cloud.clear();
     for (auto it = tree.begin_leafs(), end = tree.end_leafs(); it != end; ++it) {
         PointT point;
         octomap::point3d coords = it.getCoordinate();
@@ -18,10 +16,9 @@ void coloradar::octreeToPcl(const octomap::OcTree& tree, CloudT& cloud) {
     }
 }
 
-template<coloradar::PclCloudType<coloradar::PclPointType> CloudT>
-void coloradar::filterFov(CloudT& cloud, const float& horizontalFov, const float& verticalFov, const float& range) {
-    using PointT = typename CloudT::PointType;
-    coloradar::internal::filterFov<PointT, CloudT>(cloud, horizontalFov, verticalFov, range);
+template <coloradar::PclPointType PointT, template <coloradar::PclCloudType> class CloudT>
+void coloradar::filterFov(CloudT<PointT>& cloud, const float& horizontalFov, const float& verticalFov, const float& range) {
+    coloradar::internal::filterFov<PointT, CloudT<PointT>>(cloud, horizontalFov, verticalFov, range);
 }
 
 #endif
