@@ -94,9 +94,9 @@ int main(int argc, char** argv) {
         }
         octoCloud = generateSpherePointCloud(randomPclRadius, randomPclStep, randomPclEmptyPortion);
     }
-    pcl::io::savePCDFile(outputDirPath / "original_cloud.pcd", octoCloud.toPcl());
+    pcl::io::savePCDFile(outputDirPath / "original_cloud.pcd", octoCloud.toPcl<pcl::PointCloud<pcl::PointXYZ>>());
 
     float range = maxRange == 0 ? std::numeric_limits<float>::max() : maxRange;
     octoCloud.filterFov(horizontalFov, verticalFov, range);
-    pcl::io::savePCDFile(outputDirPath / "filtered_cloud.pcd", octoCloud.toPcl());
+    pcl::io::savePCDFile(outputDirPath / "filtered_cloud.pcd", octoCloud.toPcl<pcl::PointCloud<pcl::PointXYZ>>());
 }

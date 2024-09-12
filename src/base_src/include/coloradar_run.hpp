@@ -1,8 +1,6 @@
 #ifndef COLORADAR_RUN_HPP
 #define COLORADAR_RUN_HPP
 
-// #include "utils.cpp"
-
 #include <pcl/common/transforms.h>
 #include <pcl/io/pcd_io.h>
 #include <fstream>
@@ -32,24 +30,11 @@ namespace {
         return pose;
     }
 
-    template<typename PointT>
-    PointT readLidarPoint(std::ifstream& infile) {
-        float x, y, z;
-        infile.read(reinterpret_cast<char*>(&x), sizeof(float));
-        infile.read(reinterpret_cast<char*>(&y), sizeof(float));
-        infile.read(reinterpret_cast<char*>(&z), sizeof(float));
-        infile.ignore(sizeof(float));
-        return PointT(x, y, z);
-    }
     template<coloradar::Pcl4dPointType PointT>
-    PointT readLidarPoint(std::ifstream& infile) {
-        float x, y, z, i;
-        infile.read(reinterpret_cast<char*>(&x), sizeof(float));
-        infile.read(reinterpret_cast<char*>(&y), sizeof(float));
-        infile.read(reinterpret_cast<char*>(&z), sizeof(float));
-        infile.read(reinterpret_cast<char*>(&i), sizeof(float));
-        return PointT(x, y, z, i);
-    }
+    PointT makePoint(const float& x, const float& y, const float& z, const float& i) { return PointT(x, y, z, i); }
+
+    template<coloradar::PointType PointT>
+    PointT makePoint(const float& x, const float& y, const float& z, const float& i) { return PointT(x, y, z); }
 
 }
 
@@ -64,14 +49,18 @@ std::vector<PoseT> coloradar::ColoradarRun::getPoses() {
 
     while (std::getline(infile, line)) {
         std::istringstream iss(line);
+        float x, y, z;
         PoseT pose = readPose<PoseT>(&iss);
         poses.push_back(pose);
     }
     return poses;
 }
 
-template<typename PointT, typename CloudT>
+template<coloradar::CloudType CloudT>
 CloudT coloradar::ColoradarRun::getLidarPointCloud(const std::filesystem::path& binPath) {
+     // using PointT = std::conditional_t<PclCloudType<CloudT>, typename CloudT::PointType, octomap::point3d>;
+     using PointT = std::conditional_t<PclCloudType<CloudT>, pcl::PointXYZI, octomap::point3d>;
+
     coloradar::internal::checkPathExists(binPath);
     std::ifstream infile(binPath, std::ios::binary);
     if (!infile) {
@@ -84,9 +73,13 @@ CloudT coloradar::ColoradarRun::getLidarPointCloud(const std::filesystem::path& 
     CloudT cloud;
     cloud.reserve(numPoints);
 
-    for (size_t i = 0; i < numPoints; ++i) {
-        PointT point = readLidarPoint<PointT>(infile);
-        cloud.push_back(readLidarPoint);
+    for (size_t j = 0; j < numPoints; ++j) {
+        float x, y, z, i;
+        infile.read(reinterpret_cast<char*>(&x), sizeof(float));
+        infile.read(reinterpret_cast<char*>(&y), sizeof(float));
+        infile.read(reinterpret_cast<char*>(&z), sizeof(float));
+        infile.read(reinterpret_cast<char*>(&i), sizeof(float));
+        cloud.push_back(makePoint<PointT>(x, y, z, i));
     }
     if (cloud.size() < 1) {
         throw std::runtime_error("Failed to read or empty point cloud: " + binPath.string());
@@ -94,12 +87,10 @@ CloudT coloradar::ColoradarRun::getLidarPointCloud(const std::filesystem::path& 
     return cloud;
 }
 
-template<typename PointT, typename CloudT>
-CloudT coloradar::ColoradarRun::getLidarPointCloud(int cloudIdx) {
+template<coloradar::CloudType CloudT>
+CloudT coloradar::ColoradarRun::getLidarPointCloud(const int& cloudIdx) {
     std::filesystem::path pclBinFilePath = pointcloudsDirPath / ("lidar_pointcloud_" + std::to_string(cloudIdx) + ".bin");
-    return getLidarPointCloud<PointT, CloudT>(pclBinFilePath);
-}
-
+    return getLidarPointCloud<CloudT>(pclBinFilePath);
 }
 
 #endif

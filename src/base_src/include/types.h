@@ -26,6 +26,12 @@ concept OctomapPointType = std::is_base_of_v<octomap::point3d, T>;
 template<typename T>
 concept OctomapCloudType = std::is_base_of_v<octomap::Pointcloud, T>;
 
+template<typename T>
+concept PointType = PclPointType<T> || OctomapPointType<T>;
+
+template<typename T>
+concept CloudType = PclCloudType<T> || OctomapCloudType<T>;
+
 }
 
 #endif

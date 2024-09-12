@@ -48,7 +48,7 @@ octomap::OcTree coloradar::ColoradarRun::buildLidarOctomap(
     octomap::OcTree tree(mapResolution);
 
     for (size_t i = 0; i < lidarTimestamps.size(); ++i) {
-        OctoPointcloud cloud = getLidarPointCloud<octomap::point3d, coloradar::OctoPointcloud>(i);
+        OctoPointcloud cloud = getLidarPointCloud<coloradar::OctoPointcloud>(i);
         double lidarTimestamp = lidarTimestamps[i];
         int poseIdx = findClosestEarlierTimestamp(lidarTimestamp, poseTimestamps);
         octomath::Pose6D pose = poses[poseIdx];
@@ -62,7 +62,8 @@ octomap::OcTree coloradar::ColoradarRun::buildLidarOctomap(
 }
 
 void coloradar::ColoradarRun::saveLidarOctomap(const octomap::OcTree& tree) {
-    auto treePcl = coloradar::octreeToPcl<pcl::PointCloud<pcl::PointXYZI>>(tree);
+    pcl::PointCloud<pcl::PointXYZI> treePcl;
+    coloradar::octreeToPcl(tree, treePcl);
     coloradar::internal::createDirectoryIfNotExists(lidarMapsDirPath);
     std::filesystem::path outputMapFile = lidarMapsDirPath / "map.pcd";
     pcl::io::savePCDFile(outputMapFile, treePcl);

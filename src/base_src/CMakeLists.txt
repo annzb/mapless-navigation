@@ -14,8 +14,8 @@ include_directories(${PROJECT_SOURCE_DIR}/include ${PCL_INCLUDE_DIRS} ${OCTOMAP_
 
 ### LIBS
 
-add_library(coloradar_tools SHARED libs/octo_pointcloud.cpp)
-target_include_directories(coloradar_tools PUBLIC ${PROJECT_SOURCE_DIR}/libs)
+add_library(coloradar_tools SHARED libs/utils.cpp libs/octo_pointcloud.cpp libs/coloradar_run.cpp libs/coloradar_dataset.cpp)
+# target_include_directories(coloradar_tools PUBLIC ${PROJECT_SOURCE_DIR}/libs)
 target_link_libraries(coloradar_tools ${PCL_LIBRARIES} ${OCTOMAP_LIBRARIES})
 
 # add_library(coloradar_tools SHARED libs/coloradar_tools.h)
@@ -39,12 +39,12 @@ target_link_libraries(coloradar_tests coloradar_tools ${PCL_LIBRARIES} gtest gte
 
 
 ### SCRIPTS
-# add_executable(filter_cloud data_prep/filter_cloud.cpp)
-# target_link_libraries(filter_cloud coloradar_tools ${PCL_LIBRARIES} ${OCTOMAP_LIBRARIES})
-#
-# add_executable(build_octomap data_prep/build_octomap.cpp)
-# target_link_libraries(build_octomap coloradar_tools octree_diff ${PCL_LIBRARIES} ${OCTOMAP_LIBRARIES})
-#
-#
+
+add_executable(filter_cloud data_prep/filter_cloud.cpp)
+target_link_libraries(filter_cloud coloradar_tools ${PCL_LIBRARIES} ${OCTOMAP_LIBRARIES})
+
+add_executable(build_octomap data_prep/build_octomap.cpp)
+target_link_libraries(build_octomap coloradar_tools ${PCL_LIBRARIES} ${OCTOMAP_LIBRARIES})
+
 
 # add_definitions(${PCL_DEFINITIONS})

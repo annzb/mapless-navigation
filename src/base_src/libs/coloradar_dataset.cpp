@@ -1,4 +1,3 @@
-#include "utils.h"
 #include "coloradar_tools.h"
 
 #include <pcl/io/pcd_io.h>

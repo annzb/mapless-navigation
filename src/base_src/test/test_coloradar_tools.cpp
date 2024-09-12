@@ -30,6 +30,71 @@ octomap::Pointcloud generateSpherePointCloud(float radius, float step, float emp
 }
 
 
+TEST(ColoradarConcepts, PointTypeTests) {
+    static_assert(coloradar::Pcl3dPointType<pcl::PointXYZ>, "pcl::PointXYZ should be a Pcl3dPointType");
+    ASSERT_TRUE(coloradar::Pcl3dPointType<pcl::PointXYZ>);
+
+    static_assert(coloradar::Pcl4dPointType<pcl::PointXYZI>, "pcl::PointXYZI should be a Pcl4dPointType");
+    ASSERT_TRUE(coloradar::Pcl4dPointType<pcl::PointXYZI>);
+
+    static_assert(!coloradar::Pcl4dPointType<pcl::PointXYZ>, "pcl::PointXYZ should not be a Pcl4dPointType");
+    ASSERT_FALSE(coloradar::Pcl4dPointType<pcl::PointXYZ>);
+
+    static_assert(coloradar::PclPointType<pcl::PointXYZ>, "pcl::PointXYZ should be a PclPointType");
+    ASSERT_TRUE(coloradar::PclPointType<pcl::PointXYZ>);
+
+    static_assert(coloradar::PclPointType<pcl::PointXYZI>, "pcl::PointXYZI should be a PclPointType");
+    ASSERT_TRUE(coloradar::PclPointType<pcl::PointXYZI>);
+
+    static_assert(coloradar::OctomapPointType<octomap::point3d>, "octomap::point3d should be an OctomapPointType");
+    ASSERT_TRUE(coloradar::OctomapPointType<octomap::point3d>);
+
+    static_assert(!coloradar::OctomapPointType<pcl::PointXYZI>, "pcl::PointXYZI should not be an OctomapPointType");
+    ASSERT_FALSE(coloradar::OctomapPointType<pcl::PointXYZI>);
+}
+
+TEST(ColoradarConcepts, CloudTypeTests) {
+    // Test if pcl::PointCloud<pcl::PointXYZ> matches PclCloudType
+    static_assert(coloradar::PclCloudType<pcl::PointCloud<pcl::PointXYZ>>, "pcl::PointCloud<pcl::PointXYZ> should be a PclCloudType");
+    ASSERT_TRUE(coloradar::PclCloudType<pcl::PointCloud<pcl::PointXYZ>>);
+
+    // Test if pcl::PointCloud<pcl::PointXYZI> matches PclCloudType
+    static_assert(coloradar::PclCloudType<pcl::PointCloud<pcl::PointXYZI>>, "pcl::PointCloud<pcl::PointXYZI> should be a PclCloudType");
+    ASSERT_TRUE(coloradar::PclCloudType<pcl::PointCloud<pcl::PointXYZI>>);
+
+    // Test if octomap::Pointcloud matches OctomapCloudType
+    static_assert(coloradar::OctomapCloudType<octomap::Pointcloud>, "octomap::Pointcloud should be an OctomapCloudType");
+    ASSERT_TRUE(coloradar::OctomapCloudType<octomap::Pointcloud>);
+
+    // Test if pcl::PointCloud<pcl::PointXYZI> does not match OctomapCloudType
+    static_assert(!coloradar::OctomapCloudType<pcl::PointCloud<pcl::PointXYZI>>, "pcl::PointCloud<pcl::PointXYZI> should not be an OctomapCloudType");
+    ASSERT_FALSE(coloradar::OctomapCloudType<pcl::PointCloud<pcl::PointXYZI>>);
+
+    // Test if pcl::PointCloud<pcl::PointXYZ> matches CloudType
+    static_assert(coloradar::CloudType<pcl::PointCloud<pcl::PointXYZ>>, "pcl::PointCloud<pcl::PointXYZ> should be a CloudType");
+    ASSERT_TRUE(coloradar::CloudType<pcl::PointCloud<pcl::PointXYZ>>);
+
+    // Test if octomap::Pointcloud matches CloudType
+    static_assert(coloradar::CloudType<octomap::Pointcloud>, "octomap::Pointcloud should be a CloudType");
+    ASSERT_TRUE(coloradar::CloudType<octomap::Pointcloud>);
+}
+
+// Test suite for general PointType and CloudType
+TEST(ColoradarConcepts, GeneralConcepts) {
+    // Test if pcl::PointXYZ matches PointType
+    static_assert(coloradar::PointType<pcl::PointXYZ>, "pcl::PointXYZ should be a PointType");
+    ASSERT_TRUE(coloradar::PointType<pcl::PointXYZ>);
+
+    // Test if pcl::PointXYZI matches PointType
+    static_assert(coloradar::PointType<pcl::PointXYZI>, "pcl::PointXYZI should be a PointType");
+    ASSERT_TRUE(coloradar::PointType<pcl::PointXYZI>);
+
+    // Test if octomap::point3d matches PointType
+    static_assert(coloradar::PointType<octomap::point3d>, "octomap::point3d should be a PointType");
+    ASSERT_TRUE(coloradar::PointType<octomap::point3d>);
+}
+
+
 class CompileTest : public ::testing::Test {
 public:
     CompileTest() : gen(randomSeed) {}
@@ -87,7 +152,6 @@ TEST_F(CompileTest, OctoPointcloud) {
     auto cloud4d = create4dPcl();
     octoCloud = coloradar::OctoPointcloud(cloud4d);
 }
-
 
 //class PclFilterTest : public ::testing::Test {
 //protected:
