@@ -6,6 +6,8 @@ import pickle
 from sklearn.model_selection import train_test_split
 from torch.utils.data import DataLoader, Dataset
 
+from utils import parse_polar_bins
+
 
 def normalize_heatmap(heatmap, mean_channel_1, std_channel_1, is_3d=False):
     heatmap_1c = (heatmap[:, :, :, 0] - mean_channel_1) / std_channel_1
@@ -27,7 +29,7 @@ def process_heatmaps(heatmaps, mean_channel_1=None, std_channel_1=None, is_3d=Fa
 
 
 def process_grids(grids):
-    grids = grids.transpose(0, 3, 2, 1)
+    grids[grids == -1] = 0.5  # Count unknown as uncertain
     return grids
 
 
@@ -51,17 +53,31 @@ def split_dataset(n_samples):
     return train_indices, validate_indices, test_indices
 
 
-def get_dataset(dataset_filepath, visualize=False, is_3d=False, batch_size=32):
+def get_dataset(dataset_filepath, visualize=False, is_3d=False, use_polar=False, batch_size=32):
     with open(dataset_filepath, 'rb') as f:
         data = pickle.load(f)
     print('Runs in dataset:', ', '.join(data.keys()))
 
+    params = data.pop('params')
+    # heatmap_params = params['heatmap']
+    # x_min, x_max = params['x_min'], params['x_max']
+    # y_min, y_max = params['y_min'], params['y_max']
+    # z_min, z_max = params['z_min'], params['z_max']
+    # azimuth_from_idx, azimuth_to_idx = params['azimuth_from'], params['azimuth_to']
+    # elevation_from_idx, elevation_to_idx = params['elevation_from'], params['elevation_to']
+    # range_bin_width = round(heatmap_params['range_bin_width'], 3)
+    # range_bins = np.arange(range_bin_width, y_max + range_bin_width, range_bin_width)
+    # azimuth_bins = parse_polar_bins(heatmap_params['azimuth_bins'])[azimuth_from_idx:azimuth_to_idx + 1]
+    # elevation_bins = parse_polar_bins(heatmap_params['elevation_bins'])[elevation_from_idx:elevation_to_idx + 1]
+
     heatmaps, gt_grids, poses = [], [], []
+    gt_key = 'polar_grids' if use_polar else 'gt_grids'
     for run_name in data:
         heatmaps.extend(data[run_name]['heatmaps'])
-        gt_grids.extend(data[run_name]['gt_grids'])
+        gt_grids.extend(data[run_name][gt_key])
         poses.extend(data[run_name]['poses'])
     heatmaps, gt_grids, poses = np.array(heatmaps), np.array(gt_grids), np.array(poses)
+
     print('Raw input shape:', heatmaps.shape)
     print('Raw output shape:', gt_grids.shape)
     # Input shape: (1042, 16, 64, 64)

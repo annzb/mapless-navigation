@@ -48,60 +48,101 @@ def iou_score(TP, FP, TN, FN):
 
 
 def calc_tfpn(predictions, targets):
-    true_pos = (predictions & targets).sum().float()
-    false_pos = (predictions & ~targets).sum().float()
-    true_neg = (~predictions & ~targets).sum().float()
-    false_neg = (~predictions & targets).sum().float()
+    true_pos = (predictions & targets).sum().float().item()
+    false_pos = (predictions & ~targets).sum().float().item()
+    true_neg = (~predictions & ~targets).sum().float().item()
+    false_neg = (~predictions & targets).sum().float().item()
     return true_pos, false_pos, true_neg, false_neg
 
 
-def test_model(test_loader, model, criterion, device, occupancy_threshold=0.5, outfile=None):
-    metrics = (nn.L1Loss(), nn.BCELoss(), nn.MSELoss())
+def test_model(
+        test_loader, model, criterion, device,
+        occupied_threshold=0.5, empty_threshold=0.49,
+        outfile=None, output_is_prob=False, monitor=None
+):
+    metrics = (nn.L1Loss(), nn.MSELoss())
     binary_metrics = (f1_score, accuracy_score, iou_score)
 
     model.eval()
     test_loss = 0
     predicted_output = []
-    TP, FP, TN, FN = 0, 0, 0, 0
+    stats = {
+        'occupied': {'tp': 0, 'tn': 0, 'fp': 0, 'fn': 0, 'to_binary': lambda vals: vals == 2},
+        'empty': {'tp': 0, 'tn': 0, 'fp': 0, 'fn': 0, 'to_binary': lambda vals: vals == 1},
+        'uncertain': {'tp': 0, 'tn': 0, 'fp': 0, 'fn': 0, 'to_binary': lambda vals: vals == 0}
+    }
     num_samples, num_batches = 0, 0
     metric_values = [0 for _ in metrics]
+    num_points, num_accurate = 0, 0
 
     with torch.no_grad():
         for data, target, _ in test_loader:
             data, target = data.to(device), target.to(device)
             output = model(data)
-            output_probs = torch.sigmoid(output)
-            output_binary, target_binary = output_probs > occupancy_threshold, target > occupancy_threshold
-
             loss = criterion(output, target)
             test_loss += loss
-            predicted_output.append(output_probs.cpu().numpy())
+
+            if not output_is_prob:
+                output = torch.sigmoid(output)
+            predicted_output.append(output.cpu().numpy())
+
+            output_cat, target_cat = torch.zeros_like(output, dtype=torch.int), torch.zeros_like(target, dtype=torch.int)
+            output_cat[output <= empty_threshold], output_cat[output >= occupied_threshold] = 1, 2
+            target_cat[target <= empty_threshold], target_cat[target >= occupied_threshold] = 1, 2
 
             num_samples += data.size(0)
+            num_points += num_samples * data.size(1) * data.size(2) * data.size(3) * data.size(4)
             num_batches += 1
-            tp_batch, fp_batch, tn_batch, fn_batch = calc_tfpn(output_binary, target_binary)
-            TP += tp_batch
-            FP += fp_batch
-            TN += tn_batch
-            FN += fn_batch
+            num_accurate += (output_cat == target_cat).sum().int().item()
+            # print('num_accurate', num_accurate)
+            # print('num_points', num_points)
+            # print('data size', data.size())
+            # print('output_cat size', output_cat.size())
+            # print('output_cat', output_cat)
+            # print('target_cat', target_cat)
+            for class_name, class_stats in stats.items():
+                output_binary, target_binary = class_stats['to_binary'](output_cat), class_stats['to_binary'](target_cat)
+                # print(class_name, 'output_binary', output_binary)
+                # print('target_binary', target_binary)
+                # print()
+                tp_batch, fp_batch, tn_batch, fn_batch = calc_tfpn(output_binary, target_binary)
+                stats[class_name]['tp'] += tp_batch
+                stats[class_name]['fp'] += fp_batch
+                stats[class_name]['tn'] += tn_batch
+                stats[class_name]['fn'] += fn_batch
             for i, metric in enumerate(metrics):
-                metric_values[i] += metric(output_probs, target)
+                metric_values[i] += metric(output, target)
 
-    print(f'Total testing loss: {test_loss}')
-    print(f'Occupancy threshold: {occupancy_threshold}')
+    print(f'Total testing loss: {test_loss}, total accuracy {round(num_accurate / num_points, 4)}')
+    print(f'Occupancy threshold: {occupied_threshold}')
+    if monitor is not None:
+        monitor.log({
+            'evaluation_loss_total': test_loss, 
+            'occupied_threshold': occupied_threshold, 
+            'empty_threshold': empty_threshold
+        })
     if outfile:
         with open(outfile, 'a') as f:
             f.write(f'{test_loss};')
     for i, metric in enumerate(metrics):
         loss_per_sample = metric_values[i] / num_samples
         loss_per_batch = metric_values[i] / num_batches
+        if monitor is not None:
+            monitor.log({
+                f'{metric.__class__.__name__}_loss_per_sample': loss_per_sample, 
+                f'{metric.__class__.__name__}_loss_per_batch': loss_per_batch     
+            })
         print(f'Avg {metric.__class__.__name__} loss: {loss_per_sample} per sample, {loss_per_batch} per batch')
     for metric in binary_metrics:
-        loss = metric(TP, FP, TN, FN)
-        print(f'{metric.__name__}: {loss}')
-        if outfile:
-            with open(outfile, 'a') as f:
-                f.write(f'{loss};')
+        for class_name, class_stats in stats.items():
+            loss = metric(class_stats['tp'], class_stats['fp'], class_stats['tn'], class_stats['fn'])
+            print(f'{metric.__name__} for class {class_name}: {loss}')
+            if outfile:
+                with open(outfile, 'a') as f:
+                    f.write(f'{class_name}.{loss};')
+            if monitor is not None:
+                monitor.log({f'{class_name}_{metric.__name__}': loss})
+
     if outfile:
         with open(outfile, 'a') as f:
             f.write('\n')
