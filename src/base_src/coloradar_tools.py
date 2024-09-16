@@ -232,6 +232,12 @@ class RadarParameters:
         }
 
 
+def show_pcl(pcd_file_path):
+    pcd = o3d.io.read_point_cloud(pcd_file_path)
+    axes = o3d.geometry.TriangleMesh.create_coordinate_frame(size=10.0)
+    o3d.visualization.draw_geometries([pcd, axes])
+
+
 class ColoradarDataset:
     def __init__(self, dataset_path):
         if not os.path.isdir(dataset_path):
@@ -257,6 +263,9 @@ class ColoradarDataset:
             f'range={max_range}'
         ]
         _run_command(command)
+
+    def show_octomap(self, run_name):
+        show_pcl(os.path.join(self.coloradar_path, 'lidar_maps', run_name, 'map.pcd'))
 
 
 def _run_command(command):
@@ -287,9 +296,3 @@ def filter_cloud(
     if output_dir:
         command.append(f'outputDir={output_dir}')
     _run_command(command)
-
-
-def show_pcl(pcd_file_path):
-    pcd = o3d.io.read_point_cloud(pcd_file_path)
-    axes = o3d.geometry.TriangleMesh.create_coordinate_frame(size=10.0)
-    o3d.visualization.draw_geometries([pcd, axes])

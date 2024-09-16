@@ -29,6 +29,17 @@ public:
 
 
 class ColoradarRun {
+protected:
+    std::filesystem::path runDirPath;
+    std::filesystem::path posesDirPath;
+    std::filesystem::path lidarScansDirPath;
+    std::filesystem::path radarScansDirPath;
+    std::filesystem::path pointcloudsDirPath;
+    std::filesystem::path lidarMapsDirPath;
+
+    std::vector<double> readTimestamps(const std::filesystem::path& path);
+    int findClosestEarlierTimestamp(const double& targetTs, const std::vector<double>& timestamps);
+
 public:
     const std::string name;
 
@@ -53,21 +64,18 @@ public:
     pcl::PointCloud<pcl::PointXYZI> readLidarOctomap();
 
     void sampleMapFrames(const float& horizontalFov, const float& verticalFov, const float& range);
-
-protected:
-    std::filesystem::path runDirPath;
-    std::filesystem::path posesDirPath;
-    std::filesystem::path lidarScansDirPath;
-    std::filesystem::path radarScansDirPath;
-    std::filesystem::path pointcloudsDirPath;
-    std::filesystem::path lidarMapsDirPath;
-
-    std::vector<double> readTimestamps(const std::filesystem::path& path);
-    int findClosestEarlierTimestamp(const double& targetTs, const std::vector<double>& timestamps);
 };
 
 
 class ColoradarDataset {
+protected:
+    std::filesystem::path coloradarDirPath;
+    std::filesystem::path calibDirPath;
+    std::filesystem::path transformsDirPath;
+    std::filesystem::path runsDirPath;
+
+    Eigen::Affine3f loadTransform(const std::filesystem::path& filePath);
+
 public:
     ColoradarDataset(const std::filesystem::path& coloradarPath);
 
@@ -83,14 +91,6 @@ public:
         const float& lidarMaxRange,
         const std::vector<std::string>& targetRuns = std::vector<std::string>()
     );
-
-protected:
-    std::filesystem::path coloradarDirPath;
-    std::filesystem::path calibDirPath;
-    std::filesystem::path transformsDirPath;
-    std::filesystem::path runsDirPath;
-
-    Eigen::Affine3f loadTransform(const std::filesystem::path& filePath);
 };
 
 }

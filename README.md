@@ -1,9 +1,10 @@
 # mapless-navigation
 
 ## Standard Build
+
 #### 1. Install dependencies:
 ```bash
-apt install libpcl-dev liboctomap-dev libgtest-dev
+apt install libpcl-dev liboctomap-dev libgtest-dev libopencv-dev
 ```
 
 #### 2. Build:
@@ -15,7 +16,7 @@ make -C build
 
 #### 3. Run tests:
 ```bash
-./build/tests
+./build/coloradar_tests
 ```
 
 #### 4. Create a Python environment:
