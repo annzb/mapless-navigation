@@ -47,7 +47,6 @@ octomap::OcTree coloradar::ColoradarRun::buildLidarOctomap(
     std::vector<double> poseTimestamps = getPoseTimestamps();
     std::vector<octomath::Pose6D> poses = getPoses<octomath::Pose6D>();
     octomap::OcTree tree(mapResolution);
-    // std::cout << "Using FOV H " << lidarTotalHorizontalFov << " V " << lidarTotalVerticalFov << " R " << maxRange << std::endl;
 
     for (size_t i = 0; i < lidarTimestamps.size(); ++i) {
         OctoPointcloud cloud = getLidarPointCloud<coloradar::OctoPointcloud>(i);

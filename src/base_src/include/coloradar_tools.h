@@ -81,6 +81,7 @@ public:
 
     Eigen::Affine3f getBaseToLidarTransform();
     Eigen::Affine3f getBaseToRadarTransform();
+    Eigen::Affine3f getBaseToCascadeRadarTransform();
     std::vector<std::string> listRuns();
     ColoradarRun getRun(const std::string& runName);
 

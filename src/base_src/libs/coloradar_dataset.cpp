@@ -27,6 +27,12 @@ Eigen::Affine3f coloradar::ColoradarDataset::getBaseToRadarTransform() {
     return transform;
 }
 
+Eigen::Affine3f coloradar::ColoradarDataset::getBaseToCascadeRadarTransform() {
+    std::filesystem::path baseToRadarTransformPath = transformsDirPath / "base_to_cascade.txt";
+    Eigen::Affine3f transform = loadTransform(baseToRadarTransformPath);
+    return transform;
+}
+
 std::vector<std::string> coloradar::ColoradarDataset::listRuns() {
     std::vector<std::string> runs;
     for (const auto& entry : std::filesystem::directory_iterator(runsDirPath)) {

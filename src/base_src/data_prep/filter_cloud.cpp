@@ -36,14 +36,18 @@ bool generateRandomEmptySpace(float probability) {
     return dis(gen) < probability;
 }
 
-coloradar::OctoPointcloud generateSpherePointCloud(float radius, float step, float emptySpaceProbability) {
-    coloradar::OctoPointcloud cloud;
+const int randomSeed = 42;
+std::mt19937 gen;
+std::uniform_real_distribution<> dis{0.0, 1.0};
+
+pcl::PointCloud<pcl::PointXYZI> generateSpherePointCloud(float radius, float step, float emptySpaceProbability) {
+    pcl::PointCloud<pcl::PointXYZI> cloud;
     for (float x = -radius; x <= radius; x += step) {
         for (float y = -radius; y <= radius; y += step) {
             for (float z = -radius; z <= radius; z += step) {
                 if (x*x + y*y + z*z <= radius * radius) {
                     if (!generateRandomEmptySpace(emptySpaceProbability)) {
-                        cloud.push_back(octomap::point3d(x, y, z));
+                        cloud.push_back(pcl::PointXYZI(x, y, z, dis(gen)));
                     }
                 }
             }
@@ -65,7 +69,7 @@ int main(int argc, char** argv) {
     float maxRange = args.find("range") != args.end() ? std::stod(args["range"]) : 0.0;
 
     fs::path outputDirPath;
-    coloradar::OctoPointcloud octoCloud;
+    pcl::PointCloud<pcl::PointXYZI> cloud;
 
     if (!outputDir.empty()) {
         outputDirPath = fs::path(outputDir);
@@ -82,21 +86,18 @@ int main(int argc, char** argv) {
             throw std::runtime_error("File not found " + pcdFile);
         }
         outputDirPath = pcdFilePath.parent_path();
-
-        pcl::PointCloud<pcl::PointXYZ> cloud;
-        pcl::io::loadPCDFile<pcl::PointXYZ>(pcdFilePath.string(), cloud);
-        octoCloud = coloradar::OctoPointcloud(cloud);
+        pcl::io::loadPCDFile<pcl::PointXYZI>(pcdFilePath.string(), cloud);
     } else {
         if (outputDirPath.empty()) {
             std::cerr << "Either pcdFilePath or outputDir expected." << std::endl;
             std::cerr << "Usage: " << argv[0] << " [pcdFilePath=<str>.pcd] [outputDir=<str>] [randomPclRadius=<meters>] [randomPclStep=<meters>] [randomPclEmptyPortion=<meters>] [verticalFov=<degrees>] [horizontalFov=<degrees>] [range=<meters>]" << std::endl;
             return -1;
         }
-        octoCloud = generateSpherePointCloud(randomPclRadius, randomPclStep, randomPclEmptyPortion);
+        cloud = generateSpherePointCloud(randomPclRadius, randomPclStep, randomPclEmptyPortion);
+        pcl::io::savePCDFile(outputDirPath / "original_cloud.pcd", cloud);
     }
-    pcl::io::savePCDFile(outputDirPath / "original_cloud.pcd", octoCloud.toPcl<pcl::PointCloud<pcl::PointXYZ>>());
 
     float range = maxRange == 0 ? std::numeric_limits<float>::max() : maxRange;
-    octoCloud.filterFov(horizontalFov, verticalFov, range);
-    pcl::io::savePCDFile(outputDirPath / "filtered_cloud.pcd", octoCloud.toPcl<pcl::PointCloud<pcl::PointXYZ>>());
+    coloradar::filterFov(cloud, horizontalFov, verticalFov, range);
+    pcl::io::savePCDFile(outputDirPath / "filtered_cloud.pcd", cloud);
 }

@@ -137,20 +137,24 @@ def get_heatmap(filename, num_elevation_bins, num_azimuth_bins, num_range_bins):
 
 class RadarParameters:
     def __init__(self, coloradar_path):
-        hm_cfg_file_path = os.path.join(coloradar_path, 'calib', 'single_chip', 'heatmap_cfg.txt')
-        if not os.path.isfile(hm_cfg_file_path):
-            raise ValueError(f'Heatmap config {hm_cfg_file_path} not found')
         self.num_range_bins = None
         self.num_elevation_bins = None
         self.num_azimuth_bins = None
         self.range_bin_width = None
         self.azimuth_bins = []
         self.elevation_bins = []
+
+        hm_cfg_file_path = self._find_cfg(coloradar_path)
+        if not os.path.isfile(hm_cfg_file_path):
+            raise ValueError(f'Heatmap config {hm_cfg_file_path} not found')
         self._parse_config_file(hm_cfg_file_path)
 
         self.test_output_dir = os.path.join(coloradar_path, 'test_output')
         if not os.path.isdir(self.test_output_dir):
             os.mkdir(self.test_output_dir)
+
+    def _find_cfg(self, coloradar_path):
+        return os.path.join(coloradar_path, 'calib', 'single_chip', 'heatmap_cfg.txt')
 
     def _parse_config_file(self, hm_cfg_file_path):
         with open(hm_cfg_file_path, 'r') as f:
@@ -221,19 +225,45 @@ class RadarParameters:
             raise ValueError(f'Select azimuth FOV from 0 to {self.num_elevation_bins // 2 - 1}')
         if not 0 < max_range_meters <= self.max_range:
             raise ValueError(f'Select max range from 0 to {self.max_range}')
-        azimuth_fov_degrees = np.round(np.degrees(-self.azimuth_bins[self.num_azimuth_bins // 2 - 1 - azimuth_fov_idx]),
-                                       1)
-        elevation_fov_degrees = np.round(
-            np.degrees(-self.elevation_bins[self.num_elevation_bins // 2 - 1 - elevation_fov_idx]), 1)
+        azimuth_fov_degrees = np.round(np.degrees(-self.azimuth_bins[self.num_azimuth_bins // 2 - 1 - azimuth_fov_idx]), 1)
+        elevation_fov_degrees = np.round(np.degrees(-self.elevation_bins[self.num_elevation_bins // 2 - 1 - elevation_fov_idx]), 1)
         return {
-            'horizontal_fov': azimuth_fov_degrees,
-            'vertical_fov': elevation_fov_degrees,
+            'horizontalFov': azimuth_fov_degrees * 2,
+            'verticalFov': elevation_fov_degrees * 2,
             'range': max_range_meters
         }
+
+class CascadeRadarParameters(RadarParameters):
+    def _find_cfg(self, coloradar_path):
+        return os.path.join(coloradar_path, 'calib', 'cascade', 'heatmap_cfg.txt')
 
 
 def show_pcl(pcd_file_path):
     pcd = o3d.io.read_point_cloud(pcd_file_path)
+    axes = o3d.geometry.TriangleMesh.create_coordinate_frame(size=10.0)
+    o3d.visualization.draw_geometries([pcd, axes])
+
+
+def show_pcl_prob(pcd_file_path, prob_threshold=0):
+    with open(pcd_file_path, 'r') as f:
+        lines = f.readlines()
+    data_start_idx = next(i for i, line in enumerate(lines) if line.strip().startswith("DATA"))
+    data = np.loadtxt(lines[data_start_idx+1:], delimiter=' ')
+
+    points = data[:, :3]
+    log_odds = data[:, 3]
+    probabilities = 1 - 1 / (1 + np.exp(log_odds))
+
+    mask = probabilities >= prob_threshold
+    filtered_points = points[mask]
+    filtered_probs = probabilities[mask]
+
+    cmap = plt.get_cmap("plasma")
+    colors = cmap(filtered_probs)[:, :3]
+
+    pcd = o3d.geometry.PointCloud()
+    pcd.points = o3d.utility.Vector3dVector(filtered_points)
+    pcd.colors = o3d.utility.Vector3dVector(colors)
     axes = o3d.geometry.TriangleMesh.create_coordinate_frame(size=10.0)
     o3d.visualization.draw_geometries([pcd, axes])
 
@@ -254,7 +284,7 @@ class ColoradarDataset:
             self, run_name, map_resolution=0.1,
             horizontal_fov=360, vertical_fov=180, max_range=0
     ):
-        print('Building map for ', run_name, '...')
+        print('Building map for', run_name, '...')
         command = [
             './build/build_octomap', self.coloradar_path, run_name,
             f'map_resolution={map_resolution}',
@@ -265,7 +295,10 @@ class ColoradarDataset:
         _run_command(command)
 
     def show_octomap(self, run_name):
-        show_pcl(os.path.join(self.coloradar_path, 'lidar_maps', run_name, 'map.pcd'))
+        show_pcl(os.path.join(self.runs_path, run_name, 'lidar_maps', 'map.pcd'))
+
+    def show_octomap_prob(self, run_name, prob_threshold=0):
+        show_pcl_prob(os.path.join(self.runs_path, run_name, 'lidar_maps', 'map.pcd'), prob_threshold=prob_threshold)
 
 
 def _run_command(command):
@@ -285,7 +318,8 @@ def filter_cloud(
         horizontal_fov=360, vertical_fov=33.2, max_range=20
 ):
     command = [
-        './build/filter_cloud', pcd_file_path,
+        './build/filter_cloud',
+        f'pcdFilePath={pcd_file_path}',
         f'randomPclRadius={random_pcl_radius}',
         f'randomPclStep={random_pcl_step}',
         f'randomPclEmptyPortion={random_pcl_empty_portion}',
