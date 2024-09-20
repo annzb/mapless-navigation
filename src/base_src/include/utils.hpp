@@ -38,6 +38,53 @@ namespace {
 
 }
 
+template<coloradar::Pcl4dPointType PointT>
+PointT coloradar::internal::makePoint(const float& x, const float& y, const float& z, const float& i) { return PointT(x, y, z, i); }
+
+template<coloradar::PointType PointT>
+PointT coloradar::internal::makePoint(const float& x, const float& y, const float& z, const float& i) { return PointT(x, y, z); }
+
+template<coloradar::PclPoseType PoseT>
+PoseT coloradar::internal::makePose(const typename coloradar::PoseTraits<PoseT>::TranslationType& translation, const typename coloradar::PoseTraits<PoseT>::RotationType& rotation) {
+    PoseT pose = PoseT::Identity();
+    pose.translate(translation);
+    pose.rotate(rotation);
+    return pose;
+}
+template<coloradar::OctoPoseType PoseT>
+PoseT coloradar::internal::makePose(const typename coloradar::PoseTraits<PoseT>::TranslationType& translation, const typename coloradar::PoseTraits<PoseT>::RotationType& rotation) {
+    return PoseT(translation, rotation);
+}
+
+
+template<coloradar::PointType PointT, coloradar::CloudType CloudT>
+CloudT coloradar::internal::readLidarPointCloud(const std::filesystem::path& binPath) {
+    coloradar::internal::checkPathExists(binPath);
+    std::ifstream infile(binPath, std::ios::binary);
+    if (!infile) {
+        throw std::runtime_error("Failed to open file: " + binPath.string());
+    }
+    infile.seekg(0, std::ios::end);
+    size_t numPoints = infile.tellg() / (4 * sizeof(float));
+    infile.seekg(0, std::ios::beg);
+
+    CloudT cloud;
+    cloud.reserve(numPoints);
+
+    for (size_t j = 0; j < numPoints; ++j) {
+        float x, y, z, i;
+        infile.read(reinterpret_cast<char*>(&x), sizeof(float));
+        infile.read(reinterpret_cast<char*>(&y), sizeof(float));
+        infile.read(reinterpret_cast<char*>(&z), sizeof(float));
+        infile.read(reinterpret_cast<char*>(&i), sizeof(float));
+        cloud.push_back(coloradar::internal::makePoint<PointT>(x, y, z, i));
+    }
+    if (cloud.size() < 1) {
+        throw std::runtime_error("Failed to read or empty point cloud: " + binPath.string());
+    }
+    return cloud;
+}
+
 
 template<typename PointT, typename CloudT>
 void coloradar::internal::filterFov(CloudT& cloud, const float& horizontalFov, const float& verticalFov, const float& range) {

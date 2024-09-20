@@ -14,6 +14,8 @@ coloradar::ColoradarRun::ColoradarRun(const std::filesystem::path& runPath) : ru
     coloradar::internal::checkPathExists(lidarScansDirPath);
     radarScansDirPath = runDirPath / "single_chip";
     coloradar::internal::checkPathExists(radarScansDirPath);
+    cascadeScansDirPath = runDirPath / "cascade";
+    coloradar::internal::checkPathExists(cascadeScansDirPath);
     pointcloudsDirPath = lidarScansDirPath / "pointclouds";
     coloradar::internal::checkPathExists(pointcloudsDirPath);
     lidarMapsDirPath = runDirPath / "lidar_maps";
@@ -34,6 +36,12 @@ std::vector<double> coloradar::ColoradarRun::getRadarTimestamps() {
     std::filesystem::path tsFilePath = radarScansDirPath / "timestamps.txt";
     return readTimestamps(tsFilePath);
 }
+
+std::vector<double> coloradar::ColoradarRun::getCascadeTimestamps() {
+    std::filesystem::path tsFilePath = cascadeScansDirPath / "timestamps.txt";
+    return readTimestamps(tsFilePath);
+}
+
 
 octomap::OcTree coloradar::ColoradarRun::buildLidarOctomap(
     const double& mapResolution,

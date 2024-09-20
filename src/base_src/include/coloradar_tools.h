@@ -34,6 +34,7 @@ protected:
     std::filesystem::path posesDirPath;
     std::filesystem::path lidarScansDirPath;
     std::filesystem::path radarScansDirPath;
+    std::filesystem::path cascadeScansDirPath;
     std::filesystem::path pointcloudsDirPath;
     std::filesystem::path lidarMapsDirPath;
 
@@ -48,9 +49,13 @@ public:
     std::vector<double> getPoseTimestamps();
     std::vector<double> getLidarTimestamps();
     std::vector<double> getRadarTimestamps();
+    std::vector<double> getCascadeTimestamps();
 
-    template<typename PoseT> std::vector<PoseT> getPoses();
-    template<CloudType CloudT> CloudT getLidarPointCloud(const std::filesystem::path& binPath);
+    template<PoseType PoseT> std::vector<PoseT> getPoses();
+    template<coloradar::PoseType PoseT> std::vector<PoseT> interpolatePoses(const std::vector<PoseT>& poses, const std::vector<double>& poseTimestamps, const std::vector<double>& targetTimestamps);
+
+    template<PclCloudType CloudT> CloudT getLidarPointCloud(const std::filesystem::path& binPath);
+    template<OctomapCloudType CloudT> CloudT getLidarPointCloud(const std::filesystem::path& binPath);
     template<CloudType CloudT> CloudT getLidarPointCloud(const int& cloudIdx);
 
     octomap::OcTree buildLidarOctomap(

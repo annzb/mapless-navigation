@@ -60,6 +60,7 @@ pcl::PointCloud<pcl::PointXYZI> generateSpherePointCloud(float radius, float ste
 int main(int argc, char** argv) {
     auto args = parseArguments(argc, argv);
     std::string pcdFile = args.find("pcdFilePath") != args.end() ? args["pcdFilePath"] : "";
+    std::string outputFileName = args.find("outputFileName") != args.end() ? args["outputFileName"] : "";
     std::string outputDir = args.find("outputDir") != args.end() ? args["outputDir"] : "";
     float randomPclRadius = args.find("randomPclRadius") != args.end() ? std::stod(args["randomPclRadius"]) : 10.0;
     float randomPclStep = args.find("randomPclStep") != args.end() ? std::stod(args["randomPclStep"]) : 0.5;
@@ -96,8 +97,14 @@ int main(int argc, char** argv) {
         cloud = generateSpherePointCloud(randomPclRadius, randomPclStep, randomPclEmptyPortion);
         pcl::io::savePCDFile(outputDirPath / "original_cloud.pcd", cloud);
     }
-
+    if (outputFileName.empty()) {
+        if (!pcdFile.empty()) {
+            outputFileName = pcdFilePath.stem() + "_filtered" + pcdFilePath.extension();
+        } else {
+            outputFileName = "cloud_filtered.pcd"
+        }
+    }
     float range = maxRange == 0 ? std::numeric_limits<float>::max() : maxRange;
     coloradar::filterFov(cloud, horizontalFov, verticalFov, range);
-    pcl::io::savePCDFile(outputDirPath / "filtered_cloud.pcd", cloud);
+    pcl::io::savePCDFile(outputDirPath / outputFileName, cloud);
 }
