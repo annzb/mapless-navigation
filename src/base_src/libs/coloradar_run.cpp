@@ -16,8 +16,10 @@ coloradar::ColoradarRun::ColoradarRun(const std::filesystem::path& runPath) : ru
     coloradar::internal::checkPathExists(radarScansDirPath);
     cascadeScansDirPath = runDirPath / "cascade";
     coloradar::internal::checkPathExists(cascadeScansDirPath);
-    pointcloudsDirPath = lidarScansDirPath / "pointclouds";
-    coloradar::internal::checkPathExists(pointcloudsDirPath);
+    cascadeHeatmapsDirPath = cascadeScansDirPath / "heatmaps";
+    coloradar::internal::checkPathExists(cascadeHeatmapsDirPath);
+    lidarCloudsDirPath = lidarScansDirPath / "pointclouds";
+    coloradar::internal::checkPathExists(lidarCloudsDirPath);
     lidarMapsDirPath = runDirPath / "lidar_maps";
 }
 
@@ -38,7 +40,7 @@ std::vector<double> coloradar::ColoradarRun::getRadarTimestamps() {
 }
 
 std::vector<double> coloradar::ColoradarRun::getCascadeTimestamps() {
-    std::filesystem::path tsFilePath = cascadeScansDirPath / "timestamps.txt";
+    std::filesystem::path tsFilePath = cascadeHeatmapsDirPath / "timestamps.txt";
     return readTimestamps(tsFilePath);
 }
 

@@ -276,9 +276,54 @@ class ColoradarDataset:
         self.runs_path = os.path.join(self.coloradar_path, 'kitti')
         if not os.path.isdir(self.runs_path):
             raise ValueError(f'Data path {self.runs_path} does not exist')
+        self.test_output_dir = os.path.join(self.coloradar_path, 'test_output')
+        if not os.path.isdir(self.test_output_dir):
+            os.mkdir(self.test_output_dir)
 
     def list_runs(self):
         return os.listdir(self.runs_path)
+
+    def interpolate_poses_for_lidar(self, run_name):
+        command = [
+            './build/interpolate_poses_for_lidar',
+            self.coloradar_path, run_name,
+            f'outputFilePath={os.path.join(self.test_output_dir, run_name + "_lidar_poses_interpolated.txt")}'
+        ]
+        _run_command(command)
+
+    def interpolate_poses_for_cascade(self, run_name):
+        command = [
+            './build/interpolate_poses_for_cascade',
+            self.coloradar_path, run_name,
+            f'outputFilePath={os.path.join(self.test_output_dir, run_name + "_cascade_poses_interpolated.txt")}'
+        ]
+        _run_command(command)
+
+    def show_poses(self, run_name):
+        self.interpolate_poses_for_lidar(run_name)
+        self.interpolate_poses_for_cascade(run_name)
+
+        gt_timestamps_path = os.path.join(self.runs_path, run_name, 'groundtruth', 'timestamps.txt')
+        lidar_timestamps_path = os.path.join(self.runs_path, run_name, 'lidar', 'timestamps.txt')
+        cascade_timestamps_path = os.path.join(self.runs_path, run_name, 'cascade', 'heatmaps', 'timestamps.txt')
+        gt_poses_path = os.path.join(self.runs_path, run_name, 'groundtruth', 'groundtruth_poses.txt')
+        lidar_poses_path = os.path.join(self.test_output_dir, run_name + "_lidar_poses_interpolated.txt")
+        cascade_poses_path = os.path.join(self.test_output_dir, run_name + "_cascade_poses_interpolated.txt")
+        for fp in gt_timestamps_path, lidar_timestamps_path, cascade_timestamps_path, gt_poses_path, lidar_poses_path, cascade_poses_path:
+            if not os.path.isfile(fp):
+                raise ValueError(f'File {fp} does not exist')
+
+        gt_timestamps, lidar_timestamps, cascade_timestamps = np.loadtxt(gt_timestamps_path), np.loadtxt(lidar_timestamps_path), np.loadtxt(cascade_timestamps_path)
+        gt_poses, lidar_poses, cascade_poses = np.loadtxt(gt_poses_path), np.loadtxt(lidar_poses_path), np.loadtxt(cascade_poses_path)
+        gt_translations, gt_rotations = gt_poses[:, :3], gt_poses[:, 3:]
+        lidar_translations, lidar_rotations = lidar_poses[:, :3], lidar_poses[:, 3:]
+        cascade_translations, cascade_rotations = cascade_poses[:, :3], cascade_poses[:, 3:]
+        # plot_translations(gt_translations, lidar_translations, gt_timestamps, lidar_timestamps, 'Ground Truth vs Lidar', 'lidar')
+        plot_rotations(gt_rotations, lidar_rotations, gt_timestamps, lidar_timestamps, 'Ground Truth vs Lidar', 'lidar')
+        # plot_translations(gt_translations, cascade_translations, gt_timestamps, cascade_timestamps, 'Ground Truth vs Cascade', 'cascade')
+        plot_rotations(gt_rotations, cascade_rotations, gt_timestamps, cascade_timestamps, 'Ground Truth vs Cascade', 'cascade')
+
+        # plt.plot(cascade_timestamps, cascade_rotations[:, 3], label='cascade_w', color='b')
 
     def build_octomap(
             self, run_name, map_resolution=0.1,
@@ -330,3 +375,55 @@ def filter_cloud(
     if output_dir:
         command.append(f'outputDir={output_dir}')
     _run_command(command)
+
+def plot_translations(gt, other, gt_ts, other_ts, title, label):
+    plt.figure(figsize=(10, 6))
+    plt.subplot(3, 1, 1)
+    plt.plot(gt_ts, gt[:, 0], label='gt_x', color='r')
+    plt.plot(other_ts, other[:, 0], label=f'{label}_x', linestyle='--', color='b')
+    plt.title(f'{title} - Translation X')
+    plt.legend()
+
+    plt.subplot(3, 1, 2)
+    plt.plot(gt_ts, gt[:, 1], label='gt_y', color='r')
+    plt.plot(other_ts, other[:, 1], label=f'{label}_y', linestyle='--', color='b')
+    plt.title(f'{title} - Translation Y')
+    plt.legend()
+
+    plt.subplot(3, 1, 3)
+    plt.plot(gt_ts, gt[:, 2], label='gt_z', color='r')
+    plt.plot(other_ts, other[:, 2], label=f'{label}_z', linestyle='--', color='b')
+    plt.title(f'{title} - Translation Z')
+    plt.legend()
+
+    plt.tight_layout()
+    plt.show()
+
+def plot_rotations(gt, other, gt_ts, other_ts, title, label):
+    plt.figure(figsize=(10, 8))
+    plt.subplot(4, 1, 1)
+    plt.plot(gt_ts, gt[:, 0], label='gt_rx', color='r')
+    plt.plot(other_ts, other[:, 0], label=f'{label}_rx', linestyle='--', color='b')
+    plt.title(f'{title} - Rotation X')
+    plt.legend()
+
+    plt.subplot(4, 1, 2)
+    plt.plot(gt_ts, gt[:, 1], label='gt_ry', color='r')
+    plt.plot(other_ts, other[:, 1], label=f'{label}_ry', linestyle='--', color='b')
+    plt.title(f'{title} - Rotation Y')
+    plt.legend()
+
+    plt.subplot(4, 1, 3)
+    plt.plot(gt_ts, gt[:, 2], label='gt_rz', color='r')
+    plt.plot(other_ts, other[:, 2], label=f'{label}_rz', linestyle='--', color='b')
+    plt.title(f'{title} - Rotation Z')
+    plt.legend()
+
+    plt.subplot(4, 1, 4)
+    plt.plot(gt_ts, gt[:, 3], label='gt_w', color='r')
+    plt.plot(other_ts, other[:, 3], label=f'{label}_w', linestyle='--', color='b')
+    plt.title(f'{title} - Rotation W')
+    plt.legend()
+
+    plt.tight_layout()
+    plt.show()

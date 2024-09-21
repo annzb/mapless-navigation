@@ -22,9 +22,10 @@ std::unordered_map<std::string, std::string> parseArguments(int argc, char** arg
 
 void savePoses(const std::vector<Eigen::Affine3f>& poses, const fs::path& path) {
     std::ofstream outfile(path);
-    for (size_t i; i < poses.size(); i++) {
+    for (size_t i = 0; i < poses.size(); ++i) {
+        Eigen::Quaternionf quat(poses[i].rotation());
         outfile << poses[i].translation().x() << " " << poses[i].translation().y() << " " << poses[i].translation().z();
-        outfile << " " << poses[i].rotation().x() << " " << poses[i].rotation().y() << " " << poses[i].rotation().z() << " " << poses[i].rotation().w();
+        outfile << " " << quat.x() << " " << quat.y() << " " << quat.z() << " " << quat.w() << std::endl;
     }
     outfile.close();
 }

@@ -38,6 +38,9 @@ namespace {
 
 }
 
+template<typename RotationT> Eigen::Quaternionf coloradar::internal::toEigenQuat(const RotationT& r) { return Eigen::Quaternionf(r); }
+template<typename RotationT> RotationT coloradar::internal::fromEigenQuat(const Eigen::Quaternionf& r) { return r; }
+
 template<coloradar::Pcl4dPointType PointT>
 PointT coloradar::internal::makePoint(const float& x, const float& y, const float& z, const float& i) { return PointT(x, y, z, i); }
 

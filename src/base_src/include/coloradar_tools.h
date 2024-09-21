@@ -35,8 +35,9 @@ protected:
     std::filesystem::path lidarScansDirPath;
     std::filesystem::path radarScansDirPath;
     std::filesystem::path cascadeScansDirPath;
-    std::filesystem::path pointcloudsDirPath;
+    std::filesystem::path lidarCloudsDirPath;
     std::filesystem::path lidarMapsDirPath;
+    std::filesystem::path cascadeHeatmapsDirPath;
 
     std::vector<double> readTimestamps(const std::filesystem::path& path);
     int findClosestEarlierTimestamp(const double& targetTs, const std::vector<double>& timestamps);

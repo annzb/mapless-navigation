@@ -69,6 +69,7 @@ int main(int argc, char** argv) {
     float horizontalFov = args.find("horizontalFov") != args.end() ? std::stod(args["horizontalFov"]) : 360.0;
     float maxRange = args.find("range") != args.end() ? std::stod(args["range"]) : 0.0;
 
+    fs::path pcdFilePath;
     fs::path outputDirPath;
     pcl::PointCloud<pcl::PointXYZI> cloud;
 
@@ -78,7 +79,7 @@ int main(int argc, char** argv) {
     }
     if (!pcdFile.empty()) {
         std::string validExtension = ".pcd";
-        fs::path pcdFilePath(pcdFile);
+        pcdFilePath = fs::path(pcdFile);
         std::string fileExtension = pcdFilePath.extension();
         if (fileExtension != validExtension) {
             throw std::runtime_error("Invalid pcdFilePath: expected ending with " + validExtension + ", got " + fileExtension);
@@ -99,9 +100,9 @@ int main(int argc, char** argv) {
     }
     if (outputFileName.empty()) {
         if (!pcdFile.empty()) {
-            outputFileName = pcdFilePath.stem() + "_filtered" + pcdFilePath.extension();
+            outputFileName = pcdFilePath.stem().string() + "_filtered" + pcdFilePath.extension().string();
         } else {
-            outputFileName = "cloud_filtered.pcd"
+            outputFileName = "cloud_filtered.pcd";
         }
     }
     float range = maxRange == 0 ? std::numeric_limits<float>::max() : maxRange;
