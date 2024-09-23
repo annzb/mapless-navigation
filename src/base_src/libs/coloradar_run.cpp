@@ -55,19 +55,16 @@ octomap::OcTree coloradar::ColoradarRun::buildLidarOctomap(
     float maxRange = lidarMaxRange == 0 ? std::numeric_limits<float>::max() : lidarMaxRange;
     std::vector<double> lidarTimestamps = getLidarTimestamps();
     std::vector<double> poseTimestamps = getPoseTimestamps();
-    std::vector<octomath::Pose6D> poses = getPoses<octomath::Pose6D>();
+    std::vector<octomath::Pose6D> gtPoses = getPoses<octomath::Pose6D>();
+    std::vector<octomath::Pose6D> poses = interpolatePoses(gtPoses, poseTimestamps, lidarTimestamps);
     octomap::OcTree tree(mapResolution);
 
     for (size_t i = 0; i < lidarTimestamps.size(); ++i) {
         OctoPointcloud cloud = getLidarPointCloud<coloradar::OctoPointcloud>(i);
-        double lidarTimestamp = lidarTimestamps[i];
-        int poseIdx = findClosestEarlierTimestamp(lidarTimestamp, poseTimestamps);
-        octomath::Pose6D pose = poses[poseIdx];
-
         cloud.filterFov(lidarTotalHorizontalFov, lidarTotalVerticalFov, maxRange);
         cloud.transform(lidarTransform);
-        cloud.transform(pose);
-        tree.insertPointCloud(cloud, pose.trans());
+        cloud.transform(poses[i]);
+        tree.insertPointCloud(cloud, poses[i].trans());
     }
     return tree;
 }
@@ -88,14 +85,27 @@ pcl::PointCloud<pcl::PointXYZI> coloradar::ColoradarRun::readLidarOctomap() {
     return cloud;
 }
 
-void coloradar::ColoradarRun::sampleMapFrames(const float& horizontalFov, const float& verticalFov, const float& range) {
-    std::vector<Eigen::Affine3f> poses = getPoses<Eigen::Affine3f>();
-    pcl::PointCloud<pcl::PointXYZI> mapCloud = readLidarOctomap();
+void coloradar::ColoradarRun::sampleMapFrames(
+    const float& horizontalFov,
+    const float& verticalFov,
+    const float& range,
+    const Eigen::Affine3f& mapPreTransform,
+    std::vector<octomath::Pose6D> poses
+) {
+    float maxRange = range == 0 ? std::numeric_limits<float>::max() : range;
+    if (poses.empty())
+        poses = getPoses<octomath::Pose6D>();
+    pcl::PointCloud<pcl::PointXYZI> origMapCloud = readLidarOctomap();
+    pcl::PointCloud<pcl::PointXYZI> mapCloud;
+    pcl::transformPointCloud(origMapCloud, mapCloud, mapPreTransform);
 
     for (size_t i = 0; i < poses.size(); ++i) {
+        Eigen::Affine3f pose = coloradar::internal::toEigenPose(poses[i]);
         pcl::PointCloud<pcl::PointXYZI> centeredCloud;
-        pcl::transformPointCloud(mapCloud, centeredCloud, poses[i]);
-        // coloradar::filterFov(pcl::PointCloud<pcl::PointXYZ>& cloud, const float& horizontalFov, const float& verticalFov, const float& range);
+        pcl::transformPointCloud(mapCloud, centeredCloud, pose);
+        filterFov(centeredCloud, horizontalFov, verticalFov, maxRange);
+        std::filesystem::path frameFilePath = lidarMapsDirPath / ("frame_" + std::to_string(i) + ".pcd");
+        pcl::io::savePCDFile(frameFilePath, centeredCloud);
     }
 }
 

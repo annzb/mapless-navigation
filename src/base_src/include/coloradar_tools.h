@@ -69,7 +69,13 @@ public:
     void saveLidarOctomap(const octomap::OcTree& tree);
     pcl::PointCloud<pcl::PointXYZI> readLidarOctomap();
 
-    void sampleMapFrames(const float& horizontalFov, const float& verticalFov, const float& range);
+    void sampleMapFrames(
+        const float& horizontalFov,
+        const float& verticalFov,
+        const float& range,
+        const Eigen::Affine3f& mapPreTransform = Eigen::Affine3f::Identity(),
+        std::vector<octomath::Pose6D> poses = {}
+    );
 };
 
 

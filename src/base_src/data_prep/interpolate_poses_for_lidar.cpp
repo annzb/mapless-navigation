@@ -20,15 +20,6 @@ std::unordered_map<std::string, std::string> parseArguments(int argc, char** arg
     return arguments;
 }
 
-void savePoses(const std::vector<Eigen::Affine3f>& poses, const fs::path& path) {
-    std::ofstream outfile(path);
-    for (size_t i = 0; i < poses.size(); ++i) {
-        Eigen::Quaternionf quat(poses[i].rotation());
-        outfile << poses[i].translation().x() << " " << poses[i].translation().y() << " " << poses[i].translation().z();
-        outfile << " " << quat.x() << " " << quat.y() << " " << quat.z() << " " << quat.w() << std::endl;
-    }
-    outfile.close();
-}
 
 void savePoses(const std::vector<octomath::Pose6D>& poses, const fs::path& path) {
     std::ofstream outfile(path);
@@ -52,8 +43,6 @@ int main(int argc, char** argv) {
     }
     std::string outputFile = args.find("outputFilePath") != args.end() ? args["outputFilePath"] : "";
     fs::path outputFilePath(outputFile.empty() ? "lidar_poses_interpolated.txt" : outputFile);
-//    fs::path gtOutputFilePath = outputFilePath.parent_path() / (runName + "_gt_poses.txt");
-//    fs::path origOutputFilePath = outputFilePath.parent_path() / (runName + "_orig_poses.txt");
 
     coloradar::ColoradarDataset dataset(coloradarDir);
     coloradar::ColoradarRun run = dataset.getRun(runName);
@@ -63,11 +52,4 @@ int main(int argc, char** argv) {
     auto posesInterpolated = run.interpolatePoses(poses, poseTimestamps, lidarTimestamps);
 
     savePoses(posesInterpolated, outputFilePath);
-    // savePoses(posesProcessed, gtOutputFilePath);
-    // savePoses(poses, origOutputFilePath);
-
-//    octomath::Quaternion quat(0.308543, -0.170035, -0.067431, -0.933457);
-//    octomath::Pose6D pose(octomath::Vector3(1, 2, 3), quat);
-//    std::cout << "test rotation: " << quat << "    " << pose.rot() << std::endl;
-//    std::cout << std::endl;
 }

@@ -37,5 +37,8 @@ target_link_libraries(filter_cloud coloradar_tools)
 add_executable(build_octomap data_prep/build_octomap.cpp)
 target_link_libraries(build_octomap coloradar_tools)
 
+add_executable(sample_map_frames data_prep/sample_map_frames.cpp)
+target_link_libraries(sample_map_frames coloradar_tools)
+
 
 # add_definitions(${PCL_DEFINITIONS})

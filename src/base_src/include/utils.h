@@ -11,16 +11,6 @@ namespace coloradar::internal {
     void checkPathExists(const std::filesystem::path& path);
     void createDirectoryIfNotExists(const std::filesystem::path& dirPath);
 
-    template<typename PoseT> Eigen::Vector3f toEigenTrans(const PoseT& pose);
-    template<typename PoseT> Eigen::Quaternionf toEigenQuat(const PoseT& pose);
-    template<> Eigen::Vector3f toEigenTrans(const octomath::Pose6D& pose);
-    template<> Eigen::Quaternionf toEigenQuat(const octomath::Pose6D& pose);
-
-    template<typename TransT> TransT fromEigenTrans(const Eigen::Vector3f& r);
-    template<typename RotationT> RotationT fromEigenQuat(const Eigen::Quaternionf& r);
-    template<> octomath::Vector3 fromEigenTrans(const Eigen::Vector3f& r);
-    template<> octomath::Quaternion fromEigenQuat(const Eigen::Quaternionf& r);
-
     template<coloradar::Pcl4dPointType PointT> PointT makePoint(const float& x, const float& y, const float& z, const float& i);
     template<coloradar::PointType PointT> PointT makePoint(const float& x, const float& y, const float& z, const float& i);
 
@@ -28,6 +18,21 @@ namespace coloradar::internal {
     PoseT makePose(const typename coloradar::PoseTraits<PoseT>::TranslationType& translation, const typename coloradar::PoseTraits<PoseT>::RotationType& rotation);
     template<coloradar::OctoPoseType PoseT>
     PoseT makePose(const typename coloradar::PoseTraits<PoseT>::TranslationType& translation, const typename coloradar::PoseTraits<PoseT>::RotationType& rotation);
+
+    template<coloradar::PclPoseType PoseT> Eigen::Vector3f toEigenTrans(const PoseT& pose);
+    template<coloradar::PclPoseType PoseT> Eigen::Quaternionf toEigenQuat(const PoseT& pose);
+    template<coloradar::OctoPoseType PoseT> Eigen::Vector3f toEigenTrans(const PoseT& pose);
+    template<coloradar::OctoPoseType PoseT> Eigen::Quaternionf toEigenQuat(const PoseT& pose);
+;
+    template<typename TransT> TransT fromEigenTrans(const Eigen::Vector3f& r);
+    template<typename RotationT> RotationT fromEigenQuat(const Eigen::Quaternionf& r);
+    template<> octomath::Vector3 fromEigenTrans(const Eigen::Vector3f& r);
+    template<> octomath::Quaternion fromEigenQuat(const Eigen::Quaternionf& r);
+
+    template<coloradar::PclPoseType PoseT> Eigen::Affine3f toEigenPose(const PoseT& pose);
+    template<coloradar::PclPoseType PoseT> PoseT fromEigenPose(const Eigen::Affine3f& pose);
+    template<coloradar::OctoPoseType PoseT> Eigen::Affine3f toEigenPose(const PoseT& pose);
+    template<coloradar::OctoPoseType PoseT> PoseT fromEigenPose(const Eigen::Affine3f& pose);
 
     template<coloradar::PointType PointT, coloradar::CloudType CloudT> CloudT readLidarPointCloud(const std::filesystem::path& binPath);
 

@@ -7,15 +7,6 @@
 #include <sstream>
 
 
-template<typename PoseT, typename QuatT> void printPose(const PoseT& pose, const QuatT& quat) { std::cout << "undefined" << std::endl; }
-template<coloradar::PclPoseType PoseT, typename QuatT> void printPose(const PoseT& pose, const QuatT& quat) {
-    std::cout << "Pose reading" << std::endl;
-    std::cout << "Quat: " << quat << std::endl;
-    Eigen::Quaternionf poseQuat(pose.rotation());
-    std::cout << "Pose: " << poseQuat << std::endl << std::endl;
-}
-
-
 template<coloradar::PoseType PoseT>
 std::vector<PoseT> coloradar::ColoradarRun::getPoses() {
     std::filesystem::path posesFilePath = posesDirPath / "groundtruth_poses.txt";

@@ -230,9 +230,9 @@ class RadarParameters:
         azimuth_fov_degrees = np.round(np.degrees(-self.azimuth_bins[self.num_azimuth_bins // 2 - 1 - azimuth_fov_idx]), 1)
         elevation_fov_degrees = np.round(np.degrees(-self.elevation_bins[self.num_elevation_bins // 2 - 1 - elevation_fov_idx]), 1)
         return {
-            'horizontalFov': azimuth_fov_degrees * 2,
-            'verticalFov': elevation_fov_degrees * 2,
-            'range': max_range_meters
+            'horizontal_fov': azimuth_fov_degrees * 2,
+            'vertical_fov': elevation_fov_degrees * 2,
+            'max_range': max_range_meters
         }
 
 class CascadeRadarParameters(RadarParameters):
@@ -303,43 +303,24 @@ class ColoradarDataset:
 
     def show_poses(self, run_name):
         self.interpolate_poses_for_lidar(run_name)
-        self.interpolate_poses_for_cascade(run_name)
 
         gt_timestamps_path = os.path.join(self.runs_path, run_name, 'groundtruth', 'timestamps.txt')
         lidar_timestamps_path = os.path.join(self.runs_path, run_name, 'lidar', 'timestamps.txt')
         cascade_timestamps_path = os.path.join(self.runs_path, run_name, 'cascade', 'heatmaps', 'timestamps.txt')
-
         gt_poses_path = os.path.join(self.runs_path, run_name, 'groundtruth', 'groundtruth_poses.txt')
-        # gt_poses_path = os.path.join(self.test_output_dir, run_name + "_orig_poses.txt")  # os.path.join(self.test_output_dir, run_name + "_gt_poses.txt")
         lidar_poses_path = os.path.join(self.test_output_dir, run_name + "_lidar_poses_interpolated.txt")
         cascade_poses_path = os.path.join(self.test_output_dir, run_name + "_cascade_poses_interpolated.txt")
         for fp in gt_timestamps_path, lidar_timestamps_path, cascade_timestamps_path, gt_poses_path, lidar_poses_path, cascade_poses_path:
             if not os.path.isfile(fp):
                 raise ValueError(f'File {fp} does not exist')
 
-        gt_timestamps, lidar_timestamps, cascade_timestamps = np.loadtxt(gt_timestamps_path), np.loadtxt(lidar_timestamps_path), np.loadtxt(cascade_timestamps_path)
-        gt_poses, lidar_poses, cascade_poses = np.loadtxt(gt_poses_path), np.loadtxt(lidar_poses_path), np.loadtxt(cascade_poses_path)
+        gt_timestamps, lidar_timestamps = np.loadtxt(gt_timestamps_path), np.loadtxt(lidar_timestamps_path)
+        gt_poses, lidar_poses = np.loadtxt(gt_poses_path), np.loadtxt(lidar_poses_path)
         gt_translations, gt_rotations = gt_poses[:, :3], gt_poses[:, 3:]
         lidar_translations, lidar_rotations = lidar_poses[:, :3], lidar_poses[:, 3:]
-        cascade_translations, cascade_rotations = cascade_poses[:, :3], cascade_poses[:, 3:]
-
-        # original_poses = np.loadtxt(original_gt_poses_path)
-        # original_translations, original_rotations = original_poses[:, :3], original_poses[:, 3:]
-        # idx = len(original_poses) // 4 * 3
-        # print("Orig pose before save", original_poses[idx, 3], original_poses[idx, 4], original_poses[idx, 5], original_poses[idx, 6])
-        # print("Orig pose after save", gt_poses[idx, 3], gt_poses[idx, 4], gt_poses[idx, 5], gt_poses[idx, 6])
-
-        # plot_translations(original_translations, gt_translations, gt_timestamps, gt_timestamps, 'Original Poses vs Processed', 'processed')
-        # plot_rotations(original_rotations, gt_rotations, gt_timestamps, gt_timestamps, 'Original Poses vs Processed', 'processed')
 
         plot_translations(gt_translations, lidar_translations, gt_timestamps, lidar_timestamps, 'Ground Truth vs Lidar', 'lidar')
         plot_rotations(gt_rotations, lidar_rotations, gt_timestamps, lidar_timestamps, 'Ground Truth vs Lidar', 'lidar')
-        plot_translations(gt_translations, cascade_translations, gt_timestamps, cascade_timestamps, 'Ground Truth vs Cascade', 'cascade')
-        plot_rotations(gt_rotations, cascade_rotations, gt_timestamps, cascade_timestamps, 'Ground Truth vs Cascade', 'cascade')
-
-        # plot_rotations_euler(gt_rotations, lidar_rotations, gt_timestamps, lidar_timestamps, 'Ground Truth vs Lidar', 'lidar')
-
-        # plt.plot(cascade_timestamps, cascade_rotations[:, 3], label='cascade_w', color='b')
 
     def build_octomap(
             self, run_name, map_resolution=0.1,
@@ -360,6 +341,22 @@ class ColoradarDataset:
 
     def show_octomap_prob(self, run_name, prob_threshold=0):
         show_pcl_prob(os.path.join(self.runs_path, run_name, 'lidar_maps', 'map.pcd'), prob_threshold=prob_threshold)
+
+    def sample_map_frames(self, run_name, horizontal_fov=360, vertical_fov=180, max_range=0, device=None):
+        if device not in (None, "cascade", "single_chip"):
+            raise ValueError(f'Device {device} is not supported, supported values:', None, "cascade", "single_chip")
+
+        print('Sampling map frames for', run_name, '...')
+        command = [
+            './build/sample_map_frames', self.coloradar_path, run_name,
+            f'horizontalFov={horizontal_fov}',
+            f'verticalFov={vertical_fov}',
+            f'range={max_range}'
+        ]
+        if device in ("cascade", "single_chip"):
+            command.append(f'applyTransform={device}')
+        print(' '.join(command))
+        _run_command(command)
 
 
 def _run_command(command):

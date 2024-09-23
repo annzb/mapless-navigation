@@ -38,11 +38,6 @@ namespace {
 
 }
 
-template<typename PoseT> Eigen::Vector3f coloradar::internal::toEigenTrans(const PoseT& pose) { return Eigen::Vector3f(pose.translation()); }
-template<typename PoseT> Eigen::Quaternionf coloradar::internal::toEigenQuat(const PoseT& pose) { return Eigen::Quaternionf(pose.rotation()); }
-
-template<typename TransT> TransT coloradar::internal::fromEigenTrans(const Eigen::Vector3f& r) { return r; }
-template<typename RotationT> RotationT coloradar::internal::fromEigenQuat(const Eigen::Quaternionf& r) { return r; }
 
 template<coloradar::Pcl4dPointType PointT>
 PointT coloradar::internal::makePoint(const float& x, const float& y, const float& z, const float& i) { return PointT(x, y, z, i); }
@@ -60,6 +55,27 @@ PoseT coloradar::internal::makePose(const typename coloradar::PoseTraits<PoseT>:
 template<coloradar::OctoPoseType PoseT>
 PoseT coloradar::internal::makePose(const typename coloradar::PoseTraits<PoseT>::TranslationType& translation, const typename coloradar::PoseTraits<PoseT>::RotationType& rotation) {
     return PoseT(translation, rotation);
+}
+
+template<coloradar::PclPoseType PoseT> Eigen::Vector3f coloradar::internal::toEigenTrans(const PoseT& pose) { return Eigen::Vector3f(pose.translation()); }
+template<coloradar::PclPoseType PoseT> Eigen::Quaternionf coloradar::internal::toEigenQuat(const PoseT& pose) { return Eigen::Quaternionf(pose.rotation()); }
+template<coloradar::OctoPoseType PoseT> Eigen::Vector3f coloradar::internal::toEigenTrans(const PoseT& pose) { return Eigen::Vector3f(pose.trans().x(), pose.trans().y(), pose.trans().z()); }
+template<coloradar::OctoPoseType PoseT> Eigen::Quaternionf coloradar::internal::toEigenQuat(const PoseT& pose) { return Eigen::Quaternionf(pose.rot().u(), pose.rot().x(), pose.rot().y(), pose.rot().z()); }
+
+template<typename TransT> TransT coloradar::internal::fromEigenTrans(const Eigen::Vector3f& r) { return r; }
+template<typename RotationT> RotationT coloradar::internal::fromEigenQuat(const Eigen::Quaternionf& r) { return r; }
+
+template<coloradar::PclPoseType PoseT> Eigen::Affine3f coloradar::internal::toEigenPose(const PoseT& pose) { return Eigen::Affine3f(pose); }
+template<coloradar::PclPoseType PoseT> PoseT coloradar::internal::fromEigenPose(const Eigen::Affine3f& pose) { return PoseT(pose); }
+template<coloradar::OctoPoseType PoseT> Eigen::Affine3f coloradar::internal::toEigenPose(const PoseT& pose) {
+    auto translation = coloradar::internal::toEigenTrans(pose);
+    auto rotation = coloradar::internal::toEigenQuat(pose);
+    return coloradar::internal::makePose<Eigen::Affine3f>(translation, rotation);
+}
+template<coloradar::OctoPoseType PoseT> PoseT coloradar::internal::fromEigenPose(const Eigen::Affine3f& pose) {
+    auto translation = coloradar::internal::fromEigenTrans<typename coloradar::PoseTraits<PoseT>::TranslationType>(pose.translation());
+    auto rotation = coloradar::internal::fromEigenQuat<typename coloradar::PoseTraits<PoseT>::RotationType>(Eigen::Quaternionf(pose.rotation()));
+    return coloradar::internal::makePose<PoseT>(translation, rotation);
 }
 
 
