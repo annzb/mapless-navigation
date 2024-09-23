@@ -31,9 +31,6 @@ target_link_libraries(coloradar_tests coloradar_tools gtest gtest_main pthread)
 add_executable(interpolate_poses_for_lidar data_prep/interpolate_poses_for_lidar.cpp)
 target_link_libraries(interpolate_poses_for_lidar coloradar_tools)
 
-add_executable(interpolate_poses_for_cascade data_prep/interpolate_poses_for_cascade.cpp)
-target_link_libraries(interpolate_poses_for_cascade coloradar_tools)
-
 add_executable(filter_cloud data_prep/filter_cloud.cpp)
 target_link_libraries(filter_cloud coloradar_tools)
 

@@ -7,6 +7,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 import open3d as o3d
 
+from scipy.spatial.transform import Rotation
+
 
 def read_tf_file(filename):
     if not os.path.exists(filename):
@@ -306,7 +308,9 @@ class ColoradarDataset:
         gt_timestamps_path = os.path.join(self.runs_path, run_name, 'groundtruth', 'timestamps.txt')
         lidar_timestamps_path = os.path.join(self.runs_path, run_name, 'lidar', 'timestamps.txt')
         cascade_timestamps_path = os.path.join(self.runs_path, run_name, 'cascade', 'heatmaps', 'timestamps.txt')
+
         gt_poses_path = os.path.join(self.runs_path, run_name, 'groundtruth', 'groundtruth_poses.txt')
+        # gt_poses_path = os.path.join(self.test_output_dir, run_name + "_orig_poses.txt")  # os.path.join(self.test_output_dir, run_name + "_gt_poses.txt")
         lidar_poses_path = os.path.join(self.test_output_dir, run_name + "_lidar_poses_interpolated.txt")
         cascade_poses_path = os.path.join(self.test_output_dir, run_name + "_cascade_poses_interpolated.txt")
         for fp in gt_timestamps_path, lidar_timestamps_path, cascade_timestamps_path, gt_poses_path, lidar_poses_path, cascade_poses_path:
@@ -318,10 +322,22 @@ class ColoradarDataset:
         gt_translations, gt_rotations = gt_poses[:, :3], gt_poses[:, 3:]
         lidar_translations, lidar_rotations = lidar_poses[:, :3], lidar_poses[:, 3:]
         cascade_translations, cascade_rotations = cascade_poses[:, :3], cascade_poses[:, 3:]
-        # plot_translations(gt_translations, lidar_translations, gt_timestamps, lidar_timestamps, 'Ground Truth vs Lidar', 'lidar')
+
+        # original_poses = np.loadtxt(original_gt_poses_path)
+        # original_translations, original_rotations = original_poses[:, :3], original_poses[:, 3:]
+        # idx = len(original_poses) // 4 * 3
+        # print("Orig pose before save", original_poses[idx, 3], original_poses[idx, 4], original_poses[idx, 5], original_poses[idx, 6])
+        # print("Orig pose after save", gt_poses[idx, 3], gt_poses[idx, 4], gt_poses[idx, 5], gt_poses[idx, 6])
+
+        # plot_translations(original_translations, gt_translations, gt_timestamps, gt_timestamps, 'Original Poses vs Processed', 'processed')
+        # plot_rotations(original_rotations, gt_rotations, gt_timestamps, gt_timestamps, 'Original Poses vs Processed', 'processed')
+
+        plot_translations(gt_translations, lidar_translations, gt_timestamps, lidar_timestamps, 'Ground Truth vs Lidar', 'lidar')
         plot_rotations(gt_rotations, lidar_rotations, gt_timestamps, lidar_timestamps, 'Ground Truth vs Lidar', 'lidar')
-        # plot_translations(gt_translations, cascade_translations, gt_timestamps, cascade_timestamps, 'Ground Truth vs Cascade', 'cascade')
+        plot_translations(gt_translations, cascade_translations, gt_timestamps, cascade_timestamps, 'Ground Truth vs Cascade', 'cascade')
         plot_rotations(gt_rotations, cascade_rotations, gt_timestamps, cascade_timestamps, 'Ground Truth vs Cascade', 'cascade')
+
+        # plot_rotations_euler(gt_rotations, lidar_rotations, gt_timestamps, lidar_timestamps, 'Ground Truth vs Lidar', 'lidar')
 
         # plt.plot(cascade_timestamps, cascade_rotations[:, 3], label='cascade_w', color='b')
 
@@ -427,3 +443,65 @@ def plot_rotations(gt, other, gt_ts, other_ts, title, label):
 
     plt.tight_layout()
     plt.show()
+
+
+def plot_rotations_euler(gt, other, gt_ts, other_ts, title, label):
+    roll, pitch, yaw = quaternion_to_euler(gt)
+    roll_other, pitch_other, yaw_other = quaternion_to_euler(other)
+
+    plt.figure(figsize=(10, 8))
+    plt.subplot(3, 1, 1)
+    plt.plot(gt_ts, np.degrees(roll), label='gt_roll', color='r')
+    plt.plot(other_ts, np.degrees(roll_other), label=f'{label}_roll', linestyle='--', color='b')
+    plt.title(f'{title} - Roll')
+    plt.legend()
+
+    plt.subplot(3, 1, 2)
+    plt.plot(gt_ts, np.degrees(pitch), label='gt_pitch', color='r')
+    plt.plot(other_ts, np.degrees(pitch_other), label=f'{label}_pitch', linestyle='--', color='b')
+    plt.title(f'{title} - Pitch')
+    plt.legend()
+
+    plt.subplot(3, 1, 3)
+    plt.plot(gt_ts, np.degrees(yaw), label='gt_yaw', color='r')
+    plt.plot(other_ts, np.degrees(yaw_other), label=f'{label}_yaw', linestyle='--', color='b')
+    plt.title(f'{title} - Yaw')
+    plt.legend()
+
+    plt.tight_layout()
+    plt.show()
+
+    backward_quats = euler_to_quaternion(roll, pitch, yaw)
+    backward_quats_other = euler_to_quaternion(roll_other, pitch_other, yaw_other)
+    plot_rotations(backward_quats, backward_quats_other, gt_ts, other_ts, title, label)
+
+
+def quaternion_to_euler(quaternions):
+    x, y, z, w = quaternions[..., 0], quaternions[..., 1], quaternions[..., 2], quaternions[..., 3]
+    sinr_cosp = 2 * (w * x + y * z)
+    cosr_cosp = 1 - 2 * (x * x + y * y)
+    roll = np.arctan2(sinr_cosp, cosr_cosp)
+    sinp = 2 * (w * y - z * x)
+    pitch = np.where(np.abs(sinp) >= 1, np.sign(sinp) * (np.pi / 2), np.arcsin(sinp))
+    siny_cosp = 2 * (w * z + x * y)
+    cosy_cosp = 1 - 2 * (y * y + z * z)
+    yaw = np.arctan2(siny_cosp, cosy_cosp)
+    return roll, pitch, yaw
+
+
+def euler_to_quaternion(roll, pitch, yaw):
+    half_roll = roll / 2.0
+    half_pitch = pitch / 2.0
+    half_yaw = yaw / 2.0
+    cy = np.cos(half_yaw)
+    sy = np.sin(half_yaw)
+    cp = np.cos(half_pitch)
+    sp = np.sin(half_pitch)
+    cr = np.cos(half_roll)
+    sr = np.sin(half_roll)
+    w = cr * cp * cy + sr * sp * sy
+    x = sr * cp * cy - cr * sp * sy
+    y = cr * sp * cy + sr * cp * sy
+    z = cr * cp * sy - sr * sp * cy
+    quaternions = np.stack([x, y, z, w], axis=-1)
+    return quaternions
