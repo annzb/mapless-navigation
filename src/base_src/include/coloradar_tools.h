@@ -6,6 +6,7 @@
 #include <Eigen/Dense>
 #include <string>
 #include <vector>
+#include <map>
 
 
 namespace coloradar {
@@ -104,6 +105,23 @@ public:
         const float& lidarMaxRange,
         const std::vector<std::string>& targetRuns = std::vector<std::string>()
     );
+};
+
+
+class RadarConfig {
+protected:
+    virtual void init(const std::filesystem::path& calibDir) = 0;
+    void initHeatmapParams(const std::filesystem::path& heatmapCfgFile);
+
+public:
+    int numRangeBins;
+    int numElevationBins;
+    int numAzimuthBins;
+    double rangeBinWidth;
+    std::vector<double> azimuthBins;
+    std::vector<double> elevationBins;
+
+    RadarConfig(const std::filesystem::path& calibDir);
 };
 
 }

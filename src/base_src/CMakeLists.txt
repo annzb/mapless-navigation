@@ -16,7 +16,7 @@ include_directories(${PROJECT_SOURCE_DIR}/include ${PCL_INCLUDE_DIRS} ${OCTOMAP_
 
 ### LIBS
 
-add_library(coloradar_tools SHARED libs/utils.cpp libs/octo_pointcloud.cpp libs/coloradar_run.cpp libs/coloradar_dataset.cpp)
+add_library(coloradar_tools SHARED libs/utils.cpp libs/configs.cpp libs/octo_pointcloud.cpp libs/coloradar_run.cpp libs/coloradar_dataset.cpp)
 target_link_libraries(coloradar_tools ${PCL_LIBRARIES} ${OCTOMAP_LIBRARIES})
 
 
