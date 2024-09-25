@@ -1,9 +1,9 @@
-#include "coloradar_tools.h"
+#include "coloradar_cuda.h"
 
-#include <cuda_runtime.h>
 #include <cuComplex.h>
 #include <cufft.h>
 #include <cmath>
+#include <vector>
 
 
 // CUDA kernel for applying a Blackman window function to the data
@@ -24,6 +24,29 @@ __global__ void assembleMsgKernel(int n_range_bins, int n_doppler_bins, int n_az
     }
 }
 
+// CUDA kernel for rearranging data without virtual array map
+__global__ void rearrangeMatrixKernel(int n_range_bins, int n_doppler_bins, int n_tx, int n_rx, int n_az_beams, int n_el_beams, int* tx_distance, int* tx_elevation, int* rx_distance, int* rx_elevation, cuDoubleComplex* src_mat, cuDoubleComplex* dest_mat) {
+    int range_idx = blockIdx.x * blockDim.x + threadIdx.x;
+    int doppler_idx = blockIdx.y * blockDim.y + threadIdx.y;
+    int tx_idx = blockIdx.z * blockDim.z + threadIdx.z;
+
+    if (range_idx < n_range_bins && doppler_idx < n_doppler_bins && tx_idx < n_tx) {
+        int rx_idx = tx_idx % n_rx;
+        int tx_distance_idx = tx_idx / n_rx;
+
+        // Calculate azimuth and elevation based on tx and rx positions
+        int az_idx = rx_distance[rx_idx] + tx_distance[tx_distance_idx];
+        int el_idx = rx_elevation[rx_idx] + tx_elevation[tx_distance_idx];
+
+        if (az_idx < n_az_beams && el_idx < n_el_beams) {
+            int src_idx = range_idx + n_range_bins * (rx_idx + n_rx * (tx_distance_idx + n_tx * doppler_idx));
+            int dest_idx = el_idx + n_el_beams * (az_idx + n_az_beams * (range_idx + n_range_bins * doppler_idx));
+
+            dest_mat[dest_idx] = src_mat[src_idx];
+        }
+    }
+}
+
 // Host function for generating a Blackman window
 void generateBlackmanWindow(std::vector<double>& window, int size) {
     window.resize(size);
@@ -32,8 +55,19 @@ void generateBlackmanWindow(std::vector<double>& window, int size) {
     }
 }
 
+// Function to rearrange data using tx and rx distances and elevations
+void rearrangeData(int num_range_bins, int num_doppler_bins, int num_tx, int num_rx, int num_az_beams, int num_el_beams, int* tx_distance, int* tx_elevation, int* rx_distance, int* rx_elevation, cuDoubleComplex* src_mat, cuDoubleComplex* dest_mat) {
+    dim3 threads_per_block(8, 8, 8);
+    dim3 num_blocks((num_range_bins + threads_per_block.x - 1) / threads_per_block.x,
+                    (num_doppler_bins + threads_per_block.y - 1) / threads_per_block.y,
+                    (num_tx + threads_per_block.z - 1) / threads_per_block.z);
+
+    rearrangeMatrixKernel<<<num_blocks, threads_per_block>>>(num_range_bins, num_doppler_bins, num_tx, num_rx, num_az_beams, num_el_beams, tx_distance, tx_elevation, rx_distance, rx_elevation, src_mat, dest_mat);
+    cudaDeviceSynchronize();
+}
+
 // Host function for radar cube to heatmap transformation
-std::vector<float> cubeToHeatmap(const std::vector<std::complex<double>>& datacube, coloradar::RadarConfig* config) {
+std::vector<float> coloradar::cubeToHeatmap(const std::vector<std::complex<double>>& datacube, coloradar::RadarConfig* config) {
     std::vector<float> heatmap;
     int totalElements = config->numRangeBins * config->numDopplerBins * config->numAzimuthBins * config->numElevationBins;
     heatmap.resize(totalElements);
@@ -49,7 +83,6 @@ std::vector<float> cubeToHeatmap(const std::vector<std::complex<double>>& datacu
 
     // Generate and copy window functions to the GPU
     std::vector<double> range_window, doppler_window, az_window, el_window;
-
     generateBlackmanWindow(range_window, config->numRangeBins);
     generateBlackmanWindow(doppler_window, config->numDopplerBins);
     generateBlackmanWindow(az_window, config->numAzimuthBins);
@@ -99,12 +132,8 @@ std::vector<float> cubeToHeatmap(const std::vector<std::complex<double>>& datacu
     cufftExecZ2Z(doppler_plan, d_datacube, d_datacube, CUFFT_FORWARD);
     cufftDestroy(doppler_plan);
 
-    // Re-arrange data for angle FFT (rearrangeData is unchanged from the previous code)
-    rearrangeData(
-        config->numRangeBins, config->numDopplerBins, config->numTxAntennas, config->numRxAntennas,
-        config->numAzimuthBins, config->numElevationBins, config->numTxAntennas * config->numRxAntennas,
-        config->virtual_array_map, d_windowFuncAzimuth, d_windowFuncElevation, d_datacube, d_datacube
-    );
+    // Re-arrange data for angle FFT using tx and rx distances/elevations
+    rearrangeData(config->numRangeBins, config->numDopplerBins, config->numTxAntennas, config->numRxAntennas, config->numAzimuthBins, config->numElevationBins, config->txDistance.data(), config->txElevation.data(), config->rxDistance.data(), config->rxElevation.data(), d_datacube, d_datacube);
     cudaDeviceSynchronize();
 
     // Perform the angle FFT using cuFFT
@@ -130,5 +159,6 @@ std::vector<float> cubeToHeatmap(const std::vector<std::complex<double>>& datacu
     cudaFree(d_windowFuncDoppler);
     cudaFree(d_windowFuncAzimuth);
     cudaFree(d_windowFuncElevation);
+
     return heatmap;
 }

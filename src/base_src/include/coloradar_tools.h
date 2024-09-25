@@ -6,112 +6,10 @@
 #include <string>
 #include <vector>
 #include <map>
-#include <complex>
 #include <Eigen/Dense>
-#include <cuda_runtime.h>
-#include <cuComplex.h>
 
 
 namespace coloradar {
-
-template <Pcl4dPointType PointT, template <PclCloudType> class CloudT> void octreeToPcl(const octomap::OcTree& tree, CloudT<PointT>& cloud);
-template <PclPointType PointT, template <PclCloudType> class CloudT> void filterFov(CloudT<PointT>& cloud, const float& horizontalFov, const float& verticalFov, const float& range);
-
-
-class OctoPointcloud : public octomap::Pointcloud {
-public:
-    OctoPointcloud() = default;
-    OctoPointcloud(const OctoPointcloud& other) : octomap::Pointcloud(other) {}
-    template <PclPointType PointT, template <PclCloudType> class CloudT> OctoPointcloud(const CloudT<PointT>& cloud);
-
-    template <PclCloudType CloudT> CloudT toPcl();
-
-    void filterFov(const float& horizontalFovTan, const float& verticalFovTan, const float& range);
-    void transform(const Eigen::Affine3f& transformMatrix);
-    using octomap::Pointcloud::transform;
-};
-
-
-class ColoradarRun {
-protected:
-    std::filesystem::path runDirPath;
-    std::filesystem::path posesDirPath;
-    std::filesystem::path lidarScansDirPath;
-    std::filesystem::path radarScansDirPath;
-    std::filesystem::path cascadeScansDirPath;
-    std::filesystem::path lidarCloudsDirPath;
-    std::filesystem::path lidarMapsDirPath;
-    std::filesystem::path cascadeHeatmapsDirPath;
-
-    std::vector<double> readTimestamps(const std::filesystem::path& path);
-    int findClosestEarlierTimestamp(const double& targetTs, const std::vector<double>& timestamps);
-
-public:
-    const std::string name;
-
-    ColoradarRun(const std::filesystem::path& runPath);
-
-    std::vector<double> getPoseTimestamps();
-    std::vector<double> getLidarTimestamps();
-    std::vector<double> getRadarTimestamps();
-    std::vector<double> getCascadeTimestamps();
-
-    template<PoseType PoseT> std::vector<PoseT> getPoses();
-    template<coloradar::PoseType PoseT> std::vector<PoseT> interpolatePoses(const std::vector<PoseT>& poses, const std::vector<double>& poseTimestamps, const std::vector<double>& targetTimestamps);
-
-    template<PclCloudType CloudT> CloudT getLidarPointCloud(const std::filesystem::path& binPath);
-    template<OctomapCloudType CloudT> CloudT getLidarPointCloud(const std::filesystem::path& binPath);
-    template<CloudType CloudT> CloudT getLidarPointCloud(const int& cloudIdx);
-
-    // Eigen::Tensor<float, 4> getHeatmap(const std::filesystem::path& filePath, const int& numElevationBins, const int& numAzimuthBins, const int& numRangeBins);
-
-    octomap::OcTree buildLidarOctomap(
-        const double& mapResolution,
-        const float& lidarTotalHorizontalFov,
-        const float& lidarTotalVerticalFov,
-        const float& lidarMaxRange,
-        Eigen::Affine3f lidarTransform = Eigen::Affine3f::Identity()
-    );
-    void saveLidarOctomap(const octomap::OcTree& tree);
-    pcl::PointCloud<pcl::PointXYZI> readLidarOctomap();
-
-    void sampleMapFrames(
-        const float& horizontalFov,
-        const float& verticalFov,
-        const float& range,
-        const Eigen::Affine3f& mapPreTransform = Eigen::Affine3f::Identity(),
-        std::vector<octomath::Pose6D> poses = {}
-    );
-};
-
-
-class ColoradarDataset {
-protected:
-    std::filesystem::path coloradarDirPath;
-    std::filesystem::path calibDirPath;
-    std::filesystem::path transformsDirPath;
-    std::filesystem::path runsDirPath;
-
-    Eigen::Affine3f loadTransform(const std::filesystem::path& filePath);
-
-public:
-    ColoradarDataset(const std::filesystem::path& coloradarPath);
-
-    Eigen::Affine3f getBaseToLidarTransform();
-    Eigen::Affine3f getBaseToRadarTransform();
-    Eigen::Affine3f getBaseToCascadeRadarTransform();
-    std::vector<std::string> listRuns();
-    ColoradarRun getRun(const std::string& runName);
-
-    void createMaps(
-        const double& mapResolution,
-        const float& lidarTotalHorizontalFov,
-        const float& lidarTotalVerticalFov,
-        const float& lidarMaxRange,
-        const std::vector<std::string>& targetRuns = std::vector<std::string>()
-    );
-};
-
 
 class RadarConfig {
 protected:
@@ -164,6 +62,7 @@ public:
 
 class SingleChipConfig : public RadarConfig {
 public:
+    SingleChipConfig() = default;
     SingleChipConfig(const std::filesystem::path& calibDir);
 
 protected:
@@ -172,10 +71,120 @@ protected:
 
 class CascadeConfig : public RadarConfig {
 public:
+    CascadeConfig() = default;
     CascadeConfig(const std::filesystem::path& calibDir);
 
 protected:
     void init(const std::filesystem::path& calibDir) override;
+};
+
+
+template <Pcl4dPointType PointT, template <PclCloudType> class CloudT> void octreeToPcl(const octomap::OcTree& tree, CloudT<PointT>& cloud);
+template <PclPointType PointT, template <PclCloudType> class CloudT> void filterFov(CloudT<PointT>& cloud, const float& horizontalFov, const float& verticalFov, const float& range);
+
+
+class OctoPointcloud : public octomap::Pointcloud {
+public:
+    OctoPointcloud() = default;
+    OctoPointcloud(const OctoPointcloud& other) : octomap::Pointcloud(other) {}
+    template <PclPointType PointT, template <PclCloudType> class CloudT> OctoPointcloud(const CloudT<PointT>& cloud);
+
+    template <PclCloudType CloudT> CloudT toPcl();
+
+    void filterFov(const float& horizontalFovTan, const float& verticalFovTan, const float& range);
+    void transform(const Eigen::Affine3f& transformMatrix);
+    using octomap::Pointcloud::transform;
+};
+
+
+class ColoradarRun {
+protected:
+    std::filesystem::path runDirPath;
+    std::filesystem::path posesDirPath;
+    std::filesystem::path lidarScansDirPath;
+    std::filesystem::path radarScansDirPath;
+    std::filesystem::path cascadeScansDirPath;
+    std::filesystem::path lidarCloudsDirPath;
+    std::filesystem::path lidarMapsDirPath;
+    std::filesystem::path cascadeHeatmapsDirPath;
+    std::filesystem::path cascadeCubesDirPath;
+    std::filesystem::path radarHeatmapsDirPath;
+    std::filesystem::path radarCubesDirPath;
+
+    std::vector<double> readTimestamps(const std::filesystem::path& path);
+    int findClosestEarlierTimestamp(const double& targetTs, const std::vector<double>& timestamps);
+
+public:
+    const std::string name;
+
+    ColoradarRun(const std::filesystem::path& runPath);
+
+    std::vector<double> getPoseTimestamps();
+    std::vector<double> getLidarTimestamps();
+    std::vector<double> getRadarTimestamps();
+    std::vector<double> getCascadeTimestamps();
+    std::vector<double> getCascadeCubeTimestamps();
+
+    template<PoseType PoseT> std::vector<PoseT> getPoses();
+    template<coloradar::PoseType PoseT> std::vector<PoseT> interpolatePoses(const std::vector<PoseT>& poses, const std::vector<double>& poseTimestamps, const std::vector<double>& targetTimestamps);
+
+    template<PclCloudType CloudT> CloudT getLidarPointCloud(const std::filesystem::path& binPath);
+    template<OctomapCloudType CloudT> CloudT getLidarPointCloud(const std::filesystem::path& binPath);
+    template<CloudType CloudT> CloudT getLidarPointCloud(const int& cloudIdx);
+
+    std::vector<std::complex<double>> getDatacube(const std::filesystem::path& binFilePath, RadarConfig* config);
+    std::vector<std::complex<double>> getDatacube(const int& cubeIdx, RadarConfig* config);
+    std::vector<float> getHeatmap(const std::filesystem::path& binFilePath, RadarConfig* config);
+    std::vector<float> getHeatmap(const int& hmIdx, RadarConfig* config);
+
+    octomap::OcTree buildLidarOctomap(
+        const double& mapResolution,
+        const float& lidarTotalHorizontalFov,
+        const float& lidarTotalVerticalFov,
+        const float& lidarMaxRange,
+        Eigen::Affine3f lidarTransform = Eigen::Affine3f::Identity()
+    );
+    void saveLidarOctomap(const octomap::OcTree& tree);
+    pcl::PointCloud<pcl::PointXYZI> readLidarOctomap();
+
+    void sampleMapFrames(
+        const float& horizontalFov,
+        const float& verticalFov,
+        const float& range,
+        const Eigen::Affine3f& mapPreTransform = Eigen::Affine3f::Identity(),
+        std::vector<octomath::Pose6D> poses = {}
+    );
+};
+
+
+class ColoradarDataset {
+protected:
+    std::filesystem::path coloradarDirPath;
+    std::filesystem::path calibDirPath;
+    std::filesystem::path transformsDirPath;
+    std::filesystem::path runsDirPath;
+
+    Eigen::Affine3f loadTransform(const std::filesystem::path& filePath);
+
+public:
+    SingleChipConfig singleChipConfig;
+    CascadeConfig cascadeConfig;
+
+    ColoradarDataset(const std::filesystem::path& coloradarPath);
+
+    Eigen::Affine3f getBaseToLidarTransform();
+    Eigen::Affine3f getBaseToRadarTransform();
+    Eigen::Affine3f getBaseToCascadeRadarTransform();
+    std::vector<std::string> listRuns();
+    ColoradarRun getRun(const std::string& runName);
+
+    void createMaps(
+        const double& mapResolution,
+        const float& lidarTotalHorizontalFov,
+        const float& lidarTotalVerticalFov,
+        const float& lidarMaxRange,
+        const std::vector<std::string>& targetRuns = std::vector<std::string>()
+    );
 };
 
 }

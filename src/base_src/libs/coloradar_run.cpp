@@ -16,8 +16,17 @@ coloradar::ColoradarRun::ColoradarRun(const std::filesystem::path& runPath) : ru
     coloradar::internal::checkPathExists(radarScansDirPath);
     cascadeScansDirPath = runDirPath / "cascade";
     coloradar::internal::checkPathExists(cascadeScansDirPath);
+
+    radarHeatmapsDirPath = radarScansDirPath / "heatmaps";
+    coloradar::internal::checkPathExists(radarHeatmapsDirPath);
+    radarCubesDirPath = radarScansDirPath / "adc_samples";
+    coloradar::internal::checkPathExists(radarCubesDirPath);
+
     cascadeHeatmapsDirPath = cascadeScansDirPath / "heatmaps";
     coloradar::internal::checkPathExists(cascadeHeatmapsDirPath);
+    cascadeCubesDirPath = cascadeScansDirPath / "adc_samples";
+    coloradar::internal::checkPathExists(cascadeCubesDirPath);
+
     lidarCloudsDirPath = lidarScansDirPath / "pointclouds";
     coloradar::internal::checkPathExists(lidarCloudsDirPath);
     lidarMapsDirPath = runDirPath / "lidar_maps";
@@ -41,6 +50,11 @@ std::vector<double> coloradar::ColoradarRun::getRadarTimestamps() {
 
 std::vector<double> coloradar::ColoradarRun::getCascadeTimestamps() {
     std::filesystem::path tsFilePath = cascadeHeatmapsDirPath / "timestamps.txt";
+    return readTimestamps(tsFilePath);
+}
+
+std::vector<double> coloradar::ColoradarRun::getCascadeCubeTimestamps() {
+    std::filesystem::path tsFilePath = cascadeCubesDirPath / "timestamps.txt";
     return readTimestamps(tsFilePath);
 }
 
@@ -143,35 +157,51 @@ int coloradar::ColoradarRun::findClosestEarlierTimestamp(const double& targetTs,
 }
 
 
-//Eigen::Tensor<float, 4> coloradar::ColoradarRun::getHeatmap(const std::filesystem::path& filePath, const int& numElevationBins, const int& numAzimuthBins, const int& numRangeBins) {
-//    coloradar::internal::checkPathExists(filePath);
-//    std::ifstream file(filePath, std::ios::binary);
-//    if (!file.is_open()) {
-//        throw std::runtime_error("Failed to open file " + filename);
-//    }
-//    file.seekg(0, std::ios::end);
-//    std::size_t fileSize = file.tellg();
-//    file.seekg(0, std::ios::beg);
-//    std::vector<char> buffer(fileSize);
-//    file.read(buffer.data(), fileSize);
-//    file.close();
-//
-//    std::size_t numFloats = fileSize / 4;
-//    std::vector<float> frameVals(numFloats);
-//    std::memcpy(frameVals.data(), buffer.data(), fileSize);
-//    if (frameVals.size() != numElevationBins * numAzimuthBins * numRangeBins * 2) {
-//        throw std::runtime_error("The number of values in the file does not match the expected dimensions.");
-//    }
-//
-//    Eigen::Tensor<float, 4> heatmap(numElevationBins, numAzimuthBins, numRangeBins, 2);
-//    std::size_t idx = 0;
-//    for (int i = 0; i < numElevationBins; ++i) {
-//        for (int j = 0; j < numAzimuthBins; ++j) {
-//            for (int k = 0; k < numRangeBins; ++k) {
-//                heatmap(i, j, k, 0) = frameVals[idx];
-//                heatmap(i, j, k, 1) = frameVals[idx + 1];
-//            }
-//        }
-//    }
-//    return heatmap;
-//}
+std::vector<std::complex<double>> coloradar::ColoradarRun::getDatacube(const std::filesystem::path& binFilePath, coloradar::RadarConfig* config) {
+    coloradar::internal::checkPathExists(binFilePath);
+    std::ifstream file(binFilePath, std::ios::binary);
+    if (!file.is_open()) {
+        throw std::runtime_error("Failed to open file: " + binFilePath.string());
+    }
+
+    int totalElements = config->numTxAntennas * config->numRxAntennas * config->numChirpsPerFrame * config->numAdcSamplesPerChirp * 2;
+    std::vector<int16_t> frameBytes(totalElements);
+    file.read(reinterpret_cast<char*>(frameBytes.data()), totalElements * sizeof(int16_t));
+    if (file.gcount() != totalElements * sizeof(int16_t)) {
+        throw std::runtime_error("File read error or size mismatch");
+    }
+    file.close();
+
+    std::vector<std::complex<double>> datacube(totalElements / 2);
+    for (int i = 0; i < totalElements; i += 2) {
+        datacube[i / 2] = std::complex<double>(static_cast<double>(frameBytes[i]), static_cast<double>(frameBytes[i + 1]));
+    }
+    return datacube;
+}
+
+std::vector<std::complex<double>> coloradar::ColoradarRun::getDatacube(const int& cubeIdx, coloradar::RadarConfig* config) {
+    std::filesystem::path cubeBinFilePath = cascadeCubesDirPath / "data" / ("frame_" + std::to_string(cubeIdx) + ".bin");
+    return getDatacube(cubeBinFilePath, config);
+}
+
+std::vector<float> coloradar::ColoradarRun::getHeatmap(const std::filesystem::path& binFilePath, coloradar::RadarConfig* config) {
+    coloradar::internal::checkPathExists(binFilePath);
+    std::ifstream file(binFilePath, std::ios::binary);
+    if (!file.is_open()) {
+        throw std::runtime_error("Failed to open file: " + binFilePath.string());
+    }
+
+    int totalElements = config->numElevationBins * config->numAzimuthBins * config->numRangeBins * 2;
+    std::vector<float> heatmap(totalElements);
+    file.read(reinterpret_cast<char*>(heatmap.data()), totalElements * sizeof(float));
+    if (file.gcount() != totalElements * sizeof(float)) {
+        throw std::runtime_error("File read error or size mismatch");
+    }
+    file.close();
+    return heatmap;
+}
+
+std::vector<float> coloradar::ColoradarRun::getHeatmap(const int& hmIdx, coloradar::RadarConfig* config) {
+    std::filesystem::path hmBinFilePath = cascadeHeatmapsDirPath / "data" / ("heatmap_" + std::to_string(hmIdx) + ".bin");
+    return getHeatmap(hmBinFilePath, config);
+}
