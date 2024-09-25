@@ -141,3 +141,37 @@ int coloradar::ColoradarRun::findClosestEarlierTimestamp(const double& targetTs,
     }
     return high;
 }
+
+
+//Eigen::Tensor<float, 4> coloradar::ColoradarRun::getHeatmap(const std::filesystem::path& filePath, const int& numElevationBins, const int& numAzimuthBins, const int& numRangeBins) {
+//    coloradar::internal::checkPathExists(filePath);
+//    std::ifstream file(filePath, std::ios::binary);
+//    if (!file.is_open()) {
+//        throw std::runtime_error("Failed to open file " + filename);
+//    }
+//    file.seekg(0, std::ios::end);
+//    std::size_t fileSize = file.tellg();
+//    file.seekg(0, std::ios::beg);
+//    std::vector<char> buffer(fileSize);
+//    file.read(buffer.data(), fileSize);
+//    file.close();
+//
+//    std::size_t numFloats = fileSize / 4;
+//    std::vector<float> frameVals(numFloats);
+//    std::memcpy(frameVals.data(), buffer.data(), fileSize);
+//    if (frameVals.size() != numElevationBins * numAzimuthBins * numRangeBins * 2) {
+//        throw std::runtime_error("The number of values in the file does not match the expected dimensions.");
+//    }
+//
+//    Eigen::Tensor<float, 4> heatmap(numElevationBins, numAzimuthBins, numRangeBins, 2);
+//    std::size_t idx = 0;
+//    for (int i = 0; i < numElevationBins; ++i) {
+//        for (int j = 0; j < numAzimuthBins; ++j) {
+//            for (int k = 0; k < numRangeBins; ++k) {
+//                heatmap(i, j, k, 0) = frameVals[idx];
+//                heatmap(i, j, k, 1) = frameVals[idx + 1];
+//            }
+//        }
+//    }
+//    return heatmap;
+//}

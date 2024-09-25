@@ -3,10 +3,13 @@
 
 #include "utils.h"
 
-#include <Eigen/Dense>
 #include <string>
 #include <vector>
 #include <map>
+#include <complex>
+#include <Eigen/Dense>
+#include <cuda_runtime.h>
+#include <cuComplex.h>
 
 
 namespace coloradar {
@@ -60,6 +63,8 @@ public:
     template<OctomapCloudType CloudT> CloudT getLidarPointCloud(const std::filesystem::path& binPath);
     template<CloudType CloudT> CloudT getLidarPointCloud(const int& cloudIdx);
 
+    // Eigen::Tensor<float, 4> getHeatmap(const std::filesystem::path& filePath, const int& numElevationBins, const int& numAzimuthBins, const int& numRangeBins);
+
     octomap::OcTree buildLidarOctomap(
         const double& mapResolution,
         const float& lidarTotalHorizontalFov,
@@ -111,9 +116,14 @@ public:
 class RadarConfig {
 protected:
     virtual void init(const std::filesystem::path& calibDir) = 0;
+    void initAntennaParams(const std::filesystem::path& antennaCfgFile);
     void initHeatmapParams(const std::filesystem::path& heatmapCfgFile);
+    void initWaveformParams(const std::filesystem::path& waveformCfgFile);
+    void initCouplingParams(const std::filesystem::path& couplingCfgFile);
+    void initPhaseFrequencyParams(const std::filesystem::path& phaseFrequencyCfgFile);
 
 public:
+    // heatmap params
     int numRangeBins;
     int numElevationBins;
     int numAzimuthBins;
@@ -121,7 +131,51 @@ public:
     std::vector<double> azimuthBins;
     std::vector<double> elevationBins;
 
-    RadarConfig(const std::filesystem::path& calibDir);
+    // antenna params
+    double designFrequency;
+    int numTxAntennas;
+    int numRxAntennas;
+    std::vector<int> txDistance;
+    std::vector<int> txElevation;
+    std::vector<int> rxDistance;
+    std::vector<int> rxElevation;
+
+    // waveform params
+    int numAdcSamplesPerChirp;
+    int numChirpsPerFrame;
+    int adcSampleFrequency;
+    double startFrequency;
+    double idleTime;
+    double adcStartTime;
+    double rampEndTime;
+    double frequencySlope;
+
+    // calibration params
+    int numDopplerBins;
+    std::vector<std::complex<double>> couplingCalibMatrix;
+
+    // phase calibration params
+    std::vector<double> frequencyCalibMatrix;
+    std::vector<std::complex<double>> phaseCalibMatrix;
+
+    RadarConfig() = default;
+    virtual ~RadarConfig() = default;
+};
+
+class SingleChipConfig : public RadarConfig {
+public:
+    SingleChipConfig(const std::filesystem::path& calibDir);
+
+protected:
+    void init(const std::filesystem::path& calibDir) override;
+};
+
+class CascadeConfig : public RadarConfig {
+public:
+    CascadeConfig(const std::filesystem::path& calibDir);
+
+protected:
+    void init(const std::filesystem::path& calibDir) override;
 };
 
 }

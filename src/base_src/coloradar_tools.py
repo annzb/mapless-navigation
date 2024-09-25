@@ -353,7 +353,6 @@ class ColoradarDataset:
         ]
         if device in ("cascade", "single_chip"):
             command.append(f'applyTransform={device}')
-        print(' '.join(command))
         _run_command(command)
 
 
@@ -438,65 +437,3 @@ def plot_rotations(gt, other, gt_ts, other_ts, title, label):
 
     plt.tight_layout()
     plt.show()
-
-
-def plot_rotations_euler(gt, other, gt_ts, other_ts, title, label):
-    roll, pitch, yaw = quaternion_to_euler(gt)
-    roll_other, pitch_other, yaw_other = quaternion_to_euler(other)
-
-    plt.figure(figsize=(10, 8))
-    plt.subplot(3, 1, 1)
-    plt.plot(gt_ts, np.degrees(roll), label='gt_roll', color='r')
-    plt.plot(other_ts, np.degrees(roll_other), label=f'{label}_roll', linestyle='--', color='b')
-    plt.title(f'{title} - Roll')
-    plt.legend()
-
-    plt.subplot(3, 1, 2)
-    plt.plot(gt_ts, np.degrees(pitch), label='gt_pitch', color='r')
-    plt.plot(other_ts, np.degrees(pitch_other), label=f'{label}_pitch', linestyle='--', color='b')
-    plt.title(f'{title} - Pitch')
-    plt.legend()
-
-    plt.subplot(3, 1, 3)
-    plt.plot(gt_ts, np.degrees(yaw), label='gt_yaw', color='r')
-    plt.plot(other_ts, np.degrees(yaw_other), label=f'{label}_yaw', linestyle='--', color='b')
-    plt.title(f'{title} - Yaw')
-    plt.legend()
-
-    plt.tight_layout()
-    plt.show()
-
-    backward_quats = euler_to_quaternion(roll, pitch, yaw)
-    backward_quats_other = euler_to_quaternion(roll_other, pitch_other, yaw_other)
-    plot_rotations(backward_quats, backward_quats_other, gt_ts, other_ts, title, label)
-
-
-def quaternion_to_euler(quaternions):
-    x, y, z, w = quaternions[..., 0], quaternions[..., 1], quaternions[..., 2], quaternions[..., 3]
-    sinr_cosp = 2 * (w * x + y * z)
-    cosr_cosp = 1 - 2 * (x * x + y * y)
-    roll = np.arctan2(sinr_cosp, cosr_cosp)
-    sinp = 2 * (w * y - z * x)
-    pitch = np.where(np.abs(sinp) >= 1, np.sign(sinp) * (np.pi / 2), np.arcsin(sinp))
-    siny_cosp = 2 * (w * z + x * y)
-    cosy_cosp = 1 - 2 * (y * y + z * z)
-    yaw = np.arctan2(siny_cosp, cosy_cosp)
-    return roll, pitch, yaw
-
-
-def euler_to_quaternion(roll, pitch, yaw):
-    half_roll = roll / 2.0
-    half_pitch = pitch / 2.0
-    half_yaw = yaw / 2.0
-    cy = np.cos(half_yaw)
-    sy = np.sin(half_yaw)
-    cp = np.cos(half_pitch)
-    sp = np.sin(half_pitch)
-    cr = np.cos(half_roll)
-    sr = np.sin(half_roll)
-    w = cr * cp * cy + sr * sp * sy
-    x = sr * cp * cy - cr * sp * sy
-    y = cr * sp * cy + sr * cp * sy
-    z = cr * cp * sy - sr * sp * cy
-    quaternions = np.stack([x, y, z, w], axis=-1)
-    return quaternions

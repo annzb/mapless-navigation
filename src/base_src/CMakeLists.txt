@@ -10,14 +10,16 @@ find_package(VTK COMPONENTS mpi REQUIRED)
 find_package(PCL 1.12 REQUIRED)
 find_package(octomap REQUIRED)
 find_package(OpenCV REQUIRED)
+find_package(CUDA REQUIRED)
 
 
-include_directories(${PROJECT_SOURCE_DIR}/include ${PCL_INCLUDE_DIRS} ${OCTOMAP_INCLUDE_DIRS} ${OpenCV_INCLUDE_DIRS})
+include_directories(${PROJECT_SOURCE_DIR}/include ${PCL_INCLUDE_DIRS} ${OCTOMAP_INCLUDE_DIRS} ${OpenCV_INCLUDE_DIRS} ${CUDA_INCLUDE_DIRS})
+
 
 ### LIBS
 
 add_library(coloradar_tools SHARED libs/utils.cpp libs/configs.cpp libs/octo_pointcloud.cpp libs/coloradar_run.cpp libs/coloradar_dataset.cpp)
-target_link_libraries(coloradar_tools ${PCL_LIBRARIES} ${OCTOMAP_LIBRARIES})
+target_link_libraries(coloradar_tools ${PCL_LIBRARIES} ${OCTOMAP_LIBRARIES} ${CUDA_LIBRARIES})
 
 
 ### TESTS
