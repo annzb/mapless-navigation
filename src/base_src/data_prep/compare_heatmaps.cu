@@ -6,20 +6,15 @@ namespace fs = std::filesystem;
 
 
 int main(int argc, char** argv) {
-    std::cout << "Number of args " << argc << std::endl;
     if (argc != 3) {
         std::cerr << "Usage: " << argv[0] << " <coloradar_dir> <run_name>" << std::endl;
         return 1;
     }
     fs::path coloradarDir = argv[1];
     std::string runName = argv[2];
-    std::cout << "coloradarDir " << coloradarDir << std::endl;
-    std::cout << "runName " << runName << std::endl;
 
     coloradar::ColoradarDataset dataset(coloradarDir);
-    std::cout << "Init dataset" << std::endl;
     coloradar::ColoradarRun run = dataset.getRun(runName);
-    std::cout << "Init run " << runName << std::endl;
 
     std::vector<std::complex<double>> datacube = run.getDatacube(0, &dataset.cascadeConfig);
     std::cout << "Read cube of size " << datacube.size() << std::endl;

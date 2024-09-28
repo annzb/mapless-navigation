@@ -13,11 +13,8 @@ coloradar::ColoradarDataset::ColoradarDataset(const std::filesystem::path& color
     coloradar::internal::checkPathExists(transformsDirPath);
     runsDirPath = coloradarDirPath / "kitti";
     coloradar::internal::checkPathExists(runsDirPath);
-    std::cout << "Finished path checks" << std::endl;
     singleChipConfig = coloradar::SingleChipConfig(calibDirPath);
-    std::cout << "Init single chip config" << std::endl;
     cascadeConfig = coloradar::CascadeConfig(calibDirPath);
-    std::cout << "Init cascade config" << std::endl;
 }
 
 Eigen::Affine3f coloradar::ColoradarDataset::getBaseToLidarTransform() {

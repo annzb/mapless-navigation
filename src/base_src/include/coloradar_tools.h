@@ -19,6 +19,7 @@ protected:
     void initWaveformParams(const std::filesystem::path& waveformCfgFile);
     void initCouplingParams(const std::filesystem::path& couplingCfgFile);
     void initPhaseFrequencyParams(const std::filesystem::path& phaseFrequencyCfgFile);
+    void initInternalParams();
 
 public:
     // heatmap params
@@ -56,8 +57,14 @@ public:
     std::vector<double> frequencyCalibMatrix;
     std::vector<std::complex<double>> phaseCalibMatrix;
 
+    // internal params
+    int numVirtualElements;
+    int* virtualArrayMap = nullptr;
+    double* rangeWindowFunc = nullptr;
+    double* dopplerWindowFunc = nullptr;
+
     RadarConfig() = default;
-    virtual ~RadarConfig() = default;
+    ~RadarConfig();
 };
 
 class SingleChipConfig : public RadarConfig {
