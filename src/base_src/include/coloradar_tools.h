@@ -2,6 +2,7 @@
 #define COLORADAR_TOOLS_H
 
 #include "utils.h"
+#include "DataTypes.h"
 
 #include <string>
 #include <vector>
@@ -22,6 +23,8 @@ protected:
     void initInternalParams();
 
 public:
+    double c = 299792458; // speed of light in m/s
+
     // heatmap params
     int numRangeBins;
     int numElevationBins;
@@ -34,10 +37,8 @@ public:
     double designFrequency;
     int numTxAntennas;
     int numRxAntennas;
-    std::vector<int> txDistance;
-    std::vector<int> txElevation;
-    std::vector<int> rxDistance;
-    std::vector<int> rxElevation;
+    std::vector<pcl::PointXY> txCenters;
+    std::vector<pcl::PointXY> rxCenters;
 
     // waveform params
     int numAdcSamplesPerChirp;
@@ -58,10 +59,22 @@ public:
     std::vector<std::complex<double>> phaseCalibMatrix;
 
     // internal params
+    int numAzimuthBeams;
+    int numElevationBeams;
+    int azimuthApertureLen;
+    int elevationApertureLen;
+    std::vector<float> azimuthAngles;
+    std::vector<float> elevationAngles;
+
+    int numPosRangeBins;
+    int numAngles;
+
     int numVirtualElements;
     int* virtualArrayMap = nullptr;
-    double* rangeWindowFunc = nullptr;
-    double* dopplerWindowFunc = nullptr;
+
+    double dopplerBinWidth;
+//    double* rangeWindowFunc = nullptr;
+//    double* dopplerWindowFunc = nullptr;
 
     RadarConfig() = default;
     ~RadarConfig();

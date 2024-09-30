@@ -44,6 +44,7 @@ if(CUDA_FOUND)
     set(CUDA_NVCC_FLAGS "${CUDA_NVCC_FLAGS} -std=c++20")
 
     cuda_add_library(coloradar_cuda SHARED
+        libs/cuda_kernels.cu
         libs/radar_processing.cu
     )
     target_link_libraries(coloradar_cuda coloradar_tools ${CUDA_LIBS})
