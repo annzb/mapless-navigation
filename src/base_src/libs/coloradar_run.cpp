@@ -168,7 +168,7 @@ std::vector<std::complex<double>> coloradar::ColoradarRun::getDatacube(const std
     std::vector<int16_t> frameBytes(totalElements);
     file.read(reinterpret_cast<char*>(frameBytes.data()), totalElements * sizeof(int16_t));
     if (file.gcount() != totalElements * sizeof(int16_t)) {
-        throw std::runtime_error("File read error or size mismatch");
+        throw std::runtime_error("Datacube file read error or size mismatch");
     }
     file.close();
 
@@ -191,11 +191,11 @@ std::vector<float> coloradar::ColoradarRun::getHeatmap(const std::filesystem::pa
         throw std::runtime_error("Failed to open file: " + binFilePath.string());
     }
 
-    int totalElements = config->numElevationBins * config->numAzimuthBins * config->numRangeBins * 2;
+    int totalElements = config->numElevationBins * config->numAzimuthBins * config->numPosRangeBins * 2;
     std::vector<float> heatmap(totalElements);
     file.read(reinterpret_cast<char*>(heatmap.data()), totalElements * sizeof(float));
     if (file.gcount() != totalElements * sizeof(float)) {
-        throw std::runtime_error("File read error or size mismatch");
+        throw std::runtime_error("Heatmap file read error or size mismatch");
     }
     file.close();
     return heatmap;

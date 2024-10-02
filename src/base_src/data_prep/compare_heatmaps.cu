@@ -34,8 +34,7 @@ int main(int argc, char** argv) {
     for (size_t i = 0; i < computedHeatmap.size(); ++i) {
         if (std::abs(computedHeatmap[i] - heatmap[i]) > threshold) {
             match = false;
-            std::cout << "Mismatch at index " << i << ": computed = " << computedHeatmap[i]
-                      << ", actual = " << heatmap[i] << std::endl;
+            // std::cout << "Mismatch at index " << i << ": computed = " << computedHeatmap[i] << ", actual = " << heatmap[i] << std::endl;
         }
     }
     if (match) {

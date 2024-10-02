@@ -2,7 +2,7 @@
 #define COLORADAR_TOOLS_H
 
 #include "utils.h"
-#include "DataTypes.h"
+// #include "DataTypes.h"
 
 #include <string>
 #include <vector>
@@ -30,8 +30,8 @@ public:
     int numElevationBins;
     int numAzimuthBins;
     double rangeBinWidth;
-    std::vector<double> azimuthBins;
-    std::vector<double> elevationBins;
+    std::vector<float> azimuthBins;
+    std::vector<float> elevationBins;
 
     // antenna params
     double designFrequency;
@@ -56,7 +56,9 @@ public:
 
     // phase calibration params
     std::vector<double> frequencyCalibMatrix;
+    std::vector<std::complex<double>> calFrequencyCalibMatrix;
     std::vector<std::complex<double>> phaseCalibMatrix;
+    std::vector<std::complex<double>> calPhaseCalibMatrix;
 
     // internal params
     int numAzimuthBeams;

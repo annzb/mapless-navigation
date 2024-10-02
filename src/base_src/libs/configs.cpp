@@ -136,17 +136,21 @@ void coloradar::RadarConfig::initHeatmapParams(const std::filesystem::path& heat
 
     auto it = configMap.find("num_range_bins");
     if (it != configMap.end()) {
-        numRangeBins = std::stoi(it->second[0]);
+        // WARNING
+        numPosRangeBins = std::stoi(it->second[0]);
+        numRangeBins = numPosRangeBins * 2;
     } else {
         throw std::runtime_error("Missing num_range_bins in heatmap config.");
     }
     it = configMap.find("num_elevation_bins");
     if (it != configMap.end()) {
         numElevationBins = std::stoi(it->second[0]);
+        // numElevationBeams = numElevationBins;
     }
     it = configMap.find("num_azimuth_bins");
     if (it != configMap.end()) {
         numAzimuthBins = std::stoi(it->second[0]);
+        // numAzimuthBeams = numAzimuthBins;
     }
     it = configMap.find("range_bin_width");
     if (it != configMap.end()) {
@@ -155,13 +159,13 @@ void coloradar::RadarConfig::initHeatmapParams(const std::filesystem::path& heat
     it = configMap.find("azimuth_bins");
     if (it != configMap.end()) {
         for (const auto& bin : it->second) {
-            azimuthBins.push_back(std::stod(bin));
+            azimuthBins.push_back(std::stof(bin));
         }
     }
     it = configMap.find("elevation_bins");
     if (it != configMap.end()) {
         for (const auto& bin : it->second) {
-            elevationBins.push_back(std::stod(bin));
+            elevationBins.push_back(std::stof(bin));
         }
     }
 }
@@ -218,15 +222,21 @@ void coloradar::RadarConfig::initCouplingParams(const std::filesystem::path& cou
         ss.clear();
         ss.str(line);
         std::getline(ss, token, ':');
+        if (token == "num_doppler_bins") {
+            std::getline(ss, token);
+            numDopplerBins = std::stoi(token);
+        }
         if (token == "data") {
             std::vector<double> values;
             while (std::getline(ss, token, ','))
                 values.push_back(std::stod(token));
-            size_t expectedSize = numTxAntennas * numRxAntennas * numRangeBins * 2;
+            size_t expectedSize = numTxAntennas * numRxAntennas * numPosRangeBins * 2;
             if (values.size() != expectedSize)
                 throw std::runtime_error("Mismatch in the size of the coupling calibration matrix. Expected: " + std::to_string(expectedSize) + ", Found: " + std::to_string(values.size()));
-            for (size_t i = 0; i < values.size(); i += 2)
-                couplingCalibMatrix.push_back(std::complex<double>(values[i], values[i + 1]));
+            couplingCalibMatrix.resize(values.size() / 2);
+            for (size_t i = 0; i < values.size(); i += 2) {
+                couplingCalibMatrix[i / 2] = std::complex<double>(values[i], values[i + 1]);
+            }
         }
     }
     file.close();
@@ -235,38 +245,16 @@ void coloradar::RadarConfig::initCouplingParams(const std::filesystem::path& cou
 }
 
 
-//void coloradar::RadarConfig::initCouplingParams(const std::filesystem::path& couplingCfgFile) {
-//    auto configMap = readConfig(couplingCfgFile);
-//    couplingCalibMatrix.clear();
-//
-//    auto it = configMap.find("num_doppler_bins");
-//    if (it != configMap.end()) {
-//        numDopplerBins = std::stoi(it->second[0]);
-//    } else {
-//        throw std::runtime_error("Missing num_doppler_bins in coupling config.");
-//    }
-//    it = configMap.find("data");
-//    if (it != configMap.end()) {
-//        for (const auto& entry : it->second) {
-//            size_t pos;
-//            double real = std::stod(entry, &pos);
-//            double imag = std::stod(entry.substr(pos + 1));
-//            couplingCalibMatrix.push_back(std::complex<double>(real, imag));
-//        }
-//    } else {
-//        throw std::runtime_error("Missing coupling calibration data in config.");
-//    }
-//}
-
 void coloradar::RadarConfig::initPhaseFrequencyParams(const std::filesystem::path& phaseFrequencyCfgFile) {
     const Json::Value& configMap = readJsonConfig(phaseFrequencyCfgFile);
     frequencyCalibMatrix.clear();
+    calFrequencyCalibMatrix.clear();
     phaseCalibMatrix.clear();
+    calPhaseCalibMatrix.clear();
     if (!configMap.isMember("antennaCalib")) {
         throw std::runtime_error("Missing antennaCalib in phase frequency config.");
     }
     const Json::Value& config = configMap["antennaCalib"];
-
     if (config.isMember("frequencyCalibrationMatrix")) {
         const Json::Value& frequencyMatrix = config["frequencyCalibrationMatrix"];
         for (const auto& value : frequencyMatrix) {
@@ -280,40 +268,61 @@ void coloradar::RadarConfig::initPhaseFrequencyParams(const std::filesystem::pat
         if (phaseMatrix.size() % 2 != 0) {
             throw std::runtime_error("Invalid phaseCalibrationMatrix: Expecting pairs of real and imaginary values.");
         }
-
+        phaseCalibMatrix.resize(phaseMatrix.size() / 2);
         for (Json::ArrayIndex i = 0; i < phaseMatrix.size(); i += 2) {
             double real = phaseMatrix[i].asDouble();
             double imag = phaseMatrix[i + 1].asDouble();
-            phaseCalibMatrix.push_back(std::complex<double>(real, imag));
+            phaseCalibMatrix[i / 2] = std::complex<double>(real, imag);
         }
     } else {
         throw std::runtime_error("Missing phaseCalibrationMatrix in phase frequency config.");
     }
+
+    std::vector<std::complex<double>> freq_cal_mat_local(numTxAntennas * numRxAntennas * numRangeBins);
+    // WARNING
+    double cal_freq_slope = frequencySlope;
+    double cal_sampling_rate = adcSampleFrequency;
+    for (int tx_idx = 0; tx_idx < numTxAntennas; tx_idx++) {
+        for (int rx_idx = 0; rx_idx < numRxAntennas; rx_idx++) {
+            int idx = rx_idx + (tx_idx * numRxAntennas);
+            double delta_p = frequencyCalibMatrix[idx] - frequencyCalibMatrix[0];
+            double freq_calib = 2.0 * M_PI * delta_p  * (frequencySlope / cal_freq_slope) * (cal_sampling_rate / adcSampleFrequency);
+            freq_calib /= numRangeBins;
+            for (int sample_idx = 0; sample_idx < numRangeBins; sample_idx++) {
+                int cal_idx = sample_idx + numRangeBins * (rx_idx + numRxAntennas * tx_idx);
+                freq_cal_mat_local[cal_idx] = std::exp(std::complex<double>(0.0, -1.0) * std::complex<double>(freq_calib, 0.0) * std::complex<double>(sample_idx, 0.0));
+            }
+        }
+    }
+    std::vector<std::complex<double>> phase_cal_mat_local(numTxAntennas * numRxAntennas);
+    std::complex<double> phase_ref = phaseCalibMatrix[0];
+    for (int tx_idx = 0; tx_idx < numTxAntennas; tx_idx++) {
+        for (int rx_idx = 0; rx_idx < numRxAntennas; rx_idx++) {
+            int idx = rx_idx + (tx_idx * numRxAntennas);
+            phase_cal_mat_local[idx] = phase_ref / phaseCalibMatrix[idx];
+        }
+    }
+    calFrequencyCalibMatrix = freq_cal_mat_local;
+    calPhaseCalibMatrix = phase_cal_mat_local;
 }
 
+
 void coloradar::RadarConfig::initInternalParams() {
-    numAzimuthBeams = 64;
-    numElevationBeams = 8;
     azimuthApertureLen = 0;
     elevationApertureLen = 0;
-
     azimuthAngles.clear();
     elevationAngles.clear();
     azimuthAngles.resize(numAzimuthBeams);
     elevationAngles.resize(numElevationBeams);
 
-    numPosRangeBins = numRangeBins / 2;
     numAngles = numAzimuthBeams * numElevationBeams;
 
-    std::cout << "start RadarConfig::initInternalParams" << std::endl;
-    std::cout << "numVirtualElements " << numVirtualElements << std::endl;
     if (virtualArrayMap != nullptr) {
-        std::cout << "virtualArrayMap != nullptrs" << std::endl;
         delete[] virtualArrayMap;
         virtualArrayMap = nullptr;
     }
-    std::cout << "cleared arrays in RadarConfig::initInternalParams" << std::endl;
 
+// WARNING
 //    std::vector<pcl::PointXY> tx_centers_reordered(config->numTxAntennas);
 //    for (int tx_idx = 0; tx_idx < config->numTxAntennas; tx_idx++)
 //      tx_centers_reordered[tx_idx] = tx_centers[radar_msg->tx_order[tx_idx]];
@@ -358,8 +367,6 @@ void coloradar::RadarConfig::initInternalParams() {
     virtualArrayMap = new int[virtual_map_local.size()];
     std::copy(virtual_map_local.begin(), virtual_map_local.end(), virtualArrayMap);
 
-    std::cout << "init virtualArrayMap in RadarConfig::initInternalParams" << std::endl;
-
     double wavelength = c / (startFrequency + adcStartTime * frequencySlope);
     double chirp_time = idleTime + rampEndTime;
     double v_max = wavelength / (8.0 * numTxAntennas * chirp_time);
@@ -397,7 +404,10 @@ coloradar::SingleChipConfig::SingleChipConfig(const std::filesystem::path& calib
 }
 
 void coloradar::SingleChipConfig::init(const std::filesystem::path& calibDir) {
-    std::cout << "start SingleChipConfig::init" << std::endl;
+      // WARNING: default 64 8
+    numAzimuthBeams = 64;
+    numElevationBeams = 8;
+
     std::filesystem::path configDir = calibDir / "single_chip";
     coloradar::internal::checkPathExists(configDir);
     std::filesystem::path antennaConfigFilePath = configDir / "antenna_cfg.txt";
@@ -409,7 +419,6 @@ void coloradar::SingleChipConfig::init(const std::filesystem::path& calibDir) {
     initWaveformParams(waveformConfigFilePath);
     initCouplingParams(couplingConfigFilePath);
     initInternalParams();
-    std::cout << "finish SingleChipConfig::init" << std::endl;
 }
 
 coloradar::CascadeConfig::CascadeConfig(const std::filesystem::path& calibDir) {
@@ -418,7 +427,10 @@ coloradar::CascadeConfig::CascadeConfig(const std::filesystem::path& calibDir) {
 }
 
 void coloradar::CascadeConfig::init(const std::filesystem::path& calibDir) {
-    std::cout << "start CascadeConfig::init" << std::endl;
+      // WARNING: default 64 8
+    numAzimuthBeams = 64;
+    numElevationBeams = 8;
+
     std::filesystem::path configDir = calibDir / "cascade";
     coloradar::internal::checkPathExists(configDir);
     std::filesystem::path antennaConfigFilePath = configDir / "antenna_cfg.txt";
@@ -432,5 +444,4 @@ void coloradar::CascadeConfig::init(const std::filesystem::path& calibDir) {
     initCouplingParams(couplingConfigFilePath);
     initPhaseFrequencyParams(phaseFrequencyConfigFilePath);
     initInternalParams();
-    std::cout << "finish CascadeConfig::init" << std::endl;
 }
