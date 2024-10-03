@@ -457,8 +457,8 @@ coloradar::CascadeConfig::CascadeConfig(const std::filesystem::path& calibDir) {
 
 void coloradar::CascadeConfig::init(const std::filesystem::path& calibDir) {
       // WARNING: default 64 8
-    numAzimuthBeams = 64;
-    numElevationBeams = 8;
+    numAzimuthBeams = 128;
+    numElevationBeams = 32;
 
     std::filesystem::path configDir = calibDir / "cascade";
     coloradar::internal::checkPathExists(configDir);

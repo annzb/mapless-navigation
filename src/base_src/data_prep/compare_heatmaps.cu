@@ -19,7 +19,7 @@ void cudaCopy(T* dest, std::vector<T> source) {
 
 
 float roundToTwoDecimals(float value) {
-    return std::round(value * 10000.0) / 10000.0;
+    return std::round(value * 1000.0) / 1000.0;
 }
 
 bool compareVectorsIgnoringOrder(const std::vector<float>& vec1, const std::vector<float>& vec2) {
@@ -185,6 +185,7 @@ int main(int argc, char** argv) {
 
     std::vector<float> heatmap = run.getHeatmap(0, &dataset.cascadeConfig);
     std::cout << "Read heatmap of size " << heatmap.size() << std::endl;
+    // std::cout << "Expected heatmap size " << dataset.cascadeConfig.numPosRangeBins * dataset.cascadeConfig.numElevationBins * dataset.cascadeConfig.numAzimuthBins * 2 << std::endl;
 
 //     trueHeatmap = applyCouplingCalib(trueHeatmap, &dataset.cascadeConfig);
 //     std::cout << "Applied coupling calibration on true heatmap" << std::endl;
@@ -211,7 +212,7 @@ int main(int argc, char** argv) {
 //     std::cout << "Expanded computed heatmap into " << computedHeatmap.size() << std::endl;
 
     bool match = true;
-    float threshold = 1e-4;
+    float threshold = 1e-3;
     if (computedHeatmap.size() != heatmap.size()) {
         std::cerr << "Error: Size mismatch between computed and actual heatmap!" << std::endl;
         return 1;

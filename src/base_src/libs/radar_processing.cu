@@ -64,7 +64,7 @@ void cudaCopy(T* dest, std::vector<T> source) {
 
 std::vector<float> coloradar::cubeToHeatmap(std::vector<int16_t> datacube, coloradar::RadarConfig* config) {
     bool collapse_doppler_ = true;  // WARNING: default false
-    bool remove_antenna_coupling_ = true;  // WARNING: default true
+    bool remove_antenna_coupling_ = false;  // WARNING: default true
     bool phase_freq_calib_ = true;  // WARNING: default false
     
     cufftHandle range_plan_; // fft plan for range fft
@@ -196,8 +196,7 @@ std::vector<float> coloradar::cubeToHeatmap(std::vector<int16_t> datacube, color
     checkCudaArray(doppler_fft_data_, config->numPosRangeBins * config->numDopplerBins * config->numTxAntennas * config->numRxAntennas, "doppler_fft_data_");
 
     // memset angle fft data back to zero
-    // entries that are unset after array is filled with
-    // samples will become zero padding
+    // entries that are unset after array is filled with samples will become zero padding
     cudaMemset(angle_fft_data_, 0, sizeof(cuDoubleComplex) * config->numAzimuthBeams * config->numElevationBeams * config->numPosRangeBins * config->numDopplerBins);
     // move doppler fft result into angle fft data array
     // and apply azimuth and elevation window functions
@@ -222,7 +221,7 @@ std::vector<float> coloradar::cubeToHeatmap(std::vector<int16_t> datacube, color
 
     std::vector<float> image;
     if (collapse_doppler_) {
-        image.resize(2 * config->numAngles * config->numPosRangeBins);
+        image.resize(2 * config->numAngles * config->numPosRangeBins); // = azBins * elBins * rBins = 1048576; angles * 2 = azBins * elBins = 4096; true angles = 2048 but is set to 512
         cudaMemcpy(&image[0], static_bins_, sizeof(float) * 2 * config->numPosRangeBins * config->numAngles, cudaMemcpyDefault);
     } else {
         image.resize(config->numAngles * config->numPosRangeBins * config->numDopplerBins);
