@@ -39,9 +39,7 @@ void rearrangeMatrix(int n_range_bins,
   int doppler_idx = blockIdx.y * blockDim.y + threadIdx.y;
   int virtual_idx = blockIdx.z * blockDim.z + threadIdx.z;
 
-  if (range_idx < n_range_bins
-    && doppler_idx < n_doppler_bins
-    && virtual_idx < n_virtual_elements)
+  if (range_idx < n_range_bins && doppler_idx < n_doppler_bins && virtual_idx < n_virtual_elements)
   {
     int az_idx = virtual_array_map[4*virtual_idx];
     int el_idx = virtual_array_map[(4*virtual_idx)+1];
@@ -51,11 +49,8 @@ void rearrangeMatrix(int n_range_bins,
     // truncate samples if num fft points is less than virtual array dims
     if (az_idx < n_az_beams && el_idx < n_el_beams)
     {
-      int src_idx = range_idx + n_range_bins * (rx_idx + n_rx
-                    * (tx_idx + n_tx * doppler_idx));
-      int dest_idx = el_idx + n_el_beams * (az_idx + n_az_beams
-                    * (range_idx + n_range_bins * doppler_idx));
-
+      int src_idx = range_idx + n_range_bins * (rx_idx + n_rx * (tx_idx + n_tx * doppler_idx));
+      int dest_idx = el_idx + n_el_beams * (az_idx + n_az_beams * (range_idx + n_range_bins * doppler_idx));
       dest_mat[dest_idx] = src_mat[src_idx];
       /*
       dest_mat[dest_idx] = cuCmul(cuCmul(src_mat[src_idx],
@@ -81,9 +76,7 @@ void removeAntennaCoupling(int num_range_bins,
       && range_idx < num_range_bins)
   {
     int couple_idx = range_idx + num_range_bins * antenna_idx;
-    int data_idx = range_idx
-                   + num_range_bins * antenna_idx
-                   + num_range_bins * num_antennas * doppler_idx;
+    int data_idx = range_idx + num_range_bins * antenna_idx + num_range_bins * num_antennas * doppler_idx;
     data[data_idx] = cuCsub(data[data_idx], coupling_signature[couple_idx]);
   }
 
@@ -406,7 +399,7 @@ void rearrangeData(int num_range_bins,
                                                      elevation_window,
                                                      src_mat,
                                                      dest_mat);
-  cudaDeviceSynchronize();
+    cudaDeviceSynchronize();
 }
 
 

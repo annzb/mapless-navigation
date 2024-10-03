@@ -310,6 +310,7 @@ void coloradar::RadarConfig::initPhaseFrequencyParams(const std::filesystem::pat
 void coloradar::RadarConfig::initInternalParams() {
     azimuthApertureLen = 0;
     elevationApertureLen = 0;
+    virtualArrayMap.clear();
     azimuthAngles.clear();
     elevationAngles.clear();
     azimuthAngles.resize(numAzimuthBeams);
@@ -317,33 +318,26 @@ void coloradar::RadarConfig::initInternalParams() {
 
     numAngles = numAzimuthBeams * numElevationBeams;
 
-    if (virtualArrayMap != nullptr) {
-        delete[] virtualArrayMap;
-        virtualArrayMap = nullptr;
-    }
-
 // WARNING
 //    std::vector<pcl::PointXY> tx_centers_reordered(config->numTxAntennas);
 //    for (int tx_idx = 0; tx_idx < config->numTxAntennas; tx_idx++)
 //      tx_centers_reordered[tx_idx] = tx_centers[radar_msg->tx_order[tx_idx]];
 //    tx_centers = tx_centers_reordered;
     numVirtualElements = 0;
-    std::vector<int> virtual_map_local;
     for (int tx_idx = 0; tx_idx < numTxAntennas; tx_idx++)
     {
       for (int rx_idx = 0; rx_idx < numRxAntennas; rx_idx++)
       {
         int virtual_x = rxCenters[rx_idx].x + txCenters[tx_idx].x;
         int virtual_y = rxCenters[rx_idx].y + txCenters[tx_idx].y;
-
         // check to ensure this antenna pair doesn't map to the same virtual
         // location as a previously evaluated antenna pair
         bool redundant = false;
         for (int i = 0; i < numVirtualElements; i++)
         {
           int idx = i * 4;
-          if (virtual_map_local[idx] == virtual_x
-            && virtual_map_local[idx+1] == virtual_y)
+          if (virtualArrayMap[idx] == virtual_x
+            && virtualArrayMap[idx+1] == virtual_y)
             redundant = true;
         }
         // record mapping from antenna pair index to virtual antenna location
@@ -356,24 +350,21 @@ void coloradar::RadarConfig::initInternalParams() {
           if (virtual_y + 1 > elevationApertureLen)
             elevationApertureLen = virtual_y + 1;
 
-          virtual_map_local.push_back(virtual_x);
-          virtual_map_local.push_back(virtual_y);
-          virtual_map_local.push_back(rx_idx);
-          virtual_map_local.push_back(tx_idx);
+          virtualArrayMap.push_back(virtual_x);
+          virtualArrayMap.push_back(virtual_y);
+          virtualArrayMap.push_back(rx_idx);
+          virtualArrayMap.push_back(tx_idx);
           numVirtualElements++;
         }
       }
     }
-    virtualArrayMap = new int[virtual_map_local.size()];
-    std::copy(virtual_map_local.begin(), virtual_map_local.end(), virtualArrayMap);
-
     double wavelength = c / (startFrequency + adcStartTime * frequencySlope);
     double chirp_time = idleTime + rampEndTime;
     double v_max = wavelength / (8.0 * numTxAntennas * chirp_time);
     dopplerBinWidth = v_max / numDopplerBins;
 
     double center_frequency = startFrequency + numRangeBins / adcSampleFrequency * frequencySlope / 2.0;
-    double d = 0.5 * center_frequency / designFrequency; // unit antenna distance in wavelengths
+    double d = 0.5 * center_frequency / designFrequency;
     double az_d_phase = (2. * M_PI) / numAzimuthBeams;
     double phase_dif = (az_d_phase / 2.) - M_PI;
     for (int i = 0; i < numAzimuthBeams; i++)
@@ -390,13 +381,51 @@ void coloradar::RadarConfig::initInternalParams() {
     }
 }
 
-coloradar::RadarConfig::~RadarConfig() {
-    if (virtualArrayMap != nullptr) {
-        delete[] virtualArrayMap;
-        virtualArrayMap = nullptr;
+
+std::vector<std::complex<double>> calculatePhaseCalibMatrix(coloradar::RadarConfig* config) {
+    int num_tx = config->numTxAntennas;
+    int num_rx = config->numRxAntennas;
+    std::vector<std::complex<double>> phase_cal_matrix(num_tx * num_rx);
+    for (int tx = 0; tx < num_tx; ++tx) {
+        for (int rx = 0; rx < num_rx; ++rx) {
+            int idx = tx * num_rx + rx;
+            phase_cal_matrix[idx] = config->phaseCalibMatrix[0] / config->phaseCalibMatrix[idx];
+        }
     }
+    return phase_cal_matrix;
 }
 
+std::vector<std::complex<double>> calculateFrequencyCalibMatrix(coloradar::RadarConfig* config) {
+    const double pi = 3.141592653589793;
+    int num_tx = config->numTxAntennas;
+    int num_rx = config->numRxAntennas;
+    int num_range_bins = config->numRangeBins;
+    double frequency_slope = config->frequencySlope;
+    double adc_sample_frequency = config->adcSampleFrequency;
+    std::vector<std::complex<double>> frequency_cal_matrix(num_range_bins * num_tx * num_rx);
+    for (int tx = 0; tx < num_tx; ++tx) {
+        for (int rx = 0; rx < num_rx; ++rx) {
+            for (int range_idx = 0; range_idx < num_range_bins; ++range_idx) {
+                // Calculate delta_p (frequency offset relative to the first element)
+                int idx = tx * num_rx + rx;
+                double delta_p = config->frequencyCalibMatrix[idx] - config->frequencyCalibMatrix[0];
+                // Frequency calibration factor for the given range bin
+                double phase_shift = 2.0 * pi * delta_p * (frequency_slope / config->frequencySlope)  * (adc_sample_frequency / config->adcSampleFrequency);
+                phase_shift *= range_idx / static_cast<double>(num_range_bins);  // Scale by range bin
+                // Frequency calibration vector (exponential term for complex multiplication)
+                std::complex<double> freq_cal_value = std::exp(std::complex<double>(0.0, -phase_shift));
+                // Store in the frequency calibration matrix
+                int freq_cal_idx = range_idx + num_range_bins * (rx + num_rx * tx);
+                frequency_cal_matrix[freq_cal_idx] = freq_cal_value;
+            }
+        }
+    }
+    return frequency_cal_matrix;
+}
+
+bool compareVectors(const std::vector<std::complex<double>>& vec1, const std::vector<std::complex<double>>& vec2) {
+    return vec1.size() == vec2.size() && std::equal(vec1.begin(), vec1.end(), vec2.begin());
+}
 
 coloradar::SingleChipConfig::SingleChipConfig(const std::filesystem::path& calibDir) {
     coloradar::internal::checkPathExists(calibDir);
@@ -444,4 +473,16 @@ void coloradar::CascadeConfig::init(const std::filesystem::path& calibDir) {
     initCouplingParams(couplingConfigFilePath);
     initPhaseFrequencyParams(phaseFrequencyConfigFilePath);
     initInternalParams();
+//    std::vector<std::complex<double>> phaseCalibComputed = calculatePhaseCalibMatrix(this);
+//    std::vector<std::complex<double>> freqCalibComputed = calculateFrequencyCalibMatrix(this);
+//    if (compareVectors(phaseCalibComputed, calPhaseCalibMatrix)) {
+//        std::cout << "Phase calib equal" << std::endl;
+//    } else {
+//        std::cout << "Phase calib MISMATCH" << std::endl;
+//    }
+//    if (compareVectors(freqCalibComputed, calFrequencyCalibMatrix)) {
+//        std::cout << "Freq calib equal" << std::endl;
+//    } else {
+//        std::cout << "Freq calib MISMATCH" << std::endl;
+//    }
 }

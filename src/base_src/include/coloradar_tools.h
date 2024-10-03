@@ -27,6 +27,7 @@ public:
 
     // heatmap params
     int numRangeBins;
+    int numPosRangeBins;
     int numElevationBins;
     int numAzimuthBins;
     double rangeBinWidth;
@@ -65,21 +66,14 @@ public:
     int numElevationBeams;
     int azimuthApertureLen;
     int elevationApertureLen;
+    int numAngles;
+    int numVirtualElements;
+    std::vector<int> virtualArrayMap;
     std::vector<float> azimuthAngles;
     std::vector<float> elevationAngles;
-
-    int numPosRangeBins;
-    int numAngles;
-
-    int numVirtualElements;
-    int* virtualArrayMap = nullptr;
-
     double dopplerBinWidth;
-//    double* rangeWindowFunc = nullptr;
-//    double* dopplerWindowFunc = nullptr;
 
     RadarConfig() = default;
-    ~RadarConfig();
 };
 
 class SingleChipConfig : public RadarConfig {
@@ -154,8 +148,8 @@ public:
     template<OctomapCloudType CloudT> CloudT getLidarPointCloud(const std::filesystem::path& binPath);
     template<CloudType CloudT> CloudT getLidarPointCloud(const int& cloudIdx);
 
-    std::vector<std::complex<double>> getDatacube(const std::filesystem::path& binFilePath, RadarConfig* config);
-    std::vector<std::complex<double>> getDatacube(const int& cubeIdx, RadarConfig* config);
+    std::vector<int16_t> getDatacube(const std::filesystem::path& binFilePath, RadarConfig* config);
+    std::vector<int16_t> getDatacube(const int& cubeIdx, RadarConfig* config);
     std::vector<float> getHeatmap(const std::filesystem::path& binFilePath, RadarConfig* config);
     std::vector<float> getHeatmap(const int& hmIdx, RadarConfig* config);
 

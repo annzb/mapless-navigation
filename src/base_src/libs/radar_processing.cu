@@ -6,7 +6,6 @@
 #include <mutex>
 
 #include <cufft.h>
-#include "cuda_kernels.h"
 #include "coloradar_cuda.h"
 
 
@@ -63,8 +62,8 @@ void cudaCopy(T* dest, std::vector<T> source) {
 }
 
 
-std::vector<float> coloradar::cubeToHeatmap(const std::vector<std::complex<double>>& datacube, coloradar::RadarConfig* config) {
-    bool collapse_doppler_ = false;  // WARNING: default false
+std::vector<float> coloradar::cubeToHeatmap(std::vector<int16_t> datacube, coloradar::RadarConfig* config) {
+    bool collapse_doppler_ = true;  // WARNING: default false
     bool remove_antenna_coupling_ = true;  // WARNING: default true
     bool phase_freq_calib_ = true;  // WARNING: default false
     
@@ -84,16 +83,15 @@ std::vector<float> coloradar::cubeToHeatmap(const std::vector<std::complex<doubl
     float* magnitudes_out_; // complex magnitudes of aoa fft output for publishing
     float* static_bins_; // only the static doppler bins of the steered output
     int16_t* int_frame_data_; // container for int-valued adc data from ros message
+    int* virtualArrayMap;
 
     // Allocate datacube
-    size_t num_elements = datacube.size();
-    cudaMalloc(&int_frame_data_, sizeof(int16_t) * 2 * num_elements);
-    std::vector<int16_t> h_int_frame_data(2 * num_elements);
-    for (size_t i = 0; i < num_elements; ++i) {
-        h_int_frame_data[2 * i] = static_cast<int16_t>(datacube[i].real());
-        h_int_frame_data[2 * i + 1] = static_cast<int16_t>(datacube[i].imag());
-    }
-    cudaMemcpy(int_frame_data_, h_int_frame_data.data(), sizeof(int16_t) * 2 * num_elements, cudaMemcpyHostToDevice);
+    cudaMalloc(&int_frame_data_, sizeof(int16_t) * datacube.size());
+    cudaCopy(int_frame_data_, datacube);
+
+    // Allocate virtual array map
+    cudaMalloc(&virtualArrayMap, sizeof(int) * 4 * config->numVirtualElements);
+    cudaCopy(virtualArrayMap, config->virtualArrayMap);
 
     // Allocate memory for coupling signature
     cudaMalloc(&coupling_signature_, sizeof(cuDoubleComplex) * config->numPosRangeBins * config->numTxAntennas * config->numRxAntennas);
@@ -167,10 +165,6 @@ std::vector<float> coloradar::cubeToHeatmap(const std::vector<std::complex<doubl
       az_window_local[az_idx] = blackman(az_idx, config->azimuthApertureLen);
     for (int el_idx = 0; el_idx < config->elevationApertureLen; el_idx++)
       el_window_local[el_idx] = blackman(el_idx, config->elevationApertureLen);
-//     cudaMemcpy(range_window_func_, &range_window_local[0], sizeof(double) * config->numRangeBins, cudaMemcpyDefault);
-//     cudaMemcpy(doppler_window_func_, &doppler_window_local[0], sizeof(double) * config->numDopplerBins, cudaMemcpyDefault);
-//     cudaMemcpy(az_window_func_, &az_window_local[0], sizeof(double) * config->azimuthApertureLen, cudaMemcpyDefault);
-//     cudaMemcpy(el_window_func_, &el_window_local[0], sizeof(double) * config->elevationApertureLen, cudaMemcpyDefault);
     cudaCopy(range_window_func_, range_window_local);
     checkCudaArray(range_window_func_, config->numRangeBins, "range_window_func_");
     cudaCopy(doppler_window_func_, doppler_window_local);
@@ -209,14 +203,11 @@ std::vector<float> coloradar::cubeToHeatmap(const std::vector<std::complex<doubl
     // and apply azimuth and elevation window functions
     // not using the applyWindow kernel because it's not compatible
     // with the data layout required for the angle fft
-    checkCudaArray(angle_fft_data_, config->numPosRangeBins * config->numDopplerBins * config->numAzimuthBeams * config->numElevationBeams, "angle_fft_data_");
-    rearrangeData(config->numPosRangeBins, config->numDopplerBins, config->numTxAntennas, config->numRxAntennas, config->numAzimuthBeams, config->numElevationBeams, config->numVirtualElements, config->virtualArrayMap, az_window_func_, el_window_func_, doppler_fft_data_, angle_fft_data_);
+    rearrangeData(config->numPosRangeBins, config->numDopplerBins, config->numTxAntennas, config->numRxAntennas, config->numAzimuthBeams, config->numElevationBeams, config->numVirtualElements, virtualArrayMap, az_window_func_, el_window_func_, doppler_fft_data_, angle_fft_data_);
     // run angle fft
-    checkCudaArray(angle_fft_data_, config->numPosRangeBins * config->numDopplerBins * config->numAzimuthBeams * config->numElevationBeams, "angle_fft_data_");
     cufftExecZ2Z(angle_plan_, angle_fft_data_, angle_fft_data_, CUFFT_FORWARD);
-    // checkCudaArray(angle_fft_data_, config->numPosRangeBins * config->numDopplerBins * config->numAzimuthBeams * config->numElevationBeams, "angle_fft_data_");
     cudaDeviceSynchronize();
-    // checkCudaArray(angle_fft_data_, config->numPosRangeBins * config->numDopplerBins * config->numAzimuthBeams * config->numElevationBeams, "angle_fft_data_");
+    checkCudaArray(angle_fft_data_, config->numPosRangeBins * config->numDopplerBins * config->numAzimuthBeams * config->numElevationBeams, "angle_fft_data_");
 
     // reorder data for publication
     // includes rearranging the doppler, azimuth, and elevation dimensions
@@ -232,14 +223,16 @@ std::vector<float> coloradar::cubeToHeatmap(const std::vector<std::complex<doubl
     std::vector<float> image;
     if (collapse_doppler_) {
         image.resize(2 * config->numAngles * config->numPosRangeBins);
+        cudaMemcpy(&image[0], static_bins_, sizeof(float) * 2 * config->numPosRangeBins * config->numAngles, cudaMemcpyDefault);
     } else {
         image.resize(config->numAngles * config->numPosRangeBins * config->numDopplerBins);
-    }
-    if (collapse_doppler_)
-        cudaMemcpy(&image[0], static_bins_, sizeof(float) * 2 * config->numPosRangeBins * config->numAngles, cudaMemcpyDefault);
-    else
         cudaMemcpy(&image[0], magnitudes_out_, sizeof(float) * config->numPosRangeBins * config->numDopplerBins * config->numAngles, cudaMemcpyDefault);
+    }
 
+    cudaFree(virtualArrayMap);
+    cudaFree(coupling_signature_);
+    cudaFree(phase_calib_mat_);
+    cudaFree(freq_calib_mat_);
     cudaFree(range_window_func_);
     cudaFree(doppler_window_func_);
     cudaFree(az_window_func_);

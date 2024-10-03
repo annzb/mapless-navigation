@@ -157,13 +157,12 @@ int coloradar::ColoradarRun::findClosestEarlierTimestamp(const double& targetTs,
 }
 
 
-std::vector<std::complex<double>> coloradar::ColoradarRun::getDatacube(const std::filesystem::path& binFilePath, coloradar::RadarConfig* config) {
+std::vector<int16_t> coloradar::ColoradarRun::getDatacube(const std::filesystem::path& binFilePath, coloradar::RadarConfig* config) {
     coloradar::internal::checkPathExists(binFilePath);
     std::ifstream file(binFilePath, std::ios::binary);
     if (!file.is_open()) {
         throw std::runtime_error("Failed to open file: " + binFilePath.string());
     }
-
     int totalElements = config->numTxAntennas * config->numRxAntennas * config->numChirpsPerFrame * config->numAdcSamplesPerChirp * 2;
     std::vector<int16_t> frameBytes(totalElements);
     file.read(reinterpret_cast<char*>(frameBytes.data()), totalElements * sizeof(int16_t));
@@ -171,15 +170,10 @@ std::vector<std::complex<double>> coloradar::ColoradarRun::getDatacube(const std
         throw std::runtime_error("Datacube file read error or size mismatch");
     }
     file.close();
-
-    std::vector<std::complex<double>> datacube(totalElements / 2);
-    for (int i = 0; i < totalElements; i += 2) {
-        datacube[i / 2] = std::complex<double>(static_cast<double>(frameBytes[i]), static_cast<double>(frameBytes[i + 1]));
-    }
-    return datacube;
+    return frameBytes;
 }
 
-std::vector<std::complex<double>> coloradar::ColoradarRun::getDatacube(const int& cubeIdx, coloradar::RadarConfig* config) {
+std::vector<int16_t> coloradar::ColoradarRun::getDatacube(const int& cubeIdx, coloradar::RadarConfig* config) {
     std::filesystem::path cubeBinFilePath = cascadeCubesDirPath / "data" / ("frame_" + std::to_string(cubeIdx) + ".bin");
     return getDatacube(cubeBinFilePath, config);
 }
@@ -190,7 +184,6 @@ std::vector<float> coloradar::ColoradarRun::getHeatmap(const std::filesystem::pa
     if (!file.is_open()) {
         throw std::runtime_error("Failed to open file: " + binFilePath.string());
     }
-
     int totalElements = config->numElevationBins * config->numAzimuthBins * config->numPosRangeBins * 2;
     std::vector<float> heatmap(totalElements);
     file.read(reinterpret_cast<char*>(heatmap.data()), totalElements * sizeof(float));
