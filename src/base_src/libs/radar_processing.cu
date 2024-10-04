@@ -53,18 +53,59 @@ void checkCudaArray(cuDoubleComplex* device_array, size_t num_elements, std::str
     std::cout << "Non-zero elements in " << description << ": " << non_zero_count << std::endl << std::endl;
 }
 
-template<typename T>
-void cudaCopy(T* dest, std::vector<T> source) {
-    cudaError_t err = cudaMemcpy(dest, source.data(), sizeof(T) * source.size(), cudaMemcpyHostToDevice);
-    if (err != cudaSuccess) {
-        std::cerr << "CUDA memcpy error:  " << cudaGetErrorString(err) << std::endl;
+std::vector<cuDoubleComplex> toCudaComplex(std::vector<std::complex<double>> array) {
+    std::vector<cuDoubleComplex> cudaArray(array.size());
+    for (size_t i = 0; i < array.size(); ++i) {
+        cudaArray[i] = make_cuDoubleComplex(array[i].real(), array[i].imag());
     }
+    return cudaArray;
 }
+
+// std::vector<float> applyCouplingCalib(std::vector<float> heatmap, coloradar::RadarConfig* config) {
+//     float* heatmapGpu;
+//     cuDoubleComplex* couplingSignatureGpu;
+//     std::vector<cuDoubleComplex> couplingSignature = toCudaComplex(config->couplingCalibMatrix);
+//
+//     cudaMalloc(&heatmapGpu, sizeof(float) * heatmap.size());
+//     cudaMalloc(&couplingSignatureGpu, sizeof(cuDoubleComplex) * couplingSignature.size());
+//     coloradar::cudaCopy(couplingSignatureGpu, couplingSignature);
+//     coloradar::cudaCopy(heatmapGpu, heatmap);
+//     removeCoupling(config->numPosRangeBins, config->numDopplerBins, config->numTxAntennas * config->numRxAntennas, heatmapGpu, couplingSignatureGpu);
+//
+//     std::vector<float> heatmapCalibrated;
+//     cudaMemcpy(&heatmapCalibrated[0], heatmapGpu, sizeof(float) * heatmap.size(), cudaMemcpyDefault);
+//     cudaFree(heatmapGpu);
+//     cudaFree(couplingSignatureGpu);
+//     return heatmapCalibrated;
+// }
+//
+// std::vector<float> applyPhaseFreqCalib(std::vector<float> heatmap, coloradar::RadarConfig* config) {
+//     float* heatmapGpu;
+//     cuDoubleComplex* phaseCalibMatrixGpu;
+//     cuDoubleComplex* freqCalibMatrixGpu;
+//     std::vector<cuDoubleComplex> phaseCalibMatrix = toCudaComplex(config->calPhaseCalibMatrix);
+//     std::vector<cuDoubleComplex> freqCalibMatrix = toCudaComplex(config->calFrequencyCalibMatrix);
+//
+//     cudaMalloc(&heatmapGpu, sizeof(float) * heatmap.size());
+//     cudaMalloc(&phaseCalibMatrixGpu, sizeof(cuDoubleComplex) * phaseCalibMatrix.size());
+//     cudaMalloc(&freqCalibMatrixGpu, sizeof(cuDoubleComplex) * freqCalibMatrix.size());
+//     coloradar::cudaCopy(heatmapGpu, heatmap);
+//     coloradar::cudaCopy(phaseCalibMatrixGpu, phaseCalibMatrix);
+//     coloradar::cudaCopy(freqCalibMatrixGpu, freqCalibMatrix);
+//     applyPhaseFreqCal(config->numRangeBins, config->numDopplerBins, config->numTxAntennas, config->numRxAntennas, heatmapGpu, freqCalibMatrixGpu, phaseCalibMatrixGpu);
+//
+//     std::vector<float> heatmapCalibrated;
+//     cudaMemcpy(&heatmapCalibrated[0], heatmapGpu, sizeof(float) * heatmap.size(), cudaMemcpyDefault);
+//     cudaFree(heatmapGpu);
+//     cudaFree(phaseCalibMatrixGpu);
+//     cudaFree(freqCalibMatrixGpu);
+//     return heatmapCalibrated;
+// }
 
 
 std::vector<float> coloradar::cubeToHeatmap(std::vector<int16_t> datacube, coloradar::RadarConfig* config) {
     bool collapse_doppler_ = true;  // WARNING: default false
-    bool remove_antenna_coupling_ = false;  // WARNING: default true
+    bool remove_antenna_coupling_ = true;  // WARNING: default true
     bool phase_freq_calib_ = true;  // WARNING: default false
     
     cufftHandle range_plan_; // fft plan for range fft
@@ -87,37 +128,19 @@ std::vector<float> coloradar::cubeToHeatmap(std::vector<int16_t> datacube, color
 
     // Allocate datacube
     cudaMalloc(&int_frame_data_, sizeof(int16_t) * datacube.size());
-    cudaCopy(int_frame_data_, datacube);
+    coloradar::cudaCopy(int_frame_data_, datacube);
 
     // Allocate virtual array map
     cudaMalloc(&virtualArrayMap, sizeof(int) * 4 * config->numVirtualElements);
-    cudaCopy(virtualArrayMap, config->virtualArrayMap);
+    coloradar::cudaCopy(virtualArrayMap, config->virtualArrayMap);
 
-    // Allocate memory for coupling signature
+    // Allocate calibration matrices
     cudaMalloc(&coupling_signature_, sizeof(cuDoubleComplex) * config->numPosRangeBins * config->numTxAntennas * config->numRxAntennas);
-    std::vector<cuDoubleComplex> h_couplingCalibMatrix(config->couplingCalibMatrix.size());
-    for (size_t i = 0; i < config->couplingCalibMatrix.size(); ++i) {
-        h_couplingCalibMatrix[i] = make_cuDoubleComplex(config->couplingCalibMatrix[i].real(), config->couplingCalibMatrix[i].imag());
-    }
-    cudaCopy(coupling_signature_, h_couplingCalibMatrix);
-    // cudaMemcpy(coupling_signature_, h_couplingCalibMatrix.data(), sizeof(cuDoubleComplex) * h_couplingCalibMatrix.size(), cudaMemcpyHostToDevice);
-
-    // Allocate memory for frequency calibration matrix
+    coloradar::cudaCopy(coupling_signature_, toCudaComplex(config->couplingCalibMatrix));
     cudaMalloc(&freq_calib_mat_, sizeof(cuDoubleComplex) * config->numRangeBins * config->numTxAntennas * config->numRxAntennas);
-    std::vector<cuDoubleComplex> h_freqCalibMatrix(config->calFrequencyCalibMatrix.size());
-    for (size_t i = 0; i < config->calFrequencyCalibMatrix.size(); ++i) {
-        h_freqCalibMatrix[i] = make_cuDoubleComplex(config->calFrequencyCalibMatrix[i].real(), config->calFrequencyCalibMatrix[i].imag());
-    }
-    cudaMemcpy(freq_calib_mat_, h_freqCalibMatrix.data(), sizeof(cuDoubleComplex) * h_freqCalibMatrix.size(), cudaMemcpyHostToDevice);
-
-    // Allocate memory for phase calibration matrix
+    coloradar::cudaCopy(freq_calib_mat_, toCudaComplex(config->frequencyCalibMatrix));
     cudaMalloc(&phase_calib_mat_, sizeof(cuDoubleComplex) * config->numTxAntennas * config->numRxAntennas);
-    std::vector<cuDoubleComplex> h_phaseCalibMatrix(config->calPhaseCalibMatrix.size());
-    for (size_t i = 0; i < config->calPhaseCalibMatrix.size(); ++i) {
-        h_phaseCalibMatrix[i] = make_cuDoubleComplex(config->calPhaseCalibMatrix[i].real(), config->calPhaseCalibMatrix[i].imag());
-    }
-    cudaMemcpy(phase_calib_mat_, h_phaseCalibMatrix.data(), sizeof(cuDoubleComplex) * h_phaseCalibMatrix.size(), cudaMemcpyHostToDevice);
-
+    coloradar::cudaCopy(phase_calib_mat_, toCudaComplex(config->phaseCalibMatrix));
     checkCudaArray(coupling_signature_, config->numPosRangeBins * config->numTxAntennas * config->numRxAntennas, "coupling_signature_");
     checkCudaArray(freq_calib_mat_, config->numRangeBins * config->numTxAntennas * config->numRxAntennas, "freq_calib_mat_");
     checkCudaArray(phase_calib_mat_, config->numTxAntennas * config->numRxAntennas, "phase_calib_mat_");
@@ -165,13 +188,13 @@ std::vector<float> coloradar::cubeToHeatmap(std::vector<int16_t> datacube, color
       az_window_local[az_idx] = blackman(az_idx, config->azimuthApertureLen);
     for (int el_idx = 0; el_idx < config->elevationApertureLen; el_idx++)
       el_window_local[el_idx] = blackman(el_idx, config->elevationApertureLen);
-    cudaCopy(range_window_func_, range_window_local);
+    coloradar::cudaCopy(range_window_func_, range_window_local);
     checkCudaArray(range_window_func_, config->numRangeBins, "range_window_func_");
-    cudaCopy(doppler_window_func_, doppler_window_local);
+    coloradar::cudaCopy(doppler_window_func_, doppler_window_local);
     checkCudaArray(doppler_window_func_, config->numDopplerBins, "doppler_window_func_");
-    cudaCopy(az_window_func_, az_window_local);
+    coloradar::cudaCopy(az_window_func_, az_window_local);
     checkCudaArray(az_window_func_, config->azimuthApertureLen, "az_window_func_");
-    cudaCopy(el_window_func_, el_window_local);
+    coloradar::cudaCopy(el_window_func_, el_window_local);
     checkCudaArray(el_window_func_, config->elevationApertureLen, "el_window_func_");
 
     setFrameData(config->numRangeBins, config->numDopplerBins, config->numTxAntennas, config->numRxAntennas, int_frame_data_, range_fft_data_);

@@ -55,12 +55,6 @@ public:
     int numDopplerBins;
     std::vector<std::complex<double>> couplingCalibMatrix;
 
-    // phase calibration params
-    std::vector<double> frequencyCalibMatrix;
-    std::vector<std::complex<double>> calFrequencyCalibMatrix;
-    std::vector<std::complex<double>> phaseCalibMatrix;
-    std::vector<std::complex<double>> calPhaseCalibMatrix;
-
     // internal params
     int numAzimuthBeams;
     int numElevationBeams;
@@ -72,6 +66,8 @@ public:
     std::vector<float> azimuthAngles;
     std::vector<float> elevationAngles;
     double dopplerBinWidth;
+    std::vector<std::complex<double>> phaseCalibMatrix;
+    std::vector<std::complex<double>> frequencyCalibMatrix;
 
     RadarConfig() = default;
 };
@@ -152,6 +148,8 @@ public:
     std::vector<int16_t> getDatacube(const int& cubeIdx, RadarConfig* config);
     std::vector<float> getHeatmap(const std::filesystem::path& binFilePath, RadarConfig* config);
     std::vector<float> getHeatmap(const int& hmIdx, RadarConfig* config);
+    std::vector<float> clipHeatmapImage(const std::vector<float>& image, const float& horizontalFov, const float& verticalFov, const float& range, coloradar::RadarConfig* config);
+    std::vector<float> clipHeatmapImage(const std::vector<float>& image, const int& azimuthMaxBin, const int& elevationMaxBin, const int& rangeMaxBin, coloradar::RadarConfig* config);
 
     octomap::OcTree buildLidarOctomap(
         const double& mapResolution,

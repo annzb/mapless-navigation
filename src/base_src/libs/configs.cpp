@@ -145,12 +145,10 @@ void coloradar::RadarConfig::initHeatmapParams(const std::filesystem::path& heat
     it = configMap.find("num_elevation_bins");
     if (it != configMap.end()) {
         numElevationBins = std::stoi(it->second[0]);
-        // numElevationBeams = numElevationBins;
     }
     it = configMap.find("num_azimuth_bins");
     if (it != configMap.end()) {
         numAzimuthBins = std::stoi(it->second[0]);
-        // numAzimuthBeams = numAzimuthBins;
     }
     it = configMap.find("range_bin_width");
     if (it != configMap.end()) {
@@ -247,63 +245,67 @@ void coloradar::RadarConfig::initCouplingParams(const std::filesystem::path& cou
 
 void coloradar::RadarConfig::initPhaseFrequencyParams(const std::filesystem::path& phaseFrequencyCfgFile) {
     const Json::Value& configMap = readJsonConfig(phaseFrequencyCfgFile);
-    frequencyCalibMatrix.clear();
-    calFrequencyCalibMatrix.clear();
-    phaseCalibMatrix.clear();
-    calPhaseCalibMatrix.clear();
     if (!configMap.isMember("antennaCalib")) {
         throw std::runtime_error("Missing antennaCalib in phase frequency config.");
     }
     const Json::Value& config = configMap["antennaCalib"];
+
+    int numPairs = numTxAntennas * numRxAntennas;
+    std::vector<double> freqData(numTxAntennas * numRxAntennas);
+    std::vector<std::complex<double>> phaseData(numTxAntennas * numRxAntennas);
+
     if (config.isMember("frequencyCalibrationMatrix")) {
         const Json::Value& frequencyMatrix = config["frequencyCalibrationMatrix"];
+        if (frequencyMatrix.size() != numTxAntennas * numRxAntennas) {
+            throw std::runtime_error("Invalid frequency calibration array: expected " + std::to_string(numRxAntennas * numTxAntennas) + " elements, got " + std::to_string(frequencyMatrix.size()));
+        }
         for (const auto& value : frequencyMatrix) {
-            frequencyCalibMatrix.push_back(value.asDouble());
+            freqData.push_back(value.asDouble());
         }
     } else {
         throw std::runtime_error("Missing frequencyCalibrationMatrix in phase frequency config.");
     }
+
     if (config.isMember("phaseCalibrationMatrix")) {
         const Json::Value& phaseMatrix = config["phaseCalibrationMatrix"];
         if (phaseMatrix.size() % 2 != 0) {
             throw std::runtime_error("Invalid phaseCalibrationMatrix: Expecting pairs of real and imaginary values.");
         }
-        phaseCalibMatrix.resize(phaseMatrix.size() / 2);
+        if (phaseMatrix.size() / 2 != numTxAntennas * numRxAntennas) {
+            throw std::runtime_error("Invalid phase calibration array: expected " + std::to_string(numRxAntennas * numTxAntennas) + " elements, got " + std::to_string(phaseMatrix.size()));
+        }
         for (Json::ArrayIndex i = 0; i < phaseMatrix.size(); i += 2) {
             double real = phaseMatrix[i].asDouble();
             double imag = phaseMatrix[i + 1].asDouble();
-            phaseCalibMatrix[i / 2] = std::complex<double>(real, imag);
+            phaseData[i / 2] = std::complex<double>(real, imag);
         }
     } else {
         throw std::runtime_error("Missing phaseCalibrationMatrix in phase frequency config.");
     }
 
-    std::vector<std::complex<double>> freq_cal_mat_local(numTxAntennas * numRxAntennas * numRangeBins);
-    // WARNING
-    double cal_freq_slope = frequencySlope;
-    double cal_sampling_rate = adcSampleFrequency;
+    frequencyCalibMatrix.clear();
+    frequencyCalibMatrix.resize(numTxAntennas * numRxAntennas * numRangeBins);
+    phaseCalibMatrix.clear();
+    phaseCalibMatrix.resize(numTxAntennas * numRxAntennas);
+
     for (int tx_idx = 0; tx_idx < numTxAntennas; tx_idx++) {
         for (int rx_idx = 0; rx_idx < numRxAntennas; rx_idx++) {
             int idx = rx_idx + (tx_idx * numRxAntennas);
-            double delta_p = frequencyCalibMatrix[idx] - frequencyCalibMatrix[0];
-            double freq_calib = 2.0 * M_PI * delta_p  * (frequencySlope / cal_freq_slope) * (cal_sampling_rate / adcSampleFrequency);
-            freq_calib /= numRangeBins;
+            double delta_p = freqData[idx] - freqData[0];
+            double freq_calib = 2.0 * M_PI * delta_p / numRangeBins;
             for (int sample_idx = 0; sample_idx < numRangeBins; sample_idx++) {
                 int cal_idx = sample_idx + numRangeBins * (rx_idx + numRxAntennas * tx_idx);
-                freq_cal_mat_local[cal_idx] = std::exp(std::complex<double>(0.0, -1.0) * std::complex<double>(freq_calib, 0.0) * std::complex<double>(sample_idx, 0.0));
+                frequencyCalibMatrix[cal_idx] = std::exp(std::complex<double>(0.0, -1.0) * std::complex<double>(freq_calib, 0.0) * std::complex<double>(sample_idx, 0.0));
             }
         }
     }
-    std::vector<std::complex<double>> phase_cal_mat_local(numTxAntennas * numRxAntennas);
-    std::complex<double> phase_ref = phaseCalibMatrix[0];
+    std::complex<double> phase_ref = phaseData[0];
     for (int tx_idx = 0; tx_idx < numTxAntennas; tx_idx++) {
         for (int rx_idx = 0; rx_idx < numRxAntennas; rx_idx++) {
             int idx = rx_idx + (tx_idx * numRxAntennas);
-            phase_cal_mat_local[idx] = phase_ref / phaseCalibMatrix[idx];
+            phaseCalibMatrix[idx] = phase_ref / phaseData[idx];
         }
     }
-    calFrequencyCalibMatrix = freq_cal_mat_local;
-    calPhaseCalibMatrix = phase_cal_mat_local;
 }
 
 
@@ -382,47 +384,6 @@ void coloradar::RadarConfig::initInternalParams() {
 }
 
 
-std::vector<std::complex<double>> calculatePhaseCalibMatrix(coloradar::RadarConfig* config) {
-    int num_tx = config->numTxAntennas;
-    int num_rx = config->numRxAntennas;
-    std::vector<std::complex<double>> phase_cal_matrix(num_tx * num_rx);
-    for (int tx = 0; tx < num_tx; ++tx) {
-        for (int rx = 0; rx < num_rx; ++rx) {
-            int idx = tx * num_rx + rx;
-            phase_cal_matrix[idx] = config->phaseCalibMatrix[0] / config->phaseCalibMatrix[idx];
-        }
-    }
-    return phase_cal_matrix;
-}
-
-std::vector<std::complex<double>> calculateFrequencyCalibMatrix(coloradar::RadarConfig* config) {
-    const double pi = 3.141592653589793;
-    int num_tx = config->numTxAntennas;
-    int num_rx = config->numRxAntennas;
-    int num_range_bins = config->numRangeBins;
-    double frequency_slope = config->frequencySlope;
-    double adc_sample_frequency = config->adcSampleFrequency;
-    std::vector<std::complex<double>> frequency_cal_matrix(num_range_bins * num_tx * num_rx);
-    for (int tx = 0; tx < num_tx; ++tx) {
-        for (int rx = 0; rx < num_rx; ++rx) {
-            for (int range_idx = 0; range_idx < num_range_bins; ++range_idx) {
-                // Calculate delta_p (frequency offset relative to the first element)
-                int idx = tx * num_rx + rx;
-                double delta_p = config->frequencyCalibMatrix[idx] - config->frequencyCalibMatrix[0];
-                // Frequency calibration factor for the given range bin
-                double phase_shift = 2.0 * pi * delta_p * (frequency_slope / config->frequencySlope)  * (adc_sample_frequency / config->adcSampleFrequency);
-                phase_shift *= range_idx / static_cast<double>(num_range_bins);  // Scale by range bin
-                // Frequency calibration vector (exponential term for complex multiplication)
-                std::complex<double> freq_cal_value = std::exp(std::complex<double>(0.0, -phase_shift));
-                // Store in the frequency calibration matrix
-                int freq_cal_idx = range_idx + num_range_bins * (rx + num_rx * tx);
-                frequency_cal_matrix[freq_cal_idx] = freq_cal_value;
-            }
-        }
-    }
-    return frequency_cal_matrix;
-}
-
 bool compareVectors(const std::vector<std::complex<double>>& vec1, const std::vector<std::complex<double>>& vec2) {
     return vec1.size() == vec2.size() && std::equal(vec1.begin(), vec1.end(), vec2.begin());
 }
@@ -473,16 +434,4 @@ void coloradar::CascadeConfig::init(const std::filesystem::path& calibDir) {
     initCouplingParams(couplingConfigFilePath);
     initPhaseFrequencyParams(phaseFrequencyConfigFilePath);
     initInternalParams();
-//    std::vector<std::complex<double>> phaseCalibComputed = calculatePhaseCalibMatrix(this);
-//    std::vector<std::complex<double>> freqCalibComputed = calculateFrequencyCalibMatrix(this);
-//    if (compareVectors(phaseCalibComputed, calPhaseCalibMatrix)) {
-//        std::cout << "Phase calib equal" << std::endl;
-//    } else {
-//        std::cout << "Phase calib MISMATCH" << std::endl;
-//    }
-//    if (compareVectors(freqCalibComputed, calFrequencyCalibMatrix)) {
-//        std::cout << "Freq calib equal" << std::endl;
-//    } else {
-//        std::cout << "Freq calib MISMATCH" << std::endl;
-//    }
 }

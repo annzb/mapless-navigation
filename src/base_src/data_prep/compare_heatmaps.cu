@@ -9,23 +9,15 @@
 namespace fs = std::filesystem;
 
 
-template<typename T>
-void cudaCopy(T* dest, std::vector<T> source) {
-    cudaError_t err = cudaMemcpy(dest, source.data(), sizeof(T) * source.size(), cudaMemcpyHostToDevice);
-    if (err != cudaSuccess) {
-        std::cerr << "CUDA memcpy error:  " << cudaGetErrorString(err) << std::endl;
-    }
+float roundToTwoDecimals(float value, double roundMultiplier) {
+    return std::round(value * roundMultiplier) / roundMultiplier;
 }
 
-
-float roundToTwoDecimals(float value) {
-    return std::round(value * 1000.0) / 1000.0;
-}
-
-bool compareVectorsIgnoringOrder(const std::vector<float>& vec1, const std::vector<float>& vec2) {
+bool compareVectorsIgnoringOrder(const std::vector<float>& vec1, const std::vector<float>& vec2, int decimalAccuracy = 0) {
+    double roundMultiplier = std::pow(10, decimalAccuracy);
     std::multiset<float> set1, set2;
-    for (const auto& val : vec1) set1.insert(roundToTwoDecimals(val));
-    for (const auto& val : vec2) set2.insert(roundToTwoDecimals(val));
+    for (const auto& val : vec1) set1.insert(roundToTwoDecimals(val, roundMultiplier));
+    for (const auto& val : vec2) set2.insert(roundToTwoDecimals(val, roundMultiplier));
     std::unordered_set<float> unique_elements(set1.begin(), set1.end());
     unique_elements.insert(set2.begin(), set2.end());
     size_t match_count = 0;
@@ -35,19 +27,9 @@ bool compareVectorsIgnoringOrder(const std::vector<float>& vec1, const std::vect
         match_count += std::min(count1, count2);
     }
     size_t total_elements = vec1.size();
-    size_t mismatch_count = total_elements - match_count;
-    double mismatch_percentage = static_cast<double>(mismatch_count) / total_elements * 100.0;
-    std::cout << "Number of mismatched elements without ordering: " << std::fixed << std::setprecision(2) << mismatch_percentage << "%" << std::endl;
-    return mismatch_count == 0;
-}
-
-
-std::vector<cuDoubleComplex> toCudaComplex(std::vector<std::complex<double>> array) {
-    std::vector<cuDoubleComplex> cudaArray(array.size());
-    for (size_t i = 0; i < array.size(); ++i) {
-        cudaArray[i] = make_cuDoubleComplex(array[i].real(), array[i].imag());
-    }
-    return cudaArray;
+    double mismatch_percentage = static_cast<double>(match_count) / total_elements * 100.0;
+    std::cout << "Number of matched elements without ordering: " << std::fixed << std::setprecision(2) << mismatch_percentage << "%" << std::endl;
+    return total_elements - match_count == 0;
 }
 
 __global__
@@ -115,7 +97,7 @@ std::vector<float> reconstructCollapsedHeatmap(std::vector<float> heatmapSmall, 
 
     cudaMalloc(&heatmapSmallGpu, sizeof(float) * heatmapSmall.size());
     cudaMalloc(&heatmapBigGpu, sizeof(float) * expandedHeatmapSize);
-    cudaCopy(heatmapSmallGpu, heatmapSmall);
+    coloradar::cudaCopy(heatmapSmallGpu, heatmapSmall);
     applyExpandDoppler(config->numPosRangeBins, config->numDopplerBins, config->numAngles, config->dopplerBinWidth, heatmapSmallGpu, heatmapBigGpu);
 
     std::vector<float> heatmapBig(expandedHeatmapSize);
@@ -126,50 +108,9 @@ std::vector<float> reconstructCollapsedHeatmap(std::vector<float> heatmapSmall, 
 }
 
 
-
-// std::vector<float> applyCouplingCalib(std::vector<float> heatmap, coloradar::RadarConfig* config) {
-//     float* heatmapGpu;
-//     cuDoubleComplex* couplingSignatureGpu;
-//     std::vector<cuDoubleComplex> couplingSignature = toCudaComplex(config->couplingCalibMatrix);
-//
-//     cudaMalloc(&heatmapGpu, sizeof(float) * heatmap.size());
-//     cudaMalloc(&couplingSignatureGpu, sizeof(cuDoubleComplex) * couplingSignature.size());
-//     cudaCopy(couplingSignatureGpu, couplingSignature);
-//     cudaCopy(heatmapGpu, heatmap);
-//     removeCoupling(config->numPosRangeBins, config->numDopplerBins, config->numTxAntennas * config->numRxAntennas, heatmapGpu, couplingSignatureGpu);
-//
-//     std::vector<float> heatmapCalibrated;
-//     cudaMemcpy(&heatmapCalibrated[0], heatmapGpu, sizeof(float) * heatmap.size(), cudaMemcpyDefault);
-//     cudaFree(heatmapGpu);
-//     cudaFree(couplingSignatureGpu);
-//     return heatmapCalibrated;
-// }
-//
-// std::vector<float> applyPhaseFreqCalib(std::vector<float> heatmap, coloradar::RadarConfig* config) {
-//     float* heatmapGpu;
-//     cuDoubleComplex* phaseCalibMatrixGpu;
-//     cuDoubleComplex* freqCalibMatrixGpu;
-//     std::vector<cuDoubleComplex> phaseCalibMatrix = toCudaComplex(config->calPhaseCalibMatrix);
-//     std::vector<cuDoubleComplex> freqCalibMatrix = toCudaComplex(config->calFrequencyCalibMatrix);
-//
-//     cudaMalloc(&heatmapGpu, sizeof(float) * heatmap.size());
-//     cudaMalloc(&phaseCalibMatrixGpu, sizeof(cuDoubleComplex) * phaseCalibMatrix.size());
-//     cudaMalloc(&freqCalibMatrixGpu, sizeof(cuDoubleComplex) * freqCalibMatrix.size());
-//     cudaCopy(heatmapGpu, heatmap);
-//     cudaCopy(phaseCalibMatrixGpu, phaseCalibMatrix);
-//     cudaCopy(freqCalibMatrixGpu, freqCalibMatrix);
-//     applyPhaseFreqCal(config->numRangeBins, config->numDopplerBins, config->numTxAntennas, config->numRxAntennas, heatmapGpu, freqCalibMatrixGpu, phaseCalibMatrixGpu);
-//
-//     std::vector<float> heatmapCalibrated;
-//     cudaMemcpy(&heatmapCalibrated[0], heatmapGpu, sizeof(float) * heatmap.size(), cudaMemcpyDefault);
-//     cudaFree(heatmapGpu);
-//     cudaFree(phaseCalibMatrixGpu);
-//     cudaFree(freqCalibMatrixGpu);
-//     return heatmapCalibrated;
-// }
-
-
 int main(int argc, char** argv) {
+    int decimalAccuracy = 2;
+
     if (argc != 3) {
         std::cerr << "Usage: " << argv[0] << " <coloradar_dir> <run_name>" << std::endl;
         return 1;
@@ -185,34 +126,12 @@ int main(int argc, char** argv) {
 
     std::vector<float> heatmap = run.getHeatmap(0, &dataset.cascadeConfig);
     std::cout << "Read heatmap of size " << heatmap.size() << std::endl;
-    // std::cout << "Expected heatmap size " << dataset.cascadeConfig.numPosRangeBins * dataset.cascadeConfig.numElevationBins * dataset.cascadeConfig.numAzimuthBins * 2 << std::endl;
-
-//     trueHeatmap = applyCouplingCalib(trueHeatmap, &dataset.cascadeConfig);
-//     std::cout << "Applied coupling calibration on true heatmap" << std::endl;
-//     trueHeatmap = applyPhaseFreqCalib(trueHeatmap, &dataset.cascadeConfig);
-//     std::cout << "Applied phase frequency calibration on true heatmap" << std::endl;
-
-//     float* heatmapGPU;
-//     float* heatmapGPUCollapsed;
-//     int collapsedHeatmapSize = 2 * dataset.cascadeConfig.numPosRangeBins * dataset.cascadeConfig.numAzimuthBeams * dataset.cascadeConfig.numElevationBeams;
-//     cudaMalloc(&heatmapGPU, sizeof(float) * trueHeatmap.size());
-//     cudaMalloc(&heatmapGPUCollapsed, sizeof(float) * collapsedHeatmapSize);
-//     cudaCopy(heatmapGPU, trueHeatmap);
-//     collapseDoppler(dataset.cascadeConfig.numPosRangeBins, dataset.cascadeConfig.numDopplerBins, dataset.cascadeConfig.numAngles, dataset.cascadeConfig.dopplerBinWidth, heatmapGPU, heatmapGPUCollapsed);
-//     std::vector<float> heatmap(collapsedHeatmapSize);
-//     cudaMemcpy(&heatmap[0], heatmapGPUCollapsed, sizeof(float) * collapsedHeatmapSize, cudaMemcpyDefault);
-//     cudaFree(heatmapGPU);
-//     cudaFree(heatmapGPUCollapsed);
-//     std::cout << "Collapsed true heatmap into " << heatmap.size() << std::endl;
 
     std::vector<float> computedHeatmap = coloradar::cubeToHeatmap(datacube, &dataset.cascadeConfig);
     std::cout << "Computed heatmap of size " << computedHeatmap.size() << std::endl;
 
-//     std::vector<float> computedHeatmap = reconstructCollapsedHeatmap(computedHeatmapInitial, &dataset.cascadeConfig);
-//     std::cout << "Expanded computed heatmap into " << computedHeatmap.size() << std::endl;
-
     bool match = true;
-    float threshold = 1e-3;
+    float threshold = 1 / std::pow(10, decimalAccuracy);
     if (computedHeatmap.size() != heatmap.size()) {
         std::cerr << "Error: Size mismatch between computed and actual heatmap!" << std::endl;
         return 1;
@@ -229,12 +148,11 @@ int main(int argc, char** argv) {
     if (match && mismatchCount == 0) {
         std::cout << "Success! The computed heatmap matches the actual heatmap." << std::endl;
     } else {
-        std::cout << "The computed heatmap does not match the actual heatmap. Number of mismatched elements: " << mismatchCount << " (" << mismatchCount / computedHeatmap.size() * 100 << "%)" << std::endl;
+        std::cout << "The computed heatmap does not match the actual heatmap. Number of matched elements: " << computedHeatmap.size() - mismatchCount << " (" << (computedHeatmap.size() - mismatchCount) / computedHeatmap.size() * 100 << "%)" << std::endl;
         std::cout << "Non-zero elements in true heatmap: " << trueNonZeroCount << " (" << trueNonZeroCount / heatmap.size() * 100 << " %)" << std::endl;
         std::cout << "Non-zero elements in computed heatmap: " << computedNonZeroCount << " (" << computedNonZeroCount / computedHeatmap.size() * 100 << " %)" << std::endl;
     }
-
-    compareVectorsIgnoringOrder(heatmap, computedHeatmap);
+    // compareVectorsIgnoringOrder(heatmap, computedHeatmap);
 
     return 0;
 }

@@ -133,10 +133,7 @@ void coloradar::internal::filterFov(CloudT& cloud, const float& horizontalFov, c
             continue;
         }
         float elevationSin = std::sin(verticalHalfFovRad);
-        if (checkAzimuth(point, horizontalHalfFovRad) &&
-           (getZ(point) <= distance * elevationSin) &&
-           (getZ(point) >= -distance * elevationSin)
-        ) {
+        if (checkAzimuth(point, horizontalHalfFovRad) && (getZ(point) <= distance * elevationSin) && (getZ(point) >= -distance * elevationSin)) {
             cloud.push_back(point);
         }
     }
