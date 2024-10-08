@@ -123,6 +123,14 @@ void coloradar::ColoradarRun::sampleMapFrames(
     }
 }
 
+pcl::PointCloud<pcl::PointXYZI> coloradar::ColoradarRun::readMapFrame(const int& frameIdx) {
+    pcl::PointCloud<pcl::PointXYZI> cloud;
+    std::filesystem::path frameFilePath = lidarMapsDirPath / ("frame_" + std::to_string(frameIdx) + ".pcd");
+    coloradar::internal::checkPathExists(frameFilePath);
+    pcl::io::loadPCDFile<pcl::PointXYZI>(frameFilePath.string(), cloud);
+    return cloud;
+}
+
 std::vector<double> coloradar::ColoradarRun::readTimestamps(const std::filesystem::path& path) {
     coloradar::internal::checkPathExists(path);
     std::vector<double> timestamps;

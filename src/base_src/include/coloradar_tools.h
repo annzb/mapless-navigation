@@ -55,6 +55,12 @@ public:
     int numDopplerBins;
     std::vector<std::complex<double>> couplingCalibMatrix;
 
+    // phase frequency params
+    int calibAdcSampleFrequency;
+    double calibFrequencySlope;
+    std::vector<std::complex<double>> phaseCalibMatrix;
+    std::vector<std::complex<double>> frequencyCalibMatrix;
+
     // internal params
     int numAzimuthBeams;
     int numElevationBeams;
@@ -66,8 +72,6 @@ public:
     std::vector<float> azimuthAngles;
     std::vector<float> elevationAngles;
     double dopplerBinWidth;
-    std::vector<std::complex<double>> phaseCalibMatrix;
-    std::vector<std::complex<double>> frequencyCalibMatrix;
 
     RadarConfig() = default;
 };
@@ -168,6 +172,7 @@ public:
         const Eigen::Affine3f& mapPreTransform = Eigen::Affine3f::Identity(),
         std::vector<octomath::Pose6D> poses = {}
     );
+    pcl::PointCloud<pcl::PointXYZI> readMapFrame(const int& frameIdx);
 };
 
 

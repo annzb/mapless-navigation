@@ -355,6 +355,10 @@ class ColoradarDataset:
             command.append(f'applyTransform={device}')
         _run_command(command)
 
+    def visualize_radar_images(self, run_name):
+        gt_timestamps_path = os.path.join(self.runs_path, run_name, 'groundtruth', 'timestamps.txt')
+        gt_poses_path = os.path.join(self.runs_path, run_name, 'groundtruth', 'groundtruth_poses.txt')
+
 
 def _run_command(command):
     process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, bufsize=1)

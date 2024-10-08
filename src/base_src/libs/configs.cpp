@@ -250,9 +250,19 @@ void coloradar::RadarConfig::initPhaseFrequencyParams(const std::filesystem::pat
     }
     const Json::Value& config = configMap["antennaCalib"];
 
-    int numPairs = numTxAntennas * numRxAntennas;
     std::vector<double> freqData(numTxAntennas * numRxAntennas);
     std::vector<std::complex<double>> phaseData(numTxAntennas * numRxAntennas);
+
+    if (config.isMember("frequencySlope")) {
+        calibFrequencySlope = config["frequencySlope"].asDouble();
+    } else {
+        throw std::runtime_error("Missing frequencySlope in phase frequency config.");
+    }
+    if (config.isMember("samplingRate")) {
+        calibAdcSampleFrequency = config["samplingRate"].asInt();
+    } else {
+        throw std::runtime_error("Missing samplingRate in phase frequency config.");
+    }
 
     if (config.isMember("frequencyCalibrationMatrix")) {
         const Json::Value& frequencyMatrix = config["frequencyCalibrationMatrix"];
@@ -292,7 +302,7 @@ void coloradar::RadarConfig::initPhaseFrequencyParams(const std::filesystem::pat
         for (int rx_idx = 0; rx_idx < numRxAntennas; rx_idx++) {
             int idx = rx_idx + (tx_idx * numRxAntennas);
             double delta_p = freqData[idx] - freqData[0];
-            double freq_calib = 2.0 * M_PI * delta_p / numRangeBins;
+            double freq_calib = 2.0 * M_PI * delta_p / numRangeBins * (frequencySlope / calibFrequencySlope) * (adcSampleFrequency / calibAdcSampleFrequency);
             for (int sample_idx = 0; sample_idx < numRangeBins; sample_idx++) {
                 int cal_idx = sample_idx + numRangeBins * (rx_idx + numRxAntennas * tx_idx);
                 frequencyCalibMatrix[cal_idx] = std::exp(std::complex<double>(0.0, -1.0) * std::complex<double>(freq_calib, 0.0) * std::complex<double>(sample_idx, 0.0));
@@ -306,6 +316,15 @@ void coloradar::RadarConfig::initPhaseFrequencyParams(const std::filesystem::pat
             phaseCalibMatrix[idx] = phase_ref / phaseData[idx];
         }
     }
+//    for (int i = 0; i < freqData.size(); i += 2) {
+//        double real = freqData[i];
+//        double imag = freqData[i + 1];
+//        frequencyCalibMatrix[i / 2] = std::complex<double>(real, imag);
+//    }
+//    phaseCalibMatrix = phaseData;
+//    if (frequencyCalibMatrix.size() != numTxAntennas * numRxAntennas * numRangeBins) {
+//        throw std::runtime_error("Invalid freq calibration matrix: expected " + std::to_string(numRxAntennas * numTxAntennas * numRangeBins) + " elements, got " + std::to_string(frequencyCalibMatrix.size()));
+//    }
 }
 
 
@@ -369,17 +388,15 @@ void coloradar::RadarConfig::initInternalParams() {
     double d = 0.5 * center_frequency / designFrequency;
     double az_d_phase = (2. * M_PI) / numAzimuthBeams;
     double phase_dif = (az_d_phase / 2.) - M_PI;
-    for (int i = 0; i < numAzimuthBeams; i++)
-    {
+    for (int i = 0; i < numAzimuthBeams; i++) {
       azimuthAngles[i] = asin(phase_dif / (2. * M_PI * d));
       phase_dif += az_d_phase;
     }
     double el_d_phase = (2.*M_PI) / numElevationBeams;
     phase_dif = (el_d_phase / 2.) - M_PI;
-    for(int i = 0; i < numElevationBeams; i++)
-    {
-      elevationAngles[i] = asin(phase_dif / (2. * M_PI * d));
-      phase_dif += el_d_phase;
+    for (int i = 0; i < numElevationBeams; i++) {
+        elevationAngles[i] = asin(phase_dif / (2. * M_PI * d));
+        phase_dif += el_d_phase;
     }
 }
 
