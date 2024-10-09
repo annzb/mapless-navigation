@@ -240,6 +240,37 @@ std::vector<float> reconstructCollapsedHeatmap(std::vector<float> heatmapSmall, 
 }
 
 
+float compareHeatmaps(const std::vector<float>& hm1, const std::vector<float>& hm2, float threshold = 0.1) {
+    if (hm1.size() != hm2.size()) {
+        throw std::runtime_error("Error: Size mismatch between computed and actual heatmap!");
+    }
+    float mismatchCount = 0, computedNonZeroCount = 0, trueNonZeroCount = 0, trueNegCount = 0, computedNegCount = 0;
+    for (size_t i = 0; i < hm1.size(); ++i) {
+        if (hm1[i] != 0.0) trueNonZeroCount++;
+        if (hm2[i] != 0.0) computedNonZeroCount++;
+        if (std::abs(hm1[i] - hm2[i]) > threshold) {
+            mismatchCount++;
+            //if (mismatchCount <= 10)
+             //   std::cout << "Mismatch at index " << i << ": computed = " << computedHeatmap[i] << ", actual = " << heatmap[i] << std::endl;
+        }
+        if (hm1[i] < 0) trueNegCount++;
+        if (hm2[i] < 0) computedNegCount++;
+    }
+    float matchCount = hm1.size() - mismatchCount;
+    float matchRate = matchCount / hm1.size();
+//     if (mismatchCount == 0) {
+//         std::cout << "Success! The computed heatmap matches the actual heatmap." << std::endl;
+//     } else if (matchRate >= 0.4) {
+//         std::cout << "The computed heatmap does not match the actual heatmap. Number of matched elements: " << matchCount << " (" << matchRate * 100 << "%)" << std::endl;
+//         std::cout << "Non-zero elements in true heatmap: " << trueNonZeroCount << " (" << trueNonZeroCount / hm1.size() * 100 << " %)" << std::endl;
+//         std::cout << "Non-zero elements in computed heatmap: " << computedNonZeroCount << " (" << computedNonZeroCount / hm1.size() * 100 << " %)" << std::endl;
+//         std::cout << "Negative elements in true heatmap: " << trueNegCount << " (" << trueNegCount / hm1.size() * 100 << " %)" << std::endl;
+//         std::cout << "Negative elements in computed heatmap: " << computedNegCount << " (" << computedNegCount / hm1.size() * 100 << " %)" << std::endl;
+//     }
+    return matchRate;
+}
+
+
 int main(int argc, char** argv) {
     int decimalAccuracy = 2;
     float threshold = 1 / std::pow(10, decimalAccuracy);
@@ -253,8 +284,8 @@ int main(int argc, char** argv) {
 
     coloradar::ColoradarDataset dataset(coloradarDir);
     coloradar::ColoradarRun run = dataset.getRun(runName);
-    std::vector<float> heatmap = run.getHeatmap(0, &dataset.cascadeConfig);
-    std::cout << "Read heatmap of size " << heatmap.size() << std::endl;
+//     std::vector<float> heatmap = run.getHeatmap(0, &dataset.cascadeConfig);
+//     std::cout << "Read heatmap of size " << heatmap.size() << std::endl;
 
 //     std::vector<int> perm = {0, 1, 2, 3, 4};  // Initial order of dimensions
 //     // Loop through all 120 permutations
@@ -285,12 +316,31 @@ int main(int argc, char** argv) {
 //         permutationCount++;
 //     } while (std::next_permutation(perm.begin(), perm.end()) && permutationCount <= 120);
 
-
-    std::vector<int16_t> datacube = run.getDatacube(0, &dataset.cascadeConfig);
-    std::cout << "Read cube of size " << datacube.size() << std::endl;
-
-    std::vector<float> computedHeatmap = coloradar::cubeToHeatmap(datacube, &dataset.cascadeConfig);
-    std::cout << "Computed heatmap of size " << computedHeatmap.size() << std::endl;
+    for (size_t i = 0; i < 10; ++i) {
+        std::vector<float> heatmap = run.getHeatmap(i, &dataset.cascadeConfig);
+        for (size_t j = 0; j < 10; ++j) {
+            std::vector<int16_t> datacube = run.getDatacube(j, &dataset.cascadeConfig);
+            std::vector<float> computedHeatmap = coloradar::cubeToHeatmap(datacube, &dataset.cascadeConfig);
+//             for (int p = 0; p <= 23; ++p) {
+//                 std::vector<float> rearrangedComputedHeatmap = rearrangeArray(computedHeatmap, i);
+//                 float matchRate = compareHeatmaps(heatmap, rearrangedComputedHeatmap, threshold);
+//                 if (matchRate >= 0.5) {
+//                     std::cout << "Rate " << matchRate << " calculated for cube number " << j << " and heatmap number " << i << " (computed heatmap perm number " << p << ")" << std::endl << std::endl;
+//                     // std::cout << "Rate " << matchRate << " calculated for cube number " << j << " and heatmap number " << i << std::endl << std::endl;
+//                     // std::cout << "WARNING"<< std::endl;
+//                 }
+//             }
+            float matchRate = compareHeatmaps(heatmap, computedHeatmap, threshold);
+            if (matchRate >= 0.5) {
+                std::cout << "Rate " << matchRate << " calculated for cube number " << j << " and heatmap number " << i << std::endl << std::endl;
+            }
+        }
+    }
+//     std::vector<int16_t> datacube = run.getDatacube(3, &dataset.cascadeConfig);
+//     std::cout << "Read cube of size " << datacube.size() << std::endl;
+//
+//     std::vector<float> computedHeatmap = coloradar::cubeToHeatmap(datacube, &dataset.cascadeConfig);
+//     std::cout << "Computed heatmap of size " << computedHeatmap.size() << std::endl;
 
 //     for (int i = 0; i <= 23; ++i) {
 //         std::vector<float> rearrangedArray = rearrangeArray(computedHeatmap, i);
@@ -313,32 +363,32 @@ int main(int argc, char** argv) {
 //         std::cout << std::endl;
 //     }
 
-    bool match = true;
-    if (computedHeatmap.size() != heatmap.size()) {
-        std::cerr << "Error: Size mismatch between computed and actual heatmap!" << std::endl;
-        return 1;
-    }
-    float mismatchCount = 0, computedNonZeroCount = 0, trueNonZeroCount = 0, trueNegCount = 0, computedNegCount = 0;
-    for (size_t i = 0; i < computedHeatmap.size(); ++i) {
-        if (heatmap[i] != 0.0) trueNonZeroCount++;
-        if (computedHeatmap[i] != 0.0) computedNonZeroCount++;
-        if (std::abs(computedHeatmap[i] - heatmap[i]) > threshold) {
-            mismatchCount++;
-            //if (mismatchCount <= 10)
-             //   std::cout << "Mismatch at index " << i << ": computed = " << computedHeatmap[i] << ", actual = " << heatmap[i] << std::endl;
-        }
-        if (heatmap[i] < 0) trueNegCount++;
-        if (computedHeatmap[i] < 0) computedNegCount++;
-    }
-    if (match && mismatchCount == 0) {
-        std::cout << "Success! The computed heatmap matches the actual heatmap." << std::endl;
-    } else {
-        std::cout << "The computed heatmap does not match the actual heatmap. Number of matched elements: " << computedHeatmap.size() - mismatchCount << " (" << (computedHeatmap.size() - mismatchCount) / computedHeatmap.size() * 100 << "%)" << std::endl;
-        std::cout << "Non-zero elements in true heatmap: " << trueNonZeroCount << " (" << trueNonZeroCount / heatmap.size() * 100 << " %)" << std::endl;
-        std::cout << "Non-zero elements in computed heatmap: " << computedNonZeroCount << " (" << computedNonZeroCount / computedHeatmap.size() * 100 << " %)" << std::endl;
-        std::cout << "Negative elements in true heatmap: " << trueNegCount << " (" << trueNegCount / heatmap.size() * 100 << " %)" << std::endl;
-        std::cout << "Negative elements in computed heatmap: " << computedNegCount << " (" << computedNegCount / computedHeatmap.size() * 100 << " %)" << std::endl;
-    }
+//     bool match = true;
+//     if (computedHeatmap.size() != heatmap.size()) {
+//         std::cerr << "Error: Size mismatch between computed and actual heatmap!" << std::endl;
+//         return 1;
+//     }
+//     float mismatchCount = 0, computedNonZeroCount = 0, trueNonZeroCount = 0, trueNegCount = 0, computedNegCount = 0;
+//     for (size_t i = 0; i < computedHeatmap.size(); ++i) {
+//         if (heatmap[i] != 0.0) trueNonZeroCount++;
+//         if (computedHeatmap[i] != 0.0) computedNonZeroCount++;
+//         if (std::abs(computedHeatmap[i] - heatmap[i]) > threshold) {
+//             mismatchCount++;
+//             //if (mismatchCount <= 10)
+//              //   std::cout << "Mismatch at index " << i << ": computed = " << computedHeatmap[i] << ", actual = " << heatmap[i] << std::endl;
+//         }
+//         if (heatmap[i] < 0) trueNegCount++;
+//         if (computedHeatmap[i] < 0) computedNegCount++;
+//     }
+//     if (match && mismatchCount == 0) {
+//         std::cout << "Success! The computed heatmap matches the actual heatmap." << std::endl;
+//     } else {
+//         std::cout << "The computed heatmap does not match the actual heatmap. Number of matched elements: " << computedHeatmap.size() - mismatchCount << " (" << (computedHeatmap.size() - mismatchCount) / computedHeatmap.size() * 100 << "%)" << std::endl;
+//         std::cout << "Non-zero elements in true heatmap: " << trueNonZeroCount << " (" << trueNonZeroCount / heatmap.size() * 100 << " %)" << std::endl;
+//         std::cout << "Non-zero elements in computed heatmap: " << computedNonZeroCount << " (" << computedNonZeroCount / computedHeatmap.size() * 100 << " %)" << std::endl;
+//         std::cout << "Negative elements in true heatmap: " << trueNegCount << " (" << trueNegCount / heatmap.size() * 100 << " %)" << std::endl;
+//         std::cout << "Negative elements in computed heatmap: " << computedNegCount << " (" << computedNegCount / computedHeatmap.size() * 100 << " %)" << std::endl;
+//     }
     // compareVectorsIgnoringOrder(heatmap, computedHeatmap);
 
     return 0;
