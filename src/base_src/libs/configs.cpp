@@ -381,7 +381,7 @@ void coloradar::RadarConfig::initInternalParams() {
     }
     double wavelength = c / (startFrequency + adcStartTime * frequencySlope);
     double chirp_time = idleTime + rampEndTime;
-    double v_max = wavelength / (8.0 * numTxAntennas * chirp_time);
+    double v_max = wavelength / (4.0 * numTxAntennas * chirp_time);
     dopplerBinWidth = v_max / numDopplerBins;
 
     double center_frequency = startFrequency + numRangeBins / adcSampleFrequency * frequencySlope / 2.0;

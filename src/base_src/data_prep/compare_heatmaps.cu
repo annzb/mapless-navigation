@@ -5,6 +5,50 @@
 #include <algorithm>
 #include <cmath>
 #include <iomanip>
+#include <limits>
+// #include "munkres.h" // Add Munkres implementation
+//
+// // Function to create a cost matrix based on the absolute differences
+// std::vector<std::vector<float>> createCostMatrix(const std::vector<float>& arr1, const std::vector<float>& arr2) {
+//     size_t n = arr1.size();
+//     std::vector<std::vector<float>> costMatrix(n, std::vector<float>(n));
+//
+//     for (size_t i = 0; i < n; ++i) {
+//         for (size_t j = 0; j < n; ++j) {
+//             costMatrix[i][j] = std::fabs(arr1[i] - arr2[j]);
+//         }
+//     }
+//
+//     return costMatrix;
+// }
+//
+// // Function to find the best permutation using the Hungarian (Munkres) Algorithm
+// std::vector<int> findBestPermutation(const std::vector<float>& arr1, const std::vector<float>& arr2) {
+//     size_t n = arr1.size();
+//
+//     // Create the cost matrix based on absolute differences
+//     std::vector<std::vector<float>> costMatrix = createCostMatrix(arr1, arr2);
+//
+//     // Apply the Munkres (Hungarian) algorithm to find the optimal assignment
+//     Munkres munkres;
+//     munkres.solve(costMatrix);  // The matrix is modified in place with 0s and 1s
+//
+//     // Create a vector to store the matching indices
+//     std::vector<int> matchingIndices(n, -1);
+//
+//     // Extract the matching from the modified costMatrix
+//     for (size_t i = 0; i < n; ++i) {
+//         for (size_t j = 0; j < n; ++j) {
+//             if (costMatrix[i][j] == 0) {
+//                 matchingIndices[i] = j;
+//                 break;
+//             }
+//         }
+//     }
+//
+//     return matchingIndices;
+// }
+
 
 namespace fs = std::filesystem;
 
@@ -239,41 +283,199 @@ std::vector<float> reconstructCollapsedHeatmap(std::vector<float> heatmapSmall, 
     return heatmapBig;
 }
 
+std::vector<int> findBestMatch(const std::vector<float>& arr1, const std::vector<float>& arr2, float threshold) {
+    std::vector<int> matchedIndices(arr1.size(), -1);
+    std::vector<bool> used(arr2.size(), false);
+    for (size_t i = 0; i < arr1.size(); ++i) {
+        float bestDifference = std::numeric_limits<float>::max();
+        int bestIndex = -1;
 
-float compareHeatmaps(const std::vector<float>& hm1, const std::vector<float>& hm2, float threshold = 0.1) {
+        for (size_t j = 0; j < arr2.size(); ++j) {
+            if (!used[j]) {
+                float difference = std::fabs(arr1[i] - arr2[j]);
+                // Check if this difference is smaller than the best so far and within the threshold
+                if (difference < bestDifference && difference <= threshold) {
+                    bestDifference = difference;
+                    bestIndex = j;
+                }
+            }
+        }
+        // If a match is found within the threshold, mark it as used and store the index
+        if (bestIndex != -1) {
+            matchedIndices[i] = bestIndex;
+            used[bestIndex] = true;
+        }
+    }
+
+    return matchedIndices;
+}
+
+
+
+std::vector<int> compareHeatmaps(const std::vector<float>& hm1, const std::vector<float>& hm2, float threshold = 0.1) {
+    float firstComputed = 9203.95; // hm2[0] == 0.0 ? hm2[1] : hm2[0];
+    int matchIdx = -1;
+    std::vector<int> matchedIdx;
     if (hm1.size() != hm2.size()) {
         throw std::runtime_error("Error: Size mismatch between computed and actual heatmap!");
     }
     float mismatchCount = 0, computedNonZeroCount = 0, trueNonZeroCount = 0, trueNegCount = 0, computedNegCount = 0;
     for (size_t i = 0; i < hm1.size(); ++i) {
+        if (matchIdx == -1 && std::abs(hm1[i] - firstComputed) <= threshold) matchIdx = i;
         if (hm1[i] != 0.0) trueNonZeroCount++;
         if (hm2[i] != 0.0) computedNonZeroCount++;
         if (std::abs(hm1[i] - hm2[i]) > threshold) {
             mismatchCount++;
             //if (mismatchCount <= 10)
              //   std::cout << "Mismatch at index " << i << ": computed = " << computedHeatmap[i] << ", actual = " << heatmap[i] << std::endl;
+        } else {
+            matchedIdx.push_back(i);
+            // std::cout << "Match at index " << i << ": actual = " << hm1[i] << ", computed = " << hm2[i] << std::endl;
         }
         if (hm1[i] < 0) trueNegCount++;
         if (hm2[i] < 0) computedNegCount++;
     }
-    float matchCount = hm1.size() - mismatchCount;
-    float matchRate = matchCount / hm1.size();
-//     if (mismatchCount == 0) {
-//         std::cout << "Success! The computed heatmap matches the actual heatmap." << std::endl;
-//     } else if (matchRate >= 0.4) {
-//         std::cout << "The computed heatmap does not match the actual heatmap. Number of matched elements: " << matchCount << " (" << matchRate * 100 << "%)" << std::endl;
-//         std::cout << "Non-zero elements in true heatmap: " << trueNonZeroCount << " (" << trueNonZeroCount / hm1.size() * 100 << " %)" << std::endl;
-//         std::cout << "Non-zero elements in computed heatmap: " << computedNonZeroCount << " (" << computedNonZeroCount / hm1.size() * 100 << " %)" << std::endl;
-//         std::cout << "Negative elements in true heatmap: " << trueNegCount << " (" << trueNegCount / hm1.size() * 100 << " %)" << std::endl;
-//         std::cout << "Negative elements in computed heatmap: " << computedNegCount << " (" << computedNegCount / hm1.size() * 100 << " %)" << std::endl;
-//     }
-    return matchRate;
+//     if (matchIdx >= 0)
+//         std::cout << "Match at index " << matchIdx << ": actual = " << hm1[matchIdx] << ", computed = " << firstComputed << std::endl;
+//     else
+//         std::cout << "Could not match " << firstComputed << std::endl;
+    return matchedIdx;
+}
+
+
+std::vector<float> select(std::vector<int> idx, std::vector<float> arr) {
+    if (idx.size() != arr.size()) throw std::runtime_error("Size mismatch");
+    std::vector<float> selected(arr.size());
+    for (size_t i = 0; i < idx.size(); ++i) {
+        selected.push_back(arr[idx[i]]);
+    }
+    return selected;
+}
+
+
+void printArrays(std::vector<float> arr1, std::vector<float> arr2, int firstNElements = 0) {
+    int lim = firstNElements > 0 ? firstNElements : arr1.size();
+    if (arr1.size() < lim || arr2.size() < lim) throw std::runtime_error("Size mismatch");
+    for (size_t i = 0; i < lim; ++i) {
+        std::cout << arr1[i] << " " << arr2[i] << std::endl;
+    }
+}
+
+
+void report(
+    std::vector<float> referenceHeatmap, std::vector<float> computedHeatmap,
+    int decimalAccuracy, float matchRateThreshold = 0.0,
+    std::string referenceDescription = "", std::string computedDescription = "",
+    bool compareUnordered = false, bool findBestArrangement = false
+) {
+    float threshold = 1 / std::pow(10, decimalAccuracy);
+    if (findBestArrangement) {
+//         std::vector<int> bestMatch = findBestPermutation(referenceHeatmap, computedHeatmap, threshold);
+//         computedHeatmap = select(bestMatch, computedHeatmap);
+    }
+    if (compareUnordered) compareVectorsIgnoringOrder(referenceHeatmap, computedHeatmap, decimalAccuracy);
+    std::vector<int> matchIdx = compareHeatmaps(referenceHeatmap, computedHeatmap, threshold);
+
+    float matchRate = static_cast<float>(matchIdx.size()) / referenceHeatmap.size();
+    if (matchRate >= matchRateThreshold) {
+        // std::cout << "Matched idx for computed heatmap " << computedIdx << " and reference heatmap " << referenceIdx << std::endl;
+//                     for (size_t idx = 0; idx < matchIdx.size() && idx < 100; ++idx) {
+//                         std::cout << idx << " ";
+//                     }
+        if (!referenceDescription.empty() && !computedDescription.empty()) {
+            std::cout << "Comparing " << referenceDescription << " to " << computedDescription << ": ";
+        }
+        std::cout << "Matched " << matchIdx.size() << " indices from " << matchIdx[0] << " to " << matchIdx[matchIdx.size() - 1] << " (" << matchRate * 100 << "%)" << std::endl << std::endl;
+        // std::cout << "Rate " << matchRate << " calculated for cube number " << i << " and sample heatmap " << entry << std::endl << std::endl;
+    }
+    // printArrays(referenceHeatmap, computedHeatmap, 50);
+}
+
+
+void compareHeatmapArrays(
+    std::vector<std::vector<float>> referenceHeatmaps, std::vector<std::vector<float>> computedHeatmaps,
+    int decimalAccuracy, float matchRateThreshold = 0.0,
+    std::string referenceDescription = "", std::string computedDescription = "",
+    bool compareUnordered = false, bool permuteComputed = false, bool findBestArrangement = false
+) {
+    for (size_t referenceIdx = 0; referenceIdx < referenceHeatmaps.size(); ++referenceIdx) {
+        for (size_t computedIdx = 0; computedIdx < computedHeatmaps.size(); ++computedIdx) {
+            if (permuteComputed) {
+                for (int p = 0; p <= 23; ++p) {
+                    std::vector<float> rearrangedHeatmap = rearrangeArray(computedHeatmaps[computedIdx], p);
+                    report(
+                        referenceHeatmaps[referenceIdx], rearrangedHeatmap,
+                        decimalAccuracy, matchRateThreshold,
+                        referenceDescription + " " + std::to_string(referenceIdx), computedDescription + " " + std::to_string(computedIdx),
+                        compareUnordered, findBestArrangement
+                    );
+                }
+            } else {
+                report(
+                    referenceHeatmaps[referenceIdx], computedHeatmaps[computedIdx],
+                    decimalAccuracy, matchRateThreshold,
+                    referenceDescription + " " + std::to_string(referenceIdx), computedDescription + " " + std::to_string(computedIdx),
+                    compareUnordered, findBestArrangement
+                );
+            }
+        }
+    }
+}
+
+
+std::vector<std::string> collectHeatmapFilenames(fs::path folder) {
+    std::vector<std::string> filenames;
+    for (auto const& entry : fs::directory_iterator(folder)) {
+        if (!entry.is_directory() && entry.path().extension() == ".bin") {
+            filenames.push_back(entry.path().filename());
+        }
+    }
+    return filenames;
+}
+
+std::vector<float> cubeToHeatmap(std::vector<int16_t> cube) {
+    std::vector<float> hm;
+    for (const auto& el : cube) hm.push_back(static_cast<float>(el));
+    return hm;
+}
+
+std::vector<std::vector<float>> collectHeatmaps(fs::path folder, std::vector<std::string> filenames, coloradar::ColoradarDataset dataset, coloradar::ColoradarRun run, bool fromCubes = false) {
+    std::vector<std::vector<float>> heatmaps;
+    std::vector<float> hm;
+    for (auto const& name : filenames) {
+        if (fromCubes){
+            auto cube = run.getDatacube(folder / name, &dataset.cascadeConfig);
+            hm = cubeToHeatmap(cube);
+        } else {
+            hm = run.getHeatmap(folder / name, &dataset.cascadeConfig);
+        }
+        heatmaps.push_back(hm);
+    }
+    return heatmaps;
+}
+
+std::vector<std::vector<float>> collectHeatmaps(std::vector<int> idx, coloradar::ColoradarDataset dataset, coloradar::ColoradarRun run, bool fromCubes = false) {
+    std::vector<std::vector<float>> heatmaps;
+    std::vector<float> hm;
+    for (auto const& i : idx) {
+        if (fromCubes){
+            auto cube = run.getDatacube(i, &dataset.cascadeConfig);
+            // hm = cubeToHeatmap(cube);
+            hm = coloradar::cubeToHeatmap(cube, &dataset.cascadeConfig);
+        } else {
+            hm = run.getHeatmap(i, &dataset.cascadeConfig);
+        }
+        heatmaps.push_back(hm);
+    }
+    return heatmaps;
 }
 
 
 int main(int argc, char** argv) {
-    int decimalAccuracy = 2;
-    float threshold = 1 / std::pow(10, decimalAccuracy);
+    int decimalAccuracy = 7;
+    float matchRateThreshold = 0.05;
+    bool compareUnordered = false, permuteComputed = false, findBestArrangement = false;
+    // int computedHeatmapsNum = 1;
 
     if (argc != 3) {
         std::cerr << "Usage: " << argv[0] << " <coloradar_dir> <run_name>" << std::endl;
@@ -282,8 +484,72 @@ int main(int argc, char** argv) {
     fs::path coloradarDir = argv[1];
     std::string runName = argv[2];
 
-    coloradar::ColoradarDataset dataset(coloradarDir);
+    fs::path coloradarDirPath(coloradarDir);
+    fs::path dHmFolder = coloradarDirPath / "heatmaps2";
+    fs::path containerHmFolder = coloradarDirPath / "ros_output" / "single_heatmap_loop_bins";
+    // fs::path aCubesFolder = coloradarDirPath / "ros_output" / "single_cube_bins";
+    std::vector<std::string> dHmFilenames = collectHeatmapFilenames(dHmFolder);  // = {"unsorted_heatmap2_0.bin"};
+    std::vector<std::string> containerHmFilenames = {"heatmap_0.bin"};
+    std::vector<int> datasetHmIdx = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9};
+    std::vector<int> computedHmIdx = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9};
+    // std::vector<std::string> aCubesFolderFilenames = {"cube_0.bin"};
+    coloradar::ColoradarDataset dataset(coloradarDirPath);
     coloradar::ColoradarRun run = dataset.getRun(runName);
+
+    std::string dDescription = "doncey's";
+    std::string containerDescription = "container";
+    std::string datasetDescription = "dataset";
+    std::string computedDescription = "computed";
+    std::vector<std::vector<float>> dHms = collectHeatmaps(dHmFolder, dHmFilenames, dataset, run);
+    std::vector<std::vector<float>> containerHms = collectHeatmaps(containerHmFolder, containerHmFilenames, dataset, run);
+    std::vector<std::vector<float>> datasetHms = collectHeatmaps(datasetHmIdx, dataset, run);
+    std::vector<std::vector<float>> computedHms = collectHeatmaps(computedHmIdx, dataset, run, true);
+
+    // std::vector<std::vector<float>> referenceHeatmaps = collectHeatmaps(aGtFolder, aGtFolderFilenames, dataset, run);
+    // std::vector<std::vector<float>> referenceHeatmaps = collectHeatmaps(dGtFolder, dGtFolderFilenames, dataset, run);
+    // std::vector<std::vector<float>> referenceHeatmaps = collectHeatmaps({0}, dataset, run, true);
+
+    // std::vector<std::vector<float>> computedHeatmaps = collectHeatmaps(dGtFolder, dGtFolderFilenames, dataset, run);
+    // std::vector<std::vector<float>> computedHeatmaps = collectHeatmaps(aCubesFolder, aCubesFolderFilenames, dataset, run, true);
+
+    // std::vector<std::string> referenceHeatmapFilenames = "unsorted_heatmap2_0.bin"; // {"heatmap_0.bin"};
+//     for (auto const& entry : fs::directory_iterator(sampleHmFolder)) {
+//         if (!entry.is_directory() && entry.path().extension() == ".bin") {
+//             referenceHeatmapFilenames.push_back(entry.path().filename());
+//         }
+//     }
+
+//     std::vector<std::vector<float>> referenceHeatmaps, computedHeatmaps;
+//     for (auto const& name : referenceHeatmapFilenames) {
+//         referenceHeatmaps.push_back(run.getHeatmap(sampleHmFolder / name, &dataset.cascadeConfig));
+//     }
+//     std::cout << "Dataset cubes: ";
+//     for (size_t i = 0; i < computedHeatmapsNum; ++i) {
+//         std::vector<float> hm = run.getHeatmap(i, &dataset.cascadeConfig);
+//         computedHeatmaps.push_back(hm);
+//         if (i > 0) std::cout << ", ";
+//         std::cout << i;
+//     }
+//     std::cout << std::endl << std::endl;
+
+//     std::cout << "Computed heatmaps: ";
+//     for (size_t i = 0; i < computedHeatmapsNum; ++i) {
+//         std::vector<int16_t> datacube = run.getDatacube(i, &dataset.cascadeConfig);
+//         computedHeatmaps.push_back(coloradar::cubeToHeatmap(datacube, &dataset.cascadeConfig));
+//         if (i > 0) std::cout << ", ";
+//         std::cout << i;
+//     }
+//     std::cout << std::endl << std::endl;
+
+    // compareHeatmapArrays(datasetHms, datasetHms, decimalAccuracy, matchRateThreshold, datasetDescription, datasetDescription, compareUnordered, permuteComputed, findBestArrangement);
+    // compareHeatmapArrays(datasetHms, computedHms, decimalAccuracy, matchRateThreshold, datasetDescription, computedDescription, compareUnordered, permuteComputed, findBestArrangement);
+    // compareHeatmapArrays(datasetHms, dHms, decimalAccuracy, matchRateThreshold, datasetDescription, dDescription, compareUnordered, permuteComputed, findBestArrangement);
+    compareHeatmapArrays(datasetHms, containerHms, decimalAccuracy, matchRateThreshold, datasetDescription, containerDescription, compareUnordered, permuteComputed, findBestArrangement);
+    // compareHeatmapArrays(dHms, computedHms, decimalAccuracy, matchRateThreshold, dDescription, computedDescription, compareUnordered, permuteComputed, findBestArrangement);
+    // compareHeatmapArrays(dHms, containerHms, decimalAccuracy, matchRateThreshold, dDescription, containerDescription, compareUnordered, permuteComputed, findBestArrangement);
+    compareHeatmapArrays(computedHms, containerHms, decimalAccuracy, matchRateThreshold, computedDescription, containerDescription, compareUnordered, permuteComputed, findBestArrangement);
+
+
 //     std::vector<float> heatmap = run.getHeatmap(0, &dataset.cascadeConfig);
 //     std::cout << "Read heatmap of size " << heatmap.size() << std::endl;
 
@@ -315,27 +581,27 @@ int main(int argc, char** argv) {
 //
 //         permutationCount++;
 //     } while (std::next_permutation(perm.begin(), perm.end()) && permutationCount <= 120);
-
-    for (size_t i = 0; i < 10; ++i) {
-        std::vector<float> heatmap = run.getHeatmap(i, &dataset.cascadeConfig);
-        for (size_t j = 0; j < 10; ++j) {
-            std::vector<int16_t> datacube = run.getDatacube(j, &dataset.cascadeConfig);
-            std::vector<float> computedHeatmap = coloradar::cubeToHeatmap(datacube, &dataset.cascadeConfig);
-//             for (int p = 0; p <= 23; ++p) {
-//                 std::vector<float> rearrangedComputedHeatmap = rearrangeArray(computedHeatmap, i);
-//                 float matchRate = compareHeatmaps(heatmap, rearrangedComputedHeatmap, threshold);
-//                 if (matchRate >= 0.5) {
-//                     std::cout << "Rate " << matchRate << " calculated for cube number " << j << " and heatmap number " << i << " (computed heatmap perm number " << p << ")" << std::endl << std::endl;
-//                     // std::cout << "Rate " << matchRate << " calculated for cube number " << j << " and heatmap number " << i << std::endl << std::endl;
-//                     // std::cout << "WARNING"<< std::endl;
-//                 }
+//
+//     for (size_t i = 0; i < 5; ++i) {
+//         std::vector<float> heatmap = run.getHeatmap(i, &dataset.cascadeConfig);
+//         for (size_t j = 0; j < 5; ++j) {
+//             std::vector<int16_t> datacube = run.getDatacube(j, &dataset.cascadeConfig);
+//             std::vector<float> computedHeatmap = coloradar::cubeToHeatmap(datacube, &dataset.cascadeConfig);
+// //             for (int p = 0; p <= 23; ++p) {
+// //                 std::vector<float> rearrangedComputedHeatmap = rearrangeArray(computedHeatmap, i);
+// //                 float matchRate = compareHeatmaps(heatmap, rearrangedComputedHeatmap, threshold);
+// //                 if (matchRate >= 0.5) {
+// //                     std::cout << "Rate " << matchRate << " calculated for cube number " << j << " and heatmap number " << i << " (computed heatmap perm number " << p << ")" << std::endl << std::endl;
+// //                     // std::cout << "Rate " << matchRate << " calculated for cube number " << j << " and heatmap number " << i << std::endl << std::endl;
+// //                     // std::cout << "WARNING"<< std::endl;
+// //                 }
+// //             }
+//             float matchRate = compareHeatmaps(heatmap, computedHeatmap, threshold);
+//             if (matchRate >= 0.3) {
+//                 std::cout << "Rate " << matchRate << " calculated for cube number " << j << " and heatmap number " << i << std::endl << std::endl;
 //             }
-            float matchRate = compareHeatmaps(heatmap, computedHeatmap, threshold);
-            if (matchRate >= 0.5) {
-                std::cout << "Rate " << matchRate << " calculated for cube number " << j << " and heatmap number " << i << std::endl << std::endl;
-            }
-        }
-    }
+//         }
+//     }
 //     std::vector<int16_t> datacube = run.getDatacube(3, &dataset.cascadeConfig);
 //     std::cout << "Read cube of size " << datacube.size() << std::endl;
 //
