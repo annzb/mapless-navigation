@@ -22,7 +22,7 @@ find_package(VTK COMPONENTS mpi REQUIRED)
 find_package(PCL 1.12 REQUIRED)
 find_package(octomap REQUIRED)
 find_package(OpenCV REQUIRED)
-find_package(CUDA)
+find_package(CUDA 12.6)
 
 set(CUDA_LIBS ${CUDA_LIBRARIES} ${CUDA_CUFFT_LIBRARIES})
 include_directories(${PROJECT_SOURCE_DIR}/include ${PCL_INCLUDE_DIRS} ${OCTOMAP_INCLUDE_DIRS} ${OpenCV_INCLUDE_DIRS})

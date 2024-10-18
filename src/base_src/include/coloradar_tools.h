@@ -58,8 +58,8 @@ public:
     // phase frequency params
     int calibAdcSampleFrequency;
     double calibFrequencySlope;
-    std::vector<std::complex<double>> phaseCalibMatrix;
     std::vector<std::complex<double>> frequencyCalibMatrix;
+    std::vector<std::complex<double>> phaseCalibMatrix;
 
     // internal params
     int numAzimuthBeams;

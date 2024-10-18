@@ -5,55 +5,15 @@
 #include <Eigen/Core>
 #include <mutex>
 
-#include <cufft.h>
 #include "coloradar_cuda.h"
 
 
-double blackman(int i, int n) {
-    double a0 = 0.42;
-    double a1 = 0.5;
-    double a2 = 0.08;
-    return (a0 - a1 * cos((2.0 * M_PI * double(i)) / double(n)) + a2 * cos((4.0 * M_PI * double(i)) / double(n)));
+double coloradar::RadarProcessor::blackman(const int& idx, const int& size) {
+    double angle = 2.0 * M_PI * idx / size;
+    return blackmanA0 - blackmanA1 * cos(angle) + blackmanA2 * cos(2 * angle);
 }
 
-template<typename T>
-void checkCudaArray(T* device_array, size_t num_elements, std::string description) {
-    std::cout << "Total elements in " << description << ": " << num_elements << std::endl;
-    std::vector<T> host_data(num_elements);
-    cudaError_t err = cudaMemcpy(host_data.data(), device_array, sizeof(T) * num_elements, cudaMemcpyDeviceToHost);
-    if (err != cudaSuccess) {
-        std::cerr << "CUDA Memcpy error (" << description << "): " << cudaGetErrorString(err) << std::endl;
-        return;
-    }
-    size_t non_zero_count = 0;
-    for (size_t i = 0; i < num_elements; ++i) {
-        if (host_data[i] != 0.0) {
-            non_zero_count++;
-        }
-    }
-    std::cout << "Non-zero elements in " << description << ": " << non_zero_count << std::endl << std::endl;
-}
-
-
-template<>
-void checkCudaArray(cuDoubleComplex* device_array, size_t num_elements, std::string description) {
-    std::cout << "Total elements in " << description << ": " << num_elements << std::endl;
-    std::vector<cuDoubleComplex> host_data(num_elements);
-    cudaError_t err = cudaMemcpy(host_data.data(), device_array, sizeof(cuDoubleComplex) * num_elements, cudaMemcpyDeviceToHost);
-    if (err != cudaSuccess) {
-        std::cerr << "CUDA Memcpy error (" << description << "): " << cudaGetErrorString(err) << std::endl;
-        return;
-    }
-    size_t non_zero_count = 0;
-    for (size_t i = 0; i < num_elements; ++i) {
-        if (host_data[i].x != 0.0 || host_data[i].y != 0.0) {
-            non_zero_count++;
-        }
-    }
-    std::cout << "Non-zero elements in " << description << ": " << non_zero_count << std::endl << std::endl;
-}
-
-std::vector<cuDoubleComplex> toCudaComplex(std::vector<std::complex<double>> array) {
+std::vector<cuDoubleComplex> coloradar::RadarProcessor::toCudaComplex(const std::vector<std::complex<double>>& array) {
     std::vector<cuDoubleComplex> cudaArray(array.size());
     for (size_t i = 0; i < array.size(); ++i) {
         cudaArray[i] = make_cuDoubleComplex(array[i].real(), array[i].imag());
@@ -61,210 +21,129 @@ std::vector<cuDoubleComplex> toCudaComplex(std::vector<std::complex<double>> arr
     return cudaArray;
 }
 
-// std::vector<float> applyCouplingCalib(std::vector<float> heatmap, coloradar::RadarConfig* config) {
-//     float* heatmapGpu;
-//     cuDoubleComplex* couplingSignatureGpu;
-//     std::vector<cuDoubleComplex> couplingSignature = toCudaComplex(config->couplingCalibMatrix);
-//
-//     cudaMalloc(&heatmapGpu, sizeof(float) * heatmap.size());
-//     cudaMalloc(&couplingSignatureGpu, sizeof(cuDoubleComplex) * couplingSignature.size());
-//     coloradar::cudaCopy(couplingSignatureGpu, couplingSignature);
-//     coloradar::cudaCopy(heatmapGpu, heatmap);
-//     removeCoupling(config->numPosRangeBins, config->numDopplerBins, config->numTxAntennas * config->numRxAntennas, heatmapGpu, couplingSignatureGpu);
-//
-//     std::vector<float> heatmapCalibrated;
-//     cudaMemcpy(&heatmapCalibrated[0], heatmapGpu, sizeof(float) * heatmap.size(), cudaMemcpyDefault);
-//     cudaFree(heatmapGpu);
-//     cudaFree(couplingSignatureGpu);
-//     return heatmapCalibrated;
-// }
-//
-// std::vector<float> applyPhaseFreqCalib(std::vector<float> heatmap, coloradar::RadarConfig* config) {
-//     float* heatmapGpu;
-//     cuDoubleComplex* phaseCalibMatrixGpu;
-//     cuDoubleComplex* freqCalibMatrixGpu;
-//     std::vector<cuDoubleComplex> phaseCalibMatrix = toCudaComplex(config->calPhaseCalibMatrix);
-//     std::vector<cuDoubleComplex> freqCalibMatrix = toCudaComplex(config->calFrequencyCalibMatrix);
-//
-//     cudaMalloc(&heatmapGpu, sizeof(float) * heatmap.size());
-//     cudaMalloc(&phaseCalibMatrixGpu, sizeof(cuDoubleComplex) * phaseCalibMatrix.size());
-//     cudaMalloc(&freqCalibMatrixGpu, sizeof(cuDoubleComplex) * freqCalibMatrix.size());
-//     coloradar::cudaCopy(heatmapGpu, heatmap);
-//     coloradar::cudaCopy(phaseCalibMatrixGpu, phaseCalibMatrix);
-//     coloradar::cudaCopy(freqCalibMatrixGpu, freqCalibMatrix);
-//     applyPhaseFreqCal(config->numRangeBins, config->numDopplerBins, config->numTxAntennas, config->numRxAntennas, heatmapGpu, freqCalibMatrixGpu, phaseCalibMatrixGpu);
-//
-//     std::vector<float> heatmapCalibrated;
-//     cudaMemcpy(&heatmapCalibrated[0], heatmapGpu, sizeof(float) * heatmap.size(), cudaMemcpyDefault);
-//     cudaFree(heatmapGpu);
-//     cudaFree(phaseCalibMatrixGpu);
-//     cudaFree(freqCalibMatrixGpu);
-//     return heatmapCalibrated;
-// }
-
-
-std::vector<float> coloradar::cubeToHeatmap(std::vector<int16_t> datacube, coloradar::RadarConfig* config) {
-    bool collapse_doppler_ = true;  // WARNING: default false
-    bool remove_antenna_coupling_ = true;  // WARNING: default true
-    bool phase_freq_calib_ = true;  // WARNING: default false
-    
-    cufftHandle range_plan_; // fft plan for range fft
-    cufftHandle doppler_plan_; // fft plan for doppler fft
-    cufftHandle angle_plan_; // fft plan for angle of arrival fft
-    cuDoubleComplex* coupling_signature_; // coupling signature
-    cuDoubleComplex* phase_calib_mat_; // phase calibration matrix
-    cuDoubleComplex* freq_calib_mat_; // frequency calibration matrix
-    cuDoubleComplex* range_fft_data_; // range fft data buffer
-    cuDoubleComplex* doppler_fft_data_; // doppler fft data buffer
-    cuDoubleComplex* angle_fft_data_; // angle fft data buffer
-    double* range_window_func_; // range window function values
-    double* doppler_window_func_; // doppler window function values
-    double* az_window_func_; // azimuth window function values
-    double* el_window_func_; // elevation window function values
-    float* magnitudes_out_; // complex magnitudes of aoa fft output for publishing
-    float* static_bins_; // only the static doppler bins of the steered output
-    int16_t* int_frame_data_; // container for int-valued adc data from ros message
-    int* virtualArrayMap;
-
-    // Allocate datacube
-    cudaMalloc(&int_frame_data_, sizeof(int16_t) * datacube.size());
-    coloradar::cudaCopy(int_frame_data_, datacube);
-
-    // Allocate virtual array map
-    cudaMalloc(&virtualArrayMap, sizeof(int) * 4 * config->numVirtualElements);
-    coloradar::cudaCopy(virtualArrayMap, config->virtualArrayMap);
-
-    // Allocate calibration matrices
-    cudaMalloc(&coupling_signature_, sizeof(cuDoubleComplex) * config->numPosRangeBins * config->numTxAntennas * config->numRxAntennas);
-    coloradar::cudaCopy(coupling_signature_, toCudaComplex(config->couplingCalibMatrix));
-    cudaMalloc(&freq_calib_mat_, sizeof(cuDoubleComplex) * config->numRangeBins * config->numTxAntennas * config->numRxAntennas);
-    coloradar::cudaCopy(freq_calib_mat_, toCudaComplex(config->frequencyCalibMatrix));
-    cudaMalloc(&phase_calib_mat_, sizeof(cuDoubleComplex) * config->numTxAntennas * config->numRxAntennas);
-    coloradar::cudaCopy(phase_calib_mat_, toCudaComplex(config->phaseCalibMatrix));
-    // checkCudaArray(coupling_signature_, config->numPosRangeBins * config->numTxAntennas * config->numRxAntennas, "coupling_signature_");
-    // checkCudaArray(freq_calib_mat_, config->numRangeBins * config->numTxAntennas * config->numRxAntennas, "freq_calib_mat_");
-    // checkCudaArray(phase_calib_mat_, config->numTxAntennas * config->numRxAntennas, "phase_calib_mat_");
-
-    int rank = 1;
-    int angle_rank = 2;
-    int n_range [1] = {config->numRangeBins};
-    int n_doppler [1] = {config->numDopplerBins};
-    int n_angle [2] = {config->numAzimuthBeams, config->numElevationBeams};
-    int howmany_range = config->numTxAntennas * config->numRxAntennas * config->numDopplerBins;
-    int howmany_doppler = config->numTxAntennas * config->numRxAntennas * config->numPosRangeBins;
-    int howmany_angle = config->numPosRangeBins * config->numDopplerBins;
-    int range_dist = config->numRangeBins;
-    int doppler_dist = 1;
-    int angle_dist = config->numAzimuthBeams * config->numElevationBeams;
-    int range_stride = 1;
-    int doppler_stride = config->numPosRangeBins * config->numTxAntennas * config->numRxAntennas;
-    int angle_stride = 1;
-    int *range_embed = n_range;
-    int *doppler_embed = n_doppler;
-    int *angle_embed = n_angle;
-    cudaMalloc(&range_fft_data_, sizeof(cuDoubleComplex) * config->numRangeBins * config->numDopplerBins * config->numTxAntennas * config->numRxAntennas);
-    cudaMalloc(&doppler_fft_data_, sizeof(cuDoubleComplex) * config->numPosRangeBins * config->numDopplerBins * config->numTxAntennas * config->numRxAntennas);
-    cudaMalloc(&angle_fft_data_, sizeof(cuDoubleComplex) * config->numPosRangeBins * config->numDopplerBins * config->numAzimuthBeams * config->numElevationBeams);
-    cudaMalloc(&magnitudes_out_, sizeof(float) * config->numPosRangeBins * config->numDopplerBins * config->numAzimuthBeams * config->numElevationBeams);
-    if (collapse_doppler_)
-        cudaMalloc(&static_bins_, sizeof(float) * 2 * config->numPosRangeBins * config->numAzimuthBeams * config->numElevationBeams);
-    cufftPlanMany(&range_plan_, rank, n_range, range_embed, range_stride, range_dist, range_embed, range_stride, range_dist, CUFFT_Z2Z , howmany_range);
-    cufftPlanMany(&doppler_plan_, rank, n_doppler, doppler_embed, doppler_stride, doppler_dist, doppler_embed, doppler_stride, doppler_dist, CUFFT_Z2Z, howmany_doppler);
-    cufftPlanMany(&angle_plan_, angle_rank, n_angle, angle_embed, angle_stride, angle_dist, angle_embed, angle_stride, angle_dist, CUFFT_Z2Z, howmany_angle);
-    cudaMalloc(&range_window_func_, sizeof(double) * config->numRangeBins);
-    cudaMalloc(&doppler_window_func_, sizeof(double) * config->numDopplerBins);
-    cudaMalloc(&az_window_func_, sizeof(double) * config->azimuthApertureLen);
-    cudaMalloc(&el_window_func_, sizeof(double) * config->elevationApertureLen);
-
-    std::vector<double> range_window_local(config->numRangeBins);
-    std::vector<double> doppler_window_local(config->numDopplerBins);
-    std::vector<double> az_window_local(config->azimuthApertureLen);
-    std::vector<double> el_window_local(config->elevationApertureLen);
-    for (int range_idx = 0; range_idx < config->numRangeBins; range_idx++)
-      range_window_local[range_idx] = blackman(range_idx, config->numRangeBins);
-    for (int doppler_idx = 0; doppler_idx < config->numDopplerBins; doppler_idx++)
-      doppler_window_local[doppler_idx] = blackman(doppler_idx, config->numDopplerBins);
-    for (int az_idx = 0; az_idx < config->azimuthApertureLen; az_idx++)
-      az_window_local[az_idx] = blackman(az_idx, config->azimuthApertureLen);
-    for (int el_idx = 0; el_idx < config->elevationApertureLen; el_idx++)
-      el_window_local[el_idx] = blackman(el_idx, config->elevationApertureLen);
-    coloradar::cudaCopy(range_window_func_, range_window_local);
-    // checkCudaArray(range_window_func_, config->numRangeBins, "range_window_func_");
-    coloradar::cudaCopy(doppler_window_func_, doppler_window_local);
-    // checkCudaArray(doppler_window_func_, config->numDopplerBins, "doppler_window_func_");
-    coloradar::cudaCopy(az_window_func_, az_window_local);
-    // checkCudaArray(az_window_func_, config->azimuthApertureLen, "az_window_func_");
-    coloradar::cudaCopy(el_window_func_, el_window_local);
-    // checkCudaArray(el_window_func_, config->elevationApertureLen, "el_window_func_");
-
-    setFrameData(config->numRangeBins, config->numDopplerBins, config->numTxAntennas, config->numRxAntennas, int_frame_data_, range_fft_data_);
-    if (phase_freq_calib_)
-        applyPhaseFreqCal(config->numRangeBins, config->numDopplerBins, config->numTxAntennas, config->numRxAntennas, range_fft_data_, freq_calib_mat_, phase_calib_mat_);
-
-    applyWindow(config->numRangeBins, 1, config->numRangeBins, config->numTxAntennas * config->numRxAntennas * config->numDopplerBins, range_window_func_, range_fft_data_);
-    // run range fft
-    cufftExecZ2Z(range_plan_, range_fft_data_, range_fft_data_, CUFFT_FORWARD);
-    cudaDeviceSynchronize();
-    // remove DC and negative frequency values from the range fft output
-    removeNegSpectrum(config->numRangeBins, config->numPosRangeBins, config->numDopplerBins, config->numTxAntennas * config->numRxAntennas, range_fft_data_, doppler_fft_data_);
-    // checkCudaArray(range_fft_data_, config->numRangeBins * config->numDopplerBins * config->numTxAntennas * config->numRxAntennas, "range_fft_data_");
-    
-    if (remove_antenna_coupling_)
-        removeCoupling(config->numPosRangeBins, config->numDopplerBins, config->numTxAntennas * config->numRxAntennas, doppler_fft_data_, coupling_signature_);
-    // apply doppler window function
-    applyWindow(1, config->numPosRangeBins * config->numTxAntennas * config->numRxAntennas, config->numDopplerBins, config->numTxAntennas * config->numRxAntennas * config->numPosRangeBins, doppler_window_func_, doppler_fft_data_);
-    // run doppler fft
-    cufftExecZ2Z(doppler_plan_, doppler_fft_data_, doppler_fft_data_, CUFFT_FORWARD);
-    cudaDeviceSynchronize();
-    // checkCudaArray(doppler_fft_data_, config->numPosRangeBins * config->numDopplerBins * config->numTxAntennas * config->numRxAntennas, "doppler_fft_data_");
-
-    // memset angle fft data back to zero
-    // entries that are unset after array is filled with samples will become zero padding
-    cudaMemset(angle_fft_data_, 0, sizeof(cuDoubleComplex) * config->numAzimuthBeams * config->numElevationBeams * config->numPosRangeBins * config->numDopplerBins);
-    // move doppler fft result into angle fft data array
-    // and apply azimuth and elevation window functions
-    // not using the applyWindow kernel because it's not compatible
-    // with the data layout required for the angle fft
-    rearrangeData(config->numPosRangeBins, config->numDopplerBins, config->numTxAntennas, config->numRxAntennas, config->numAzimuthBeams, config->numElevationBeams, config->numVirtualElements, virtualArrayMap, az_window_func_, el_window_func_, doppler_fft_data_, angle_fft_data_);
-    // run angle fft
-    cufftExecZ2Z(angle_plan_, angle_fft_data_, angle_fft_data_, CUFFT_FORWARD);
-    cudaDeviceSynchronize();
-    // checkCudaArray(angle_fft_data_, config->numPosRangeBins * config->numDopplerBins * config->numAzimuthBeams * config->numElevationBeams, "angle_fft_data_");
-
-    // reorder data for publication
-    // includes rearranging the doppler, azimuth, and elevation dimensions
-    // so zero frequency is centered (fftshift in Matlab and SciPy)
-    assembleMsg(config->numPosRangeBins, config->numDopplerBins, config->numAzimuthBeams, config->numElevationBeams, angle_fft_data_, magnitudes_out_);
-    if (collapse_doppler_)
-        collapseDoppler(config->numPosRangeBins, config->numDopplerBins, config->numAngles, config->dopplerBinWidth, magnitudes_out_, static_bins_);
-    // checkCudaArray(magnitudes_out_, config->numPosRangeBins * config->numDopplerBins * config->numAzimuthBeams * config->numElevationBeams, "magnitudes_out_");
-
-    std::memcpy(config->elevationBins.data(), config->elevationAngles.data(), sizeof(float) * config->numElevationBeams);
-    std::memcpy(config->azimuthBins.data(), config->azimuthAngles.data(), sizeof(float) * config->numAzimuthBeams);
-
-    std::vector<float> image;
-    if (collapse_doppler_) {
-        image.resize(2 * config->numAngles * config->numPosRangeBins); // = azBins * elBins * rBins = 1048576; angles * 2 = azBins * elBins = 4096; true angles = 2048 but is set to 512
-        cudaMemcpy(&image[0], static_bins_, sizeof(float) * 2 * config->numPosRangeBins * config->numAngles, cudaMemcpyDefault);
-    } else {
-        image.resize(config->numAngles * config->numPosRangeBins * config->numDopplerBins);
-        cudaMemcpy(&image[0], magnitudes_out_, sizeof(float) * config->numPosRangeBins * config->numDopplerBins * config->numAngles, cudaMemcpyDefault);
+void coloradar::RadarProcessor::initWindowFunc(double*& windowFunc, const int& size) {
+    std::vector<double> windowFuncLocal(size);
+    for (size_t i = 0; i < size; ++i) {
+        windowFuncLocal[i] = blackman(i, size);
     }
+    cudaMalloc(&windowFunc, sizeof(double) * size);
+    coloradar::copyToGpu(windowFuncLocal, windowFunc);
+}
 
+
+void coloradar::RadarProcessor::initFftPlans() {
+    int rank = 1, angleRank = 2;
+    int nRange[1] = {config->numRangeBins}, nDoppler[1] = {config->numDopplerBins}, nAngle[2] = {config->numAzimuthBeams, config->numElevationBeams};
+    int howmanyRange = config->numTxAntennas * config->numRxAntennas * config->numDopplerBins;
+    int howmanyDoppler = config->numTxAntennas * config->numRxAntennas * config->numPosRangeBins;
+    int howmanyAngle = config->numPosRangeBins * config->numDopplerBins;
+    int rangeDist = config->numRangeBins, dopplerDist = 1, angleDist = config->numAzimuthBeams * config->numElevationBeams;
+    int rangeStride = 1, dopplerStride = config->numPosRangeBins * config->numTxAntennas * config->numRxAntennas, angleStride = 1;
+    int *rangeEmbed = nRange, *dopplerEmbed = nDoppler, *angleEmbed = nAngle;
+    cufftPlanMany(&rangePlan, rank, nRange, rangeEmbed, rangeStride, rangeDist, rangeEmbed, rangeStride, rangeDist, CUFFT_Z2Z , howmanyRange);
+    cufftPlanMany(&dopplerPlan, rank, nDoppler, dopplerEmbed, dopplerStride, dopplerDist, dopplerEmbed, dopplerStride, dopplerDist, CUFFT_Z2Z, howmanyDoppler);
+    cufftPlanMany(&anglePlan, angleRank, nAngle, angleEmbed, angleStride, angleDist, angleEmbed, angleStride, angleDist, CUFFT_Z2Z, howmanyAngle);
+    cudaDeviceSynchronize();
+}
+
+coloradar::RadarProcessor::RadarProcessor(RadarConfig* radarConfig, const double& blackmanParamA0, const double& blackmanParamA1, const double& blackmanParamA2)
+        : config(radarConfig), blackmanA0(blackmanParamA0), blackmanA1(blackmanParamA1), blackmanA2(blackmanParamA2) {
+
+    cudaMalloc(&virtualArrayMap, sizeof(int) * 4 * config->numVirtualElements);
+    coloradar::copyToGpu(config->virtualArrayMap, virtualArrayMap);
+    cudaDeviceSynchronize();
+
+    cudaMalloc(&couplingSignature, sizeof(cuDoubleComplex) * config->numPosRangeBins * config->numTxAntennas * config->numRxAntennas);
+    coloradar::copyToGpu(toCudaComplex(config->couplingCalibMatrix), couplingSignature);
+
+    cudaMalloc(&frequencyCalibMatrix, sizeof(cuDoubleComplex) * config->numRangeBins * config->numTxAntennas * config->numRxAntennas);
+    coloradar::copyToGpu(toCudaComplex(config->frequencyCalibMatrix), frequencyCalibMatrix);
+
+    cudaMalloc(&phaseCalibMatrix, sizeof(cuDoubleComplex) * config->numTxAntennas * config->numRxAntennas);
+    coloradar::copyToGpu(toCudaComplex(config->phaseCalibMatrix), phaseCalibMatrix);
+
+    initWindowFunc(rangeWindowFunc, config->numRangeBins);
+    initWindowFunc(dopplerWindowFunc, config->numDopplerBins);
+    initWindowFunc(azimuthWindowFunc, config->azimuthApertureLen);
+    initWindowFunc(elevationWindowFunc, config->elevationApertureLen);
+    initFftPlans();
+}
+
+coloradar::RadarProcessor::~RadarProcessor() {
     cudaFree(virtualArrayMap);
-    cudaFree(coupling_signature_);
-    cudaFree(phase_calib_mat_);
-    cudaFree(freq_calib_mat_);
-    cudaFree(range_window_func_);
-    cudaFree(doppler_window_func_);
-    cudaFree(az_window_func_);
-    cudaFree(el_window_func_);
-    cudaFree(range_fft_data_);
-    cudaFree(doppler_fft_data_);
-    cudaFree(angle_fft_data_);
-    cudaFree(magnitudes_out_);
-    cudaFree(int_frame_data_);
-    if (collapse_doppler_) cudaFree(static_bins_);
+    cudaFree(couplingSignature);
+    cudaFree(frequencyCalibMatrix);
+    cudaFree(phaseCalibMatrix);
+    cudaFree(rangeWindowFunc);
+    cudaFree(dopplerWindowFunc);
+    cudaFree(azimuthWindowFunc);
+    cudaFree(elevationWindowFunc);
+    cufftDestroy(rangePlan);
+    cufftDestroy(dopplerPlan);
+    cufftDestroy(anglePlan);
+}
 
-    return image;
+
+std::vector<float> coloradar::RadarProcessor::cubeToHeatmap(
+    const std::vector<int16_t>& datacube,
+    const bool& applyCollapseDoppler,
+    const bool& removeAntennaCoupling,
+    const bool& applyPhaseFrequencyCalib
+) {
+    int16_t* datacubeGpu;
+    cudaMalloc(&datacubeGpu, sizeof(int16_t) * datacube.size());
+    coloradar::copyToGpu(datacube, datacubeGpu);
+
+    // Range FFT
+    cuDoubleComplex* rangeFftData;
+    cudaMalloc(&rangeFftData, sizeof(cuDoubleComplex) * config->numRangeBins * config->numDopplerBins * config->numTxAntennas * config->numRxAntennas);
+    setFrameData(config->numRangeBins, config->numDopplerBins, config->numTxAntennas, config->numRxAntennas, datacubeGpu, rangeFftData);
+    if (applyPhaseFrequencyCalib)
+        applyPhaseFreqCal(config->numRangeBins, config->numDopplerBins, config->numTxAntennas, config->numRxAntennas, rangeFftData, frequencyCalibMatrix, phaseCalibMatrix);
+    applyWindow(config->numRangeBins, 1, config->numRangeBins, config->numTxAntennas * config->numRxAntennas * config->numDopplerBins, rangeWindowFunc, rangeFftData);
+    cufftExecZ2Z(rangePlan, rangeFftData, rangeFftData, CUFFT_FORWARD);
+    cudaDeviceSynchronize();
+    cudaFree(datacubeGpu);
+
+    // Doppler FFT
+    cuDoubleComplex* dopplerFftData;
+    cudaMalloc(&dopplerFftData, sizeof(cuDoubleComplex) * config->numPosRangeBins * config->numDopplerBins * config->numTxAntennas * config->numRxAntennas);
+    removeNegSpectrum(config->numRangeBins, config->numPosRangeBins, config->numDopplerBins, config->numTxAntennas * config->numRxAntennas, rangeFftData, dopplerFftData);
+    if (removeAntennaCoupling)
+        removeCoupling(config->numPosRangeBins, config->numDopplerBins, config->numTxAntennas * config->numRxAntennas, dopplerFftData, couplingSignature);
+    applyWindow(1, config->numPosRangeBins * config->numTxAntennas * config->numRxAntennas, config->numDopplerBins, config->numTxAntennas * config->numRxAntennas * config->numPosRangeBins, dopplerWindowFunc, dopplerFftData);
+    cufftExecZ2Z(dopplerPlan, dopplerFftData, dopplerFftData, CUFFT_FORWARD);
+    cudaDeviceSynchronize();
+    cudaFree(rangeFftData);
+
+    // Angle FFT
+    cuDoubleComplex* angleFftData;
+    cudaMalloc(&angleFftData, sizeof(cuDoubleComplex) * config->numPosRangeBins * config->numDopplerBins * config->numAzimuthBeams * config->numElevationBeams);
+    cudaMemset(angleFftData, 0, sizeof(cuDoubleComplex) * config->numAzimuthBeams * config->numElevationBeams * config->numPosRangeBins * config->numDopplerBins);
+    rearrangeData(config->numPosRangeBins, config->numDopplerBins, config->numTxAntennas, config->numRxAntennas, config->numAzimuthBeams, config->numElevationBeams, config->numVirtualElements, virtualArrayMap, azimuthWindowFunc, elevationWindowFunc, dopplerFftData, angleFftData);
+    cufftExecZ2Z(anglePlan, angleFftData, angleFftData, CUFFT_FORWARD);
+    cudaDeviceSynchronize();
+    cudaFree(dopplerFftData);
+
+    // Rearrange data for creating heatmap, including rearranging the doppler, azimuth, and elevation dimensions so zero frequency is centered (fftshift in Matlab and SciPy)
+    float* heatmapGpu;
+    std::vector<float> heatmap;
+    cudaMalloc(&heatmapGpu, sizeof(float) * config->numPosRangeBins * config->numDopplerBins * config->numAzimuthBeams * config->numElevationBeams);
+    assembleMsg(config->numPosRangeBins, config->numDopplerBins, config->numAzimuthBeams, config->numElevationBeams, angleFftData, heatmapGpu);
+    cudaFree(angleFftData);
+
+    if (!applyCollapseDoppler) {
+        heatmap.resize(config->numAngles * config->numPosRangeBins * config->numDopplerBins);
+        cudaMemcpy(&heatmap[0], heatmapGpu, sizeof(float) * config->numPosRangeBins * config->numDopplerBins * config->numAngles, cudaMemcpyDefault);
+        cudaFree(heatmapGpu);
+    } else {
+        float* heatmapCollapsed;
+        cudaMalloc(&heatmapCollapsed, sizeof(float) * 2 * config->numPosRangeBins * config->numAzimuthBeams * config->numElevationBeams);
+        collapseDoppler(config->numPosRangeBins, config->numDopplerBins, config->numAngles, config->dopplerBinWidth, heatmapGpu, heatmapCollapsed);
+        heatmap.resize(2 * config->numAngles * config->numPosRangeBins);
+        cudaMemcpy(&heatmap[0], heatmapCollapsed, sizeof(float) * 2 * config->numPosRangeBins * config->numAngles, cudaMemcpyDefault);
+        cudaFree(heatmapGpu);
+        cudaFree(heatmapCollapsed);
+    }
+    return heatmap;
 }

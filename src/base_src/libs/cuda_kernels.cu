@@ -1,4 +1,5 @@
 #include "cuda_kernels.h"
+#include <stdio.h>
 
 
 __global__
@@ -52,13 +53,35 @@ void rearrangeMatrix(int n_range_bins,
       int src_idx = range_idx + n_range_bins * (rx_idx + n_rx * (tx_idx + n_tx * doppler_idx));
       int dest_idx = el_idx + n_el_beams * (az_idx + n_az_beams * (range_idx + n_range_bins * doppler_idx));
       dest_mat[dest_idx] = src_mat[src_idx];
+//       if (dest_idx < 100)
+//         printf("rearrangeMatrix dest_idx: %d, src_idx: %d, value: (%f + i%f)\n", dest_idx, src_idx, cuCreal(dest_mat[dest_idx]), cuCimag(dest_mat[dest_idx]));
       /*
       dest_mat[dest_idx] = cuCmul(cuCmul(src_mat[src_idx],
                                   make_cuDoubleComplex(az_window[az_idx],0.0)),
                                   make_cuDoubleComplex(el_window[el_idx],0.0)); */
     }
   }
+
 }
+// mine
+// rearrangeMatrix dest_idx: 0, src_idx: 0, value: (6067.363877 + i-2204.109097)
+// rearrangeMatrix dest_idx: 32, src_idx: 128, value: (7138.991342 + i-6608.822645)
+// rearrangeMatrix dest_idx: 64, src_idx: 256, value: (-18881.897466 + i-11790.785929)
+// rearrangeMatrix dest_idx: 96, src_idx: 384, value: (-13489.109783 + i3531.592471)
+
+// 2nd msg
+// rearrangeMatrix dest_idx: 0, src_idx: 0, value: (6067.363877 + i-2204.109097)
+// rearrangeMatrix dest_idx: 32, src_idx: 128, value: (1887.907818 + i-5370.057859)
+// rearrangeMatrix dest_idx: 64, src_idx: 256, value: (-14937.764607 + i-1228.167782)
+// rearrangeMatrix dest_idx: 96, src_idx: 384, value: (-4835.452407 + i4750.476440)
+
+// first msg
+// rearrangeMatrix dest_idx: 0, src_idx: 0, value: (-1471.871323 + i-32085.529897)
+// rearrangeMatrix dest_idx: 32, src_idx: 128, value: (-9788.159382 + i-22641.801859)
+// rearrangeMatrix dest_idx: 64, src_idx: 256, value: (-47238.116607 + i38964.421018)
+// rearrangeMatrix dest_idx: 96, src_idx: 384, value: (6693.513993 + i29549.225240)
+
+
 
 __global__
 void removeAntennaCoupling(int num_range_bins,
@@ -399,7 +422,7 @@ void rearrangeData(int num_range_bins,
                                                      elevation_window,
                                                      src_mat,
                                                      dest_mat);
-    cudaDeviceSynchronize();
+    cudaError_t err = cudaDeviceSynchronize();
 }
 
 

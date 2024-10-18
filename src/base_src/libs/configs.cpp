@@ -269,8 +269,10 @@ void coloradar::RadarConfig::initPhaseFrequencyParams(const std::filesystem::pat
         if (frequencyMatrix.size() != numTxAntennas * numRxAntennas) {
             throw std::runtime_error("Invalid frequency calibration array: expected " + std::to_string(numRxAntennas * numTxAntennas) + " elements, got " + std::to_string(frequencyMatrix.size()));
         }
+        int count = 0;
         for (const auto& value : frequencyMatrix) {
-            freqData.push_back(value.asDouble());
+            freqData[count] = value.asDouble();
+            count++;
         }
     } else {
         throw std::runtime_error("Missing frequencyCalibrationMatrix in phase frequency config.");
