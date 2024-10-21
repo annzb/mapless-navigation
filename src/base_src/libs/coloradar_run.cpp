@@ -21,11 +21,17 @@ coloradar::ColoradarRun::ColoradarRun(const std::filesystem::path& runPath) : ru
     coloradar::internal::checkPathExists(radarHeatmapsDirPath);
     radarCubesDirPath = radarScansDirPath / "adc_samples";
     coloradar::internal::checkPathExists(radarCubesDirPath);
+    radarPointcloudsDirPath = radarScansDirPath / "pointclouds";
+    coloradar::internal::createDirectoryIfNotExists(radarPointcloudsDirPath);
+    coloradar::internal::createDirectoryIfNotExists(radarPointcloudsDirPath / "data");
 
     cascadeHeatmapsDirPath = cascadeScansDirPath / "heatmaps";
     coloradar::internal::checkPathExists(cascadeHeatmapsDirPath);
     cascadeCubesDirPath = cascadeScansDirPath / "adc_samples";
     coloradar::internal::checkPathExists(cascadeCubesDirPath);
+    cascadePointcloudsDirPath = cascadeScansDirPath / "pointclouds";
+    coloradar::internal::createDirectoryIfNotExists(cascadePointcloudsDirPath);
+    coloradar::internal::createDirectoryIfNotExists(cascadePointcloudsDirPath / "data");
 
     lidarCloudsDirPath = lidarScansDirPath / "pointclouds";
     coloradar::internal::checkPathExists(lidarCloudsDirPath);
@@ -259,4 +265,37 @@ std::vector<float> coloradar::ColoradarRun::clipHeatmapImage(const std::vector<f
         }
     }
     return clipped;
+}
+
+void coloradar::ColoradarRun::createRadarPointclouds(coloradar::RadarConfig* config) {
+    std::filesystem::path heatmapDirPath;
+    if (auto cascadeConfig = dynamic_cast<CascadeConfig*>(config)) {
+        heatmapDirPath = cascadeHeatmapsDirPath;
+    } else {
+        heatmapDirPath = radarHeatmapsDirPath;
+    }
+    heatmapDirPath /= "data";
+    for (auto const& entry : std::filesystem::directory_iterator(heatmapDirPath)) {
+        if (!entry.is_directory() && entry.path().extension() == ".bin") {
+            std::filesystem::path heatmapPath = entry.path();
+            std::vector<float> heatmap = getHeatmap(heatmapPath, config);
+            pcl::PointCloud<coloradar::RadarPoint> cloud = coloradar::heatmapToPointcloud(heatmap, config);
+            // std::cout << "Cloud size " << cloud.size() << ", first point " << cloud[0].x << " " << cloud[0].doppler << std::endl;
+
+            std::filesystem::path cloudPath = cascadePointcloudsDirPath / "data" / coloradar::internal::replaceInFilename(heatmapPath, "heatmap", "radar_pointcloud").filename();
+            std::ofstream file(cloudPath, std::ios::out | std::ios::binary);
+            if (!file.is_open()) {
+                std::cerr << "Unable to open file for writing: " << cloudPath << std::endl;
+                return;
+            }
+            for (size_t i = 0; i < cloud.points.size(); ++i) {
+                file.write(reinterpret_cast<const char*>(&cloud.points[i].x), sizeof(float));
+                file.write(reinterpret_cast<const char*>(&cloud.points[i].y), sizeof(float));
+                file.write(reinterpret_cast<const char*>(&cloud.points[i].z), sizeof(float));
+                file.write(reinterpret_cast<const char*>(&cloud.points[i].intensity), sizeof(float));
+                file.write(reinterpret_cast<const char*>(&cloud.points[i].doppler), sizeof(float));
+            }
+            file.close();
+        }
+    }
 }

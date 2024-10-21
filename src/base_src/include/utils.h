@@ -10,6 +10,7 @@ namespace coloradar::internal {
 
     void checkPathExists(const std::filesystem::path& path);
     void createDirectoryIfNotExists(const std::filesystem::path& dirPath);
+    std::filesystem::path replaceInFilename(const std::filesystem::path& originalPath, const std::string& toReplace, const std::string& replacement);
 
     template<coloradar::Pcl4dPointType PointT> PointT makePoint(const float& x, const float& y, const float& z, const float& i);
     template<coloradar::PointType PointT> PointT makePoint(const float& x, const float& y, const float& z, const float& i);
@@ -37,6 +38,8 @@ namespace coloradar::internal {
     template<coloradar::PointType PointT, coloradar::CloudType CloudT> CloudT readLidarPointCloud(const std::filesystem::path& binPath);
 
     template<typename PointT, typename CloudT> void filterFov(CloudT& cloud, const float& horizontalFov, const float& verticalFov, const float& range);
+
+    Eigen::Vector3f sphericalToCartesian(const double& az, const double& el, const double& range);
 }
 
 #include "utils.hpp"

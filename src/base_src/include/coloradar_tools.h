@@ -2,7 +2,6 @@
 #define COLORADAR_TOOLS_H
 
 #include "utils.h"
-// #include "DataTypes.h"
 
 #include <string>
 #include <vector>
@@ -94,9 +93,18 @@ protected:
     void init(const std::filesystem::path& calibDir) override;
 };
 
+struct RadarPoint
+{
+  PCL_ADD_POINT4D;
+  float intensity;
+  float doppler;
+  EIGEN_MAKE_ALIGNED_OPERATOR_NEW
+} EIGEN_ALIGN16;
+
 
 template <Pcl4dPointType PointT, template <PclCloudType> class CloudT> void octreeToPcl(const octomap::OcTree& tree, CloudT<PointT>& cloud);
 template <PclPointType PointT, template <PclCloudType> class CloudT> void filterFov(CloudT<PointT>& cloud, const float& horizontalFov, const float& verticalFov, const float& range);
+pcl::PointCloud<RadarPoint> heatmapToPointcloud(const std::vector<float>& heatmap, coloradar::RadarConfig* config);
 
 
 class OctoPointcloud : public octomap::Pointcloud {
@@ -124,8 +132,10 @@ protected:
     std::filesystem::path lidarMapsDirPath;
     std::filesystem::path cascadeHeatmapsDirPath;
     std::filesystem::path cascadeCubesDirPath;
+    std::filesystem::path cascadePointcloudsDirPath;
     std::filesystem::path radarHeatmapsDirPath;
     std::filesystem::path radarCubesDirPath;
+    std::filesystem::path radarPointcloudsDirPath;
 
     std::vector<double> readTimestamps(const std::filesystem::path& path);
     int findClosestEarlierTimestamp(const double& targetTs, const std::vector<double>& timestamps);
@@ -173,6 +183,8 @@ public:
         std::vector<octomath::Pose6D> poses = {}
     );
     pcl::PointCloud<pcl::PointXYZI> readMapFrame(const int& frameIdx);
+
+    void createRadarPointclouds(RadarConfig* config);
 };
 
 

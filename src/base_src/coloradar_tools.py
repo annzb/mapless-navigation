@@ -267,6 +267,24 @@ def show_pcl_prob(pcd_file_path, prob_threshold=0):
     axes = o3d.geometry.TriangleMesh.create_coordinate_frame(size=10.0)
     o3d.visualization.draw_geometries([pcd, axes])
 
+def show_radar_pointcloud(file_path):
+    with open(file_path, 'rb') as f:
+        cloud_bytes = f.read()
+    cloud_vals = np.frombuffer(cloud_bytes, dtype=np.float32)
+    cloud = cloud_vals.reshape((-1, 5))
+    points = cloud[:, :3]
+    intensities = cloud[:, 3]
+    min_intensity = np.min(intensities)
+    max_intensity = np.max(intensities)
+    normalized_intensities = (intensities - min_intensity) / (max_intensity - min_intensity)
+    cmap = plt.get_cmap("plasma")
+    colors = cmap(normalized_intensities)[:, :3]
+    pcd = o3d.geometry.PointCloud()
+    pcd.points = o3d.utility.Vector3dVector(points)
+    pcd.colors = o3d.utility.Vector3dVector(colors)
+    axes = o3d.geometry.TriangleMesh.create_coordinate_frame(size=10.0)
+    o3d.visualization.draw_geometries([pcd, axes], "Radar Point Cloud Visualization")
+
 
 class ColoradarDataset:
     def __init__(self, dataset_path):
