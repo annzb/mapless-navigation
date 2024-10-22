@@ -188,7 +188,13 @@ std::vector<int16_t> coloradar::ColoradarRun::getDatacube(const std::filesystem:
 }
 
 std::vector<int16_t> coloradar::ColoradarRun::getDatacube(const int& cubeIdx, coloradar::RadarConfig* config) {
-    std::filesystem::path cubeBinFilePath = cascadeCubesDirPath / "data" / ("frame_" + std::to_string(cubeIdx) + ".bin");
+    std::filesystem::path cubeDirPath;
+    if (auto cascadeConfig = dynamic_cast<CascadeConfig*>(config)) {
+        cubeDirPath = cascadeCubesDirPath;
+    } else {
+        cubeDirPath = radarCubesDirPath;
+    }
+    std::filesystem::path cubeBinFilePath = cubeDirPath / "data" / ("frame_" + std::to_string(cubeIdx) + ".bin");
     return getDatacube(cubeBinFilePath, config);
 }
 
@@ -209,7 +215,13 @@ std::vector<float> coloradar::ColoradarRun::getHeatmap(const std::filesystem::pa
 }
 
 std::vector<float> coloradar::ColoradarRun::getHeatmap(const int& hmIdx, coloradar::RadarConfig* config) {
-    std::filesystem::path hmBinFilePath = cascadeHeatmapsDirPath / "data" / ("heatmap_" + std::to_string(hmIdx) + ".bin");
+    std::filesystem::path heatmapDirPath;
+    if (auto cascadeConfig = dynamic_cast<CascadeConfig*>(config)) {
+        heatmapDirPath = cascadeHeatmapsDirPath;
+    } else {
+        heatmapDirPath = radarHeatmapsDirPath;
+    }
+    std::filesystem::path hmBinFilePath = heatmapDirPath / "data" / ("heatmap_" + std::to_string(hmIdx) + ".bin");
     return getHeatmap(hmBinFilePath, config);
 }
 
@@ -267,7 +279,7 @@ std::vector<float> coloradar::ColoradarRun::clipHeatmapImage(const std::vector<f
     return clipped;
 }
 
-void coloradar::ColoradarRun::createRadarPointclouds(coloradar::RadarConfig* config) {
+void coloradar::ColoradarRun::createRadarPointclouds(coloradar::RadarConfig* config, const float& intensityThresholdPercent) {
     std::filesystem::path heatmapDirPath;
     if (auto cascadeConfig = dynamic_cast<CascadeConfig*>(config)) {
         heatmapDirPath = cascadeHeatmapsDirPath;
@@ -279,8 +291,7 @@ void coloradar::ColoradarRun::createRadarPointclouds(coloradar::RadarConfig* con
         if (!entry.is_directory() && entry.path().extension() == ".bin") {
             std::filesystem::path heatmapPath = entry.path();
             std::vector<float> heatmap = getHeatmap(heatmapPath, config);
-            pcl::PointCloud<coloradar::RadarPoint> cloud = coloradar::heatmapToPointcloud(heatmap, config);
-            // std::cout << "Cloud size " << cloud.size() << ", first point " << cloud[0].x << " " << cloud[0].doppler << std::endl;
+            pcl::PointCloud<coloradar::RadarPoint> cloud = coloradar::heatmapToPointcloud(heatmap, config, intensityThresholdPercent);
 
             std::filesystem::path cloudPath = cascadePointcloudsDirPath / "data" / coloradar::internal::replaceInFilename(heatmapPath, "heatmap", "radar_pointcloud").filename();
             std::ofstream file(cloudPath, std::ios::out | std::ios::binary);

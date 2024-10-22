@@ -29,7 +29,10 @@ inline std::tuple<float, float, float> makeKey(float x, float y, float z) {
     return std::make_tuple(x, y, z);
 }
 
-pcl::PointCloud<coloradar::RadarPoint> coloradar::heatmapToPointcloud(const std::vector<float>& heatmap, coloradar::RadarConfig* config) {
+pcl::PointCloud<coloradar::RadarPoint> coloradar::heatmapToPointcloud(const std::vector<float>& heatmap, coloradar::RadarConfig* config, const float& intensityThresholdPercent) {
+    if (intensityThresholdPercent < 0 or intensityThresholdPercent >= 100)
+        throw std::runtime_error("Invalid intensityThresholdPercent: expected value in [0; 100), got " + std::to_string(intensityThresholdPercent));
+    float maxIntensity = 0;
     pcl::PointCloud<coloradar::RadarPoint> cloud;
     std::unordered_map<std::tuple<float, float, float>, RadarPoint, std::hash<std::tuple<float, float, float>>> pointMap;
 
@@ -48,6 +51,8 @@ pcl::PointCloud<coloradar::RadarPoint> coloradar::heatmapToPointcloud(const std:
                     maxElBin = elIdx;
                 }
             }
+            if (maxElIntensity > maxIntensity)
+                maxIntensity = maxElIntensity;
             double range = rangeIdx * config->rangeBinWidth;
             Eigen::Vector3f location = coloradar::internal::sphericalToCartesian(config->azimuthAngles[azIdx], config->elevationAngles[maxElBin], range);
             RadarPoint point;
@@ -67,8 +72,10 @@ pcl::PointCloud<coloradar::RadarPoint> coloradar::heatmapToPointcloud(const std:
             }
         }
     }
+    float intensityThreshold = maxIntensity * intensityThresholdPercent / 100;
     for (const auto& kv : pointMap) {
-        cloud.push_back(kv.second);
+        if (kv.second.intensity >= intensityThreshold)
+            cloud.push_back(kv.second);
     }
     return cloud;
 }
