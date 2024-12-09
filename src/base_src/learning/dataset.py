@@ -104,7 +104,7 @@ def get_dataset(dataset_file_path, partial=1.0, batch_size=16, shuffle_runs=True
     poses = poses[filtered_indices]
 
     # reduce dataset
-    num_samples = len(radar_frames) * partial
+    num_samples = int(len(radar_frames) * partial)
     radar_frames = radar_frames[:num_samples]
     lidar_frames = lidar_frames[:num_samples]
     poses = poses[:num_samples]
