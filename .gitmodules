@@ -1,3 +1,3 @@
-[submodule "src/base_src/src/base_src/learning/Pointnet_Pointnet2_pytorch"]
+[submodule "src/base_src/learning/Pointnet_Pointnet2_pytorch"]
 	path = src/base_src/learning/Pointnet_Pointnet2_pytorch
 	url = https://github.com/yanx27/Pointnet_Pointnet2_pytorch.git
