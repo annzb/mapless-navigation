@@ -108,8 +108,8 @@ def main():
     print('\ndevice', device)
     model.to(device)
 
-    check_memory(model, train_loader, device)
-    return
+    # check_memory(model, train_loader, device)
+    # return
 
     optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
     loss_fn = nn.BCEWithLogitsLoss()

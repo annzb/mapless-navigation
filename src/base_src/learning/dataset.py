@@ -97,12 +97,18 @@ def get_dataset(dataset_file_path, partial=1.0, batch_size=16, shuffle_runs=True
     _, num_azimuth_bins, num_range_bins, num_elevation_bins = radar_frames.shape
     radar_config.set_radar_frame_params(num_azimuth_bins=num_azimuth_bins, num_range_bins=num_range_bins, num_elevation_bins=num_elevation_bins)
 
+    # filter empty clouds
     filtered_indices = [i for i, frame in enumerate(lidar_frames) if len(frame) > 0]
     radar_frames = radar_frames[filtered_indices]
     lidar_frames = [lidar_frames[i] for i in filtered_indices]
     poses = poses[filtered_indices]
-    # print(f"Filtered dataset: {len(lidar_frames)} valid samples")
-    
+
+    # reduce dataset
+    num_samples = len(radar_frames) * partial
+    radar_frames = radar_frames[:num_samples]
+    lidar_frames = lidar_frames[:num_samples]
+    poses = poses[:num_samples]
+    print(num_samples, ' samples total.')
 
     radar_train, radar_temp, lidar_train, lidar_temp, poses_train, poses_temp = train_test_split(radar_frames, lidar_frames, poses, test_size=0.5, random_state=random_state)
     radar_val, radar_test, lidar_val, lidar_test, poses_val, poses_test = train_test_split(radar_temp, lidar_temp, poses_temp, test_size=0.6, random_state=random_state)
@@ -117,6 +123,7 @@ def get_dataset(dataset_file_path, partial=1.0, batch_size=16, shuffle_runs=True
     print('Valid output shape:', len(val_dataset.Y), 'frames,', len(val_dataset.Y[0][0]), 'dims.')
     print('Test input shape:', test_dataset.X.shape)
     print('Test output shape:', len(test_dataset.Y), 'frames,', len(test_dataset.Y[0][0]), 'dims.')
+    print()
 
     train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, collate_fn=custom_collate_fn)
     val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False, collate_fn=custom_collate_fn)
