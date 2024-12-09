@@ -82,7 +82,7 @@ def custom_collate_fn(batch):
     return radar_frames, packed_lidar_frames, poses
 
 
-def get_dataset(dataset_file_path, batch_size=32, shuffle_runs=True, random_state=42):
+def get_dataset(dataset_file_path, partial=1.0, batch_size=16, shuffle_runs=True, random_state=42):
     data_dict, radar_config = read_h5_dataset(dataset_file_path)
     radar_frames = data_dict['cascade_heatmaps']
     lidar_frames = data_dict['lidar_map_frames']
@@ -101,7 +101,8 @@ def get_dataset(dataset_file_path, batch_size=32, shuffle_runs=True, random_stat
     radar_frames = radar_frames[filtered_indices]
     lidar_frames = [lidar_frames[i] for i in filtered_indices]
     poses = poses[filtered_indices]
-    print(f"Filtered dataset: {len(lidar_frames)} valid samples")
+    # print(f"Filtered dataset: {len(lidar_frames)} valid samples")
+    
 
     radar_train, radar_temp, lidar_train, lidar_temp, poses_train, poses_temp = train_test_split(radar_frames, lidar_frames, poses, test_size=0.5, random_state=random_state)
     radar_val, radar_test, lidar_val, lidar_test, poses_val, poses_test = train_test_split(radar_temp, lidar_temp, poses_temp, test_size=0.6, random_state=random_state)
