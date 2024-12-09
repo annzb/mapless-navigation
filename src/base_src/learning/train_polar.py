@@ -73,10 +73,10 @@ def evaluate(model, test_loader, device, loss_fn):
 
 
 def main():
-    dataset_path = '/home/arpg/projects/coloradar_plus_processing_tools/coloradar_plus_processing_tools/dataset1.h5'
+    dataset_path = '/media/giantdrive/coloradar/dataset1.h5'  # '/home/arpg/projects/coloradar_plus_processing_tools/coloradar_plus_processing_tools/dataset1.h5'
     train_loader, val_loader, test_loader, radar_config = get_dataset(dataset_path)
     model = RadarOccupancyModel(radar_config)
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    device = torch.device("cuda:1" if torch.cuda.is_available() else "cpu")
     print('\ndevice', device)
     model.to(device)
 
