@@ -10,10 +10,29 @@ import torch.nn.functional as F
 from Pointnet_Pointnet2_pytorch.models.pointnet2_utils import PointNetSetAbstraction, PointNetFeaturePropagation
 
 
+class TrainedDropout(nn.Module):
+    def __init__(self, num_points, retain_fraction=0.5):
+        super(TrainedDropout, self).__init__()
+        self.retain_fraction = retain_fraction
+        self.dropout_weights = nn.Parameter(torch.full((num_points,), 0.5))
+
+    def forward(self, points):
+        batch_size, num_points, _ = points.shape
+        probabilities = torch.sigmoid(self.dropout_weights)
+        num_retain = int(num_points * self.retain_fraction)
+        _, indices = torch.topk(probabilities, num_retain, largest=True, sorted=False)
+        keep_mask = torch.zeros(batch_size, num_points, device=points.device)
+        keep_mask[:, indices] = 1
+        keep_mask = keep_mask.bool()
+        downsampled_points = points[keep_mask].view(batch_size, num_retain, -1)  # Reshape to [B, num_retain, 4]
+        return downsampled_points
+
+
 class PolarToCartesian(nn.Module):
-    def __init__(self, radar_config):
+    def __init__(self, radar_config, dropout=0.5):
         super(PolarToCartesian, self).__init__()
         self.radar_config = radar_config
+        self.dropout = dropout
 
         self.azimuth_scale = nn.Parameter(torch.ones(radar_config.num_azimuth_bins))
         self.azimuth_bias = nn.Parameter(torch.zeros(radar_config.num_azimuth_bins))
@@ -59,8 +78,7 @@ class PolarToCartesian(nn.Module):
 
         intensity = polar_frames.flatten(start_dim=1, end_dim=3).unsqueeze(-1)
         cartesian_points = torch.cat((x, y, z, intensity), dim=-1)
-
-        return cartesian_points  # [B, 151040, 4]
+        return cartesian_points  # [B, N, 4]
 
 
 class PointNet(nn.Module):
@@ -107,15 +125,21 @@ class PointNet(nn.Module):
 
 
 class RadarOccupancyModel(nn.Module):
-    def __init__(self, radar_config):
+    def __init__(self, radar_config, retain_fraction=0.5):
         super(RadarOccupancyModel, self).__init__()
+        self.num_radar_points = radar_config.num_azimuth_bins * radar_config.num_elevation_bins * radar_config.num_range_bins
+        print('self.num_radar_points', self.num_radar_points)
         self.radar_config = radar_config
         self.polar_to_cartesian = PolarToCartesian(radar_config)
+        self.dropout = TrainedDropout(self.num_radar_points, retain_fraction)
         self.pointnet = PointNet()
 
     def forward(self, polar_frames):
-        cartesian_point_clouds = self.polar_to_cartesian(polar_frames)  # Shape: [B, N_points, 4]
-        print('cartesian_point_clouds.shape', cartesian_point_clouds.shape)
-        log_odds = self.pointnet(cartesian_point_clouds)  # Shape: [B, N_points]
+        cartesian_radar_clouds = self.polar_to_cartesian(polar_frames)  # Shape: [B, N_points, 4]
+        print('cartesian_radar_clouds.shape', cartesian_radar_clouds.shape)
+        downsampled_radar_clouds = self.dropout(cartesian_radar_clouds)
+        print('downsampled_radar_clouds.shape', downsampled_radar_clouds.shape)
+        log_odds = self.pointnet(downsampled_radar_clouds)  # Shape: [B, N_points / 2]
         print('log_odds.shape', log_odds.shape)
         return log_odds
+
