@@ -143,5 +143,6 @@ class RadarOccupancyModel(nn.Module):
         # print('downsampled_radar_clouds.shape', downsampled_radar_clouds.shape)
         log_odds = self.pointnet(downsampled_radar_clouds)  # Shape: [B, N_points / 2]
         # print('log_odds.shape', log_odds.shape)
-        return log_odds
+        probabilities = torch.sigmoid(log_odds).squeeze(1)
+        return probabilities
 

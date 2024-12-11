@@ -119,7 +119,7 @@ def main():
     # return
 
     optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
-    loss_fn = nn.BCEWithLogitsLoss()
+    loss_fn = nn.MSELoss()  # BCEWithLogitsLoss
 
     train(model, optimizer, loss_fn, train_loader, val_loader, device, num_epochs=10, save_path="best_model.pth")
     model.load_state_dict(torch.load("best_model.pth"))
