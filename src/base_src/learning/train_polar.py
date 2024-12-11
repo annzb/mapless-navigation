@@ -38,6 +38,8 @@ def train(model, optimizer, loss_fn, train_loader, val_loader, device, num_epoch
     best_val_loss = float('inf')
 
     for epoch in range(num_epochs):
+        print(f"Epoch {epoch + 1}/{num_epochs}")
+
         # training
         model.train()
         train_loss = 0.0
@@ -78,7 +80,7 @@ def train(model, optimizer, loss_fn, train_loader, val_loader, device, num_epoch
             best_val_loss = val_loss
             torch.save(model.state_dict(), save_path)
 
-        print(f"Epoch {epoch + 1}/{num_epochs}, Train Loss: {train_loss:.4f}, Val Loss: {val_loss:.4f}, Best Val Loss: {best_val_loss:.4f}")
+        print(f"Train Loss: {train_loss:.4f}, Val Loss: {val_loss:.4f}, Best Val Loss: {best_val_loss:.4f}")
 
 
 def evaluate(model, test_loader, device, loss_fn):
