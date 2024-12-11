@@ -105,11 +105,11 @@ def evaluate(model, test_loader, device, loss_fn):
 def main():
     if os.path.isdir('/media/giantdrive'):
         dataset_path = '/media/giantdrive/coloradar/dataset1.h5'
-        device_name = 'cuda:2'
+        device_name = 'cuda:1'
     else:
         dataset_path = '/home/arpg/projects/coloradar_plus_processing_tools/coloradar_plus_processing_tools/dataset1.h5'
         device_name = 'cuda'
-    train_loader, val_loader, test_loader, radar_config = get_dataset(dataset_path, batch_size=4,  partial=1)
+    train_loader, val_loader, test_loader, radar_config = get_dataset(dataset_path, batch_size=4,  partial=0.1)
     model = RadarOccupancyModel(radar_config)
     device = torch.device(device_name if torch.cuda.is_available() else "cpu")
     print('\ndevice', device)

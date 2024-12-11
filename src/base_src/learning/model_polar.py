@@ -85,11 +85,11 @@ class PointNet(nn.Module):
     def __init__(self):
         super(PointNet, self).__init__()
         # PointNet++ MSG backbone
-        self.sa1 = PointNetSetAbstraction(1024, 0.1, 32, 9 + 3, [32, 32, 64], False)
-        self.sa2 = PointNetSetAbstraction(256, 0.2, 32, 64 + 3, [64, 64, 128], False)
-        self.sa3 = PointNetSetAbstraction(64, 0.4, 32, 128 + 3, [128, 128, 256], False)
-        self.sa4 = PointNetSetAbstraction(16, 0.8, 32, 256 + 3, [256, 256, 512], False)
-        self.fp4 = PointNetFeaturePropagation(768, [256, 256])
+        self.sa1 = PointNetSetAbstraction(1180, 0.2, 16, 4, [32, 32, 64], False)
+        self.sa2 = PointNetSetAbstraction(295, 0.4, 16, 64 + 3, [64, 64, 128], False)
+        self.sa3 = PointNetSetAbstraction(59, 0.6, 16, 128 + 3, [128, 128, 256], False)
+        # self.sa4 = PointNetSetAbstraction(59, 0.8, 16, 256, [256, 256, 512], False)
+        # self.fp4 = PointNetFeaturePropagation(768, [256, 256])
         self.fp3 = PointNetFeaturePropagation(384, [256, 256])
         self.fp2 = PointNetFeaturePropagation(320, [256, 128])
         self.fp1 = PointNetFeaturePropagation(128, [128, 128, 128])
@@ -107,13 +107,15 @@ class PointNet(nn.Module):
 
         # Step 2: Hierarchical feature extraction
         l0_xyz, l0_points = xyz, features
+        # print('l0_xyz, l0_points', l0_xyz.shape, l0_points.shape)
         l1_xyz, l1_points = self.sa1(l0_xyz, l0_points)
+        # print('l1_xyz, l1_points', l1_xyz.shape, l1_points.shape)
         l2_xyz, l2_points = self.sa2(l1_xyz, l1_points)
         l3_xyz, l3_points = self.sa3(l2_xyz, l2_points)
-        l4_xyz, l4_points = self.sa4(l3_xyz, l3_points)
+        # l4_xyz, l4_points = self.sa4(l3_xyz, l3_points)
 
         # Step 3: Feature upsampling
-        l3_points = self.fp4(l3_xyz, l4_xyz, l3_points, l4_points)
+        # l3_points = self.fp4(l3_xyz, l4_xyz, l3_points, l4_points)
         l2_points = self.fp3(l2_xyz, l3_xyz, l2_points, l3_points)
         l1_points = self.fp2(l1_xyz, l2_xyz, l1_points, l2_points)
         l0_points = self.fp1(l0_xyz, l1_xyz, None, l1_points)
@@ -128,7 +130,7 @@ class RadarOccupancyModel(nn.Module):
     def __init__(self, radar_config, retain_fraction=0.5):
         super(RadarOccupancyModel, self).__init__()
         self.num_radar_points = radar_config.num_azimuth_bins * radar_config.num_elevation_bins * radar_config.num_range_bins
-        print('self.num_radar_points', self.num_radar_points)
+        # print('self.num_radar_points', self.num_radar_points)
         self.radar_config = radar_config
         self.polar_to_cartesian = PolarToCartesian(radar_config)
         self.dropout = TrainedDropout(self.num_radar_points, retain_fraction)
@@ -136,10 +138,10 @@ class RadarOccupancyModel(nn.Module):
 
     def forward(self, polar_frames):
         cartesian_radar_clouds = self.polar_to_cartesian(polar_frames)  # Shape: [B, N_points, 4]
-        print('cartesian_radar_clouds.shape', cartesian_radar_clouds.shape)
+        # print('cartesian_radar_clouds.shape', cartesian_radar_clouds.shape)
         downsampled_radar_clouds = self.dropout(cartesian_radar_clouds)
-        print('downsampled_radar_clouds.shape', downsampled_radar_clouds.shape)
+        # print('downsampled_radar_clouds.shape', downsampled_radar_clouds.shape)
         log_odds = self.pointnet(downsampled_radar_clouds)  # Shape: [B, N_points / 2]
-        print('log_odds.shape', log_odds.shape)
+        # print('log_odds.shape', log_odds.shape)
         return log_odds
 
