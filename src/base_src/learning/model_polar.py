@@ -127,22 +127,31 @@ class PointNet(nn.Module):
 
 
 class RadarOccupancyModel(nn.Module):
-    def __init__(self, radar_config, retain_fraction=0.5):
+    def __init__(self, radar_config, radar_point_downsample_rate=0.5, occupancy_threshold=0.5):
         super(RadarOccupancyModel, self).__init__()
         self.num_radar_points = radar_config.num_azimuth_bins * radar_config.num_elevation_bins * radar_config.num_range_bins
         # print('self.num_radar_points', self.num_radar_points)
         self.radar_config = radar_config
         self.polar_to_cartesian = PolarToCartesian(radar_config)
-        self.dropout = TrainedDropout(self.num_radar_points, retain_fraction)
+        self.radar_downsample_1 = TrainedDropout(self.num_radar_points, radar_point_downsample_rate)
+        self.radar_downsample_2 = TrainedDropout(int(self.num_radar_points * (1 - radar_point_downsample_rate)), radar_point_downsample_rate)
         self.pointnet = PointNet()
 
     def forward(self, polar_frames):
         cartesian_radar_clouds = self.polar_to_cartesian(polar_frames)  # Shape: [B, N_points, 4]
         # print('cartesian_radar_clouds.shape', cartesian_radar_clouds.shape)
-        downsampled_radar_clouds = self.dropout(cartesian_radar_clouds)
+        downsampled_radar_clouds = self.radar_downsample_1(cartesian_radar_clouds)
+        downsampled_radar_clouds = self.radar_downsample_2(downsampled_radar_clouds)
         # print('downsampled_radar_clouds.shape', downsampled_radar_clouds.shape)
         log_odds = self.pointnet(downsampled_radar_clouds)  # Shape: [B, N_points / 2]
-        # print('log_odds.shape', log_odds.shape)
-        probabilities = torch.sigmoid(log_odds).squeeze(1)
-        return probabilities
+        print('log_odds.shape', log_odds.shape)
+        probabilities = torch.sigmoid(log_odds)
+        print('probabilities.shape', probabilities.shape)
+
+        keep_mask = probabilities > self.threshold  # Shape: [B, reduced_N]
+        filtered_points = downsampled_radar_clouds[keep_mask]  # Filtered points [M, 4]
+        filtered_probs = probabilities[keep_mask]  # Filtered probabilities [M]
+        print('filtered_points.shape', filtered_points.shape)
+        print('filtered_probs.shape', filtered_probs.shape)
+        return filtered_points, filtered_probs
 
