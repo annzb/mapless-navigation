@@ -48,8 +48,10 @@ def train(model, optimizer, loss_fn, train_loader, val_loader, device, num_epoch
             packed_lidar_frames = packed_lidar_frames.to(device)
 
             outputs = model(radar_frames)
+            print('input shape', radar_frames.shape, ', initial output shape:', outputs.shape)
             lidar_frames, lidar_lengths = pad_packed_sequence(packed_lidar_frames, batch_first=True)
             outputs = outputs[:lidar_frames.size(0), :lidar_frames.size(1)]
+            print('output shape:', outputs.shape)
             loss = loss_fn(outputs, lidar_frames[..., 3])
 
             optimizer.zero_grad()
@@ -128,3 +130,4 @@ def main():
 
 if __name__ == '__main__':
     main()
+    # point xyz loss
