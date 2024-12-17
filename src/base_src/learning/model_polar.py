@@ -10,6 +10,19 @@ import torch.nn.functional as F
 from Pointnet_Pointnet2_pytorch.models.pointnet2_utils import PointNetSetAbstraction, PointNetFeaturePropagation
 
 
+class SphericalFourierTransform(nn.Module):
+    def __init__(self, num_azimuth_bins, num_elevation_bins):
+        super(SphericalFourierTransform, self).__init__()
+        self.num_azimuth_bins = num_azimuth_bins
+        self.num_elevation_bins = num_elevation_bins
+
+    def forward(self, polar_frames):
+        # Perform FFT on the azimuth and elevation dimensions
+        sft_output = torch.fft.rfft2(polar_frames, dim=(-2, -1))
+        magnitude = torch.abs(sft_output)
+        return torch.cat((polar_frames, magnitude), dim=-1)
+
+
 class TrainedDropout(nn.Module):
     def __init__(self, num_points, retain_fraction=0.5):
         super(TrainedDropout, self).__init__()
@@ -72,13 +85,49 @@ class PolarToCartesian(nn.Module):
         x = ranges_grid * cos_elevations * cos_azimuths
         y = ranges_grid * cos_elevations * sin_azimuths
         z = ranges_grid * sin_elevations
-        x = x.flatten(start_dim=1).unsqueeze(-1)
-        y = y.flatten(start_dim=1).unsqueeze(-1)
-        z = z.flatten(start_dim=1).unsqueeze(-1)
+        # x = x.flatten(start_dim=1).unsqueeze(-1)
+        # y = y.flatten(start_dim=1).unsqueeze(-1)
+        # z = z.flatten(start_dim=1).unsqueeze(-1)
+        #
+        # intensity = polar_frames.flatten(start_dim=1, end_dim=3).unsqueeze(-1)
+        # cartesian_points = torch.cat((x, y, z, intensity), dim=-1)
+        cartesian_points = torch.cat((
+            x.flatten(1).unsqueeze(-1),  # [B, N, 1]
+            y.flatten(1).unsqueeze(-1),  # [B, N, 1]
+            z.flatten(1).unsqueeze(-1),  # [B, N, 1]
+            polar_frames.flatten(1, -2)  # [B, N, num_features]
+        ), dim=-1)
+        return cartesian_points  # [B, N, 5]
 
-        intensity = polar_frames.flatten(start_dim=1, end_dim=3).unsqueeze(-1)
-        cartesian_points = torch.cat((x, y, z, intensity), dim=-1)
-        return cartesian_points  # [B, N, 4]
+
+class CrossAttentionTransformer(nn.Module):
+    def __init__(self, embed_dim, num_heads, num_layers):
+        super(CrossAttentionTransformer, self).__init__()
+        self.layers = nn.ModuleList([
+            nn.TransformerEncoderLayer(embed_dim, num_heads, dim_feedforward=embed_dim * 4, batch_first=True)
+            for _ in range(num_layers)
+        ])
+
+    def forward(self, cartesian_points):
+        # Split xyz (for positional encoding) and other features
+        xyz = cartesian_points[:, :, :3]  # [B, N, 3]
+        features = cartesian_points[:, :, 3:]  # [B, N, num_features]
+
+        # Compute positional encodings
+        positional_encodings = self._positional_encoding(xyz)
+        combined_features = torch.cat((features, positional_encodings), dim=-1)  # [B, N, num_features + PE]
+
+        # Pass through transformer layers
+        for layer in self.layers:
+            combined_features = layer(combined_features)
+
+        return combined_features  # Output features with spatial awareness
+
+    def _positional_encoding(self, coords, num_frequencies=6):
+        frequencies = torch.linspace(1.0, 2**num_frequencies, num_frequencies).to(coords.device)
+        encodings = torch.cat([torch.sin(coords * freq) for freq in frequencies], dim=-1)
+        return encodings
+
 
 
 class PointNet(nn.Module):
@@ -127,32 +176,43 @@ class PointNet(nn.Module):
 
 
 class RadarOccupancyModel(nn.Module):
-    def __init__(self, radar_config, radar_point_downsample_rate=0.5, occupancy_threshold=0.5):
+    def __init__(self, radar_config, radar_point_downsample_rate=0.5, occupancy_threshold=0.5, trans_embed_dim=128, trans_num_heads=4, trans_num_layers=2):
         super(RadarOccupancyModel, self).__init__()
         self.occupancy_threshold = occupancy_threshold
         self.num_radar_points = radar_config.num_azimuth_bins * radar_config.num_elevation_bins * radar_config.num_range_bins
         # print('self.num_radar_points', self.num_radar_points)
         self.radar_config = radar_config
+        self.sft = SphericalFourierTransform(radar_config.num_azimuth_bins, radar_config.num_elevation_bins)
         self.polar_to_cartesian = PolarToCartesian(radar_config)
-        self.radar_downsample_1 = TrainedDropout(self.num_radar_points, radar_point_downsample_rate)
-        self.radar_downsample_2 = TrainedDropout(int(self.num_radar_points * (1 - radar_point_downsample_rate)), radar_point_downsample_rate)
-        self.pointnet = PointNet()
+        self.transformer = CrossAttentionTransformer(trans_embed_dim, trans_num_heads, trans_num_layers)
+        # self.radar_downsample_1 = TrainedDropout(self.num_radar_points, radar_point_downsample_rate)
+        # self.radar_downsample_2 = TrainedDropout(int(self.num_radar_points * (1 - radar_point_downsample_rate)), radar_point_downsample_rate)
+        # self.pointnet = PointNet()
 
     def forward(self, polar_frames):
-        cartesian_radar_clouds = self.polar_to_cartesian(polar_frames)  # Shape: [B, N_points, 4]
-        # print('cartesian_radar_clouds.shape', cartesian_radar_clouds.shape)
-        downsampled_radar_clouds = self.radar_downsample_1(cartesian_radar_clouds)
-        downsampled_radar_clouds = self.radar_downsample_2(downsampled_radar_clouds)
-        # print('downsampled_radar_clouds.shape', downsampled_radar_clouds.shape)
-        log_odds = self.pointnet(downsampled_radar_clouds)  # Shape: [B, N_points / 2]
-        print('log_odds.shape', log_odds.shape)
-        probabilities = torch.sigmoid(log_odds)
-        print('probabilities.shape', probabilities.shape)
+        expanded_frames = self.sft(polar_frames)
+        print('expanded_frames.shape', expanded_frames.shape)
+        cartesian_points = self.polar_to_cartesian(expanded_frames)
+        print('cartesian_points.shape', cartesian_points.shape)
 
-        keep_mask = probabilities > self.occupancy_threshold  # Shape: [B, reduced_N]
-        filtered_points = downsampled_radar_clouds[keep_mask]  # Filtered points [M, 4]
-        filtered_probs = probabilities[keep_mask]  # Filtered probabilities [M]
-        print('filtered_points.shape', filtered_points.shape)
-        print('filtered_probs.shape', filtered_probs.shape)
-        return filtered_points, filtered_probs
+        # downsampled_radar_clouds = self.radar_downsample_1(cartesian_radar_clouds)
+        # downsampled_radar_clouds = self.radar_downsample_2(downsampled_radar_clouds)
+        # print('downsampled_radar_clouds.shape', downsampled_radar_clouds.shape)
+
+        transformed_features = self.transformer(cartesian_points)
+        print('transformed_features.shape', transformed_features.shape)
+        return transformed_features
+
+        # log_odds = self.pointnet(transformed_features)
+        # print('log_odds.shape', log_odds.shape)
+        #
+        # probabilities = torch.sigmoid(log_odds)
+        # print('probabilities.shape', probabilities.shape)
+        #
+        # keep_mask = probabilities > self.occupancy_threshold  # Shape: [B, reduced_N]
+        # filtered_points = downsampled_radar_clouds[keep_mask]  # Filtered points [M, 4]
+        # filtered_probs = probabilities[keep_mask]  # Filtered probabilities [M]
+        # print('filtered_points.shape', filtered_points.shape)
+        # print('filtered_probs.shape', filtered_probs.shape)
+        # return filtered_points, filtered_probs
 
