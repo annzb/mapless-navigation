@@ -18,8 +18,9 @@ class SphericalFourierTransform(nn.Module):
 
     def forward(self, polar_frames):
         # Perform FFT on the azimuth and elevation dimensions
-        sft_output = torch.fft.rfft2(polar_frames, dim=(-2, -1))
+        sft_output = torch.fft.rfft2(polar_frames, dim=(-3, -1))
         magnitude = torch.abs(sft_output)
+        print('magnitude.shape', magnitude.shape)
         return torch.cat((polar_frames, magnitude), dim=-1)
 
 
@@ -190,6 +191,7 @@ class RadarOccupancyModel(nn.Module):
         # self.pointnet = PointNet()
 
     def forward(self, polar_frames):
+        # polar_frames = polar_frames.unsqueeze(-1)
         expanded_frames = self.sft(polar_frames)
         print('expanded_frames.shape', expanded_frames.shape)
         cartesian_points = self.polar_to_cartesian(expanded_frames)
