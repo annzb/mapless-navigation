@@ -20,8 +20,9 @@ class SphericalFourierTransform(nn.Module):
         # Perform FFT on the azimuth and elevation dimensions
         sft_output = torch.fft.rfft2(polar_frames, dim=(-3, -1))
         magnitude = torch.abs(sft_output)
-        print('magnitude.shape', magnitude.shape)
-        return torch.cat((polar_frames, magnitude), dim=-1)
+        return magnitude # [B 128 118 6]
+        # print('sft_output.shape', sft_output.shape)
+        # return torch.cat((polar_frames, magnitude), dim=-1)
 
 
 class TrainedDropout(nn.Module):
