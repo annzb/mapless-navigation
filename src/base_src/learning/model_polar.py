@@ -129,6 +129,7 @@ class PointNet(nn.Module):
 class RadarOccupancyModel(nn.Module):
     def __init__(self, radar_config, radar_point_downsample_rate=0.5, occupancy_threshold=0.5):
         super(RadarOccupancyModel, self).__init__()
+        self.occupancy_threshold = occupancy_threshold
         self.num_radar_points = radar_config.num_azimuth_bins * radar_config.num_elevation_bins * radar_config.num_range_bins
         # print('self.num_radar_points', self.num_radar_points)
         self.radar_config = radar_config
@@ -148,7 +149,7 @@ class RadarOccupancyModel(nn.Module):
         probabilities = torch.sigmoid(log_odds)
         print('probabilities.shape', probabilities.shape)
 
-        keep_mask = probabilities > self.threshold  # Shape: [B, reduced_N]
+        keep_mask = probabilities > self.occupancy_threshold  # Shape: [B, reduced_N]
         filtered_points = downsampled_radar_clouds[keep_mask]  # Filtered points [M, 4]
         filtered_probs = probabilities[keep_mask]  # Filtered probabilities [M]
         print('filtered_points.shape', filtered_points.shape)
