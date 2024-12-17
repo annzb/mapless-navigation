@@ -87,19 +87,19 @@ class PolarToCartesian(nn.Module):
         x = ranges_grid * cos_elevations * cos_azimuths
         y = ranges_grid * cos_elevations * sin_azimuths
         z = ranges_grid * sin_elevations
-        # x = x.flatten(start_dim=1).unsqueeze(-1)
-        # y = y.flatten(start_dim=1).unsqueeze(-1)
-        # z = z.flatten(start_dim=1).unsqueeze(-1)
-        #
-        # intensity = polar_frames.flatten(start_dim=1, end_dim=3).unsqueeze(-1)
-        # cartesian_points = torch.cat((x, y, z, intensity), dim=-1)
-        cartesian_points = torch.cat((
-            x.flatten(1).unsqueeze(-1),  # [B, N, 1]
-            y.flatten(1).unsqueeze(-1),  # [B, N, 1]
-            z.flatten(1).unsqueeze(-1),  # [B, N, 1]
-            polar_frames.flatten(1, -2)  # [B, N, num_features]
-        ), dim=-1)
-        return cartesian_points  # [B, N, 5]
+        x = x.flatten(start_dim=1).unsqueeze(-1)
+        y = y.flatten(start_dim=1).unsqueeze(-1)
+        z = z.flatten(start_dim=1).unsqueeze(-1)
+
+        intensity = polar_frames.flatten(start_dim=1, end_dim=3).unsqueeze(-1)
+        cartesian_points = torch.cat((x, y, z, intensity), dim=-1)
+        # cartesian_points = torch.cat((
+        #     x.flatten(1).unsqueeze(-1),  # [B, N, 1]
+        #     y.flatten(1).unsqueeze(-1),  # [B, N, 1]
+        #     z.flatten(1).unsqueeze(-1),  # [B, N, 1]
+        #     polar_frames.flatten(1, -2)  # [B, N, num_features]
+        # ), dim=-1)
+        return cartesian_points  # [B, N, 4]
 
 
 class CrossAttentionTransformer(nn.Module):
@@ -193,9 +193,9 @@ class RadarOccupancyModel(nn.Module):
 
     def forward(self, polar_frames):
         # polar_frames = polar_frames.unsqueeze(-1)
-        expanded_frames = self.sft(polar_frames)
-        print('expanded_frames.shape', expanded_frames.shape)
-        cartesian_points = self.polar_to_cartesian(expanded_frames)
+        # expanded_frames = self.sft(polar_frames)
+        # print('expanded_frames.shape', expanded_frames.shape)
+        cartesian_points = self.polar_to_cartesian(polar_frames)
         print('cartesian_points.shape', cartesian_points.shape)
 
         # downsampled_radar_clouds = self.radar_downsample_1(cartesian_radar_clouds)
