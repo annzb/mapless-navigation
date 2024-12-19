@@ -2,6 +2,7 @@ import os.path
 
 import torch
 import torch.nn as nn
+from twisted.conch.scripts.tkconch import frame
 
 from dataset import get_dataset
 from model_polar import RadarOccupancyModel
@@ -40,18 +41,18 @@ def train(model, optimizer, loss_fn, train_loader, val_loader, device, num_epoch
     for epoch in range(num_epochs):
         print(f"Epoch {epoch + 1}/{num_epochs}")
 
-        # training
         model.train()
         train_loss = 0.0
-        for radar_frames, packed_lidar_frames, poses in train_loader:
+        for radar_frames, lidar_frames, poses in train_loader:
             radar_frames = radar_frames.to(device)
-            packed_lidar_frames = packed_lidar_frames.to(device)
+            lidar_frames = lidar_frames.to(device)
             pred_probabilities = model(radar_frames)
-            print('true shape', packed_lidar_frames.shape, ', output shape:', pred_probabilities.shape)
+            print('true shape', lidar_frames[0].shape, lidar_frames[1].shape, ', output shape:', pred_probabilities.shape)
 
-            # lidar_frames, lidar_lengths = pad_packed_sequence(packed_lidar_frames, batch_first=True)
-            # outputs = outputs[:lidar_frames.size(0), :lidar_frames.size(1)]
-            print('output shape:', outputs.shape)
+            pred_occupied = pred_probabilities[pred_probabilities >= occupancy_threshold]
+            true_occupied = [lidar_cloud[lidar_cloud >= occupancy_threshold] for lidar_cloud in lidar_frames]
+            print('true occupied', true_occupied[0].shape, true_occupied[1].shape, 'predicted occupied', pred_occupied.shape)
+            raise
             loss = loss_fn(outputs, lidar_frames[..., 3])
 
             optimizer.zero_grad()

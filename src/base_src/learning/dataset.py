@@ -71,15 +71,15 @@ class RadarDataset(Dataset):
 
 def custom_collate_fn(batch):
     radar_frames, lidar_frames, poses = zip(*batch)
-    radar_frames = np.array(radar_frames)
-    sorted_indices = np.argsort([len(frame) for frame in lidar_frames])[::-1]
-    radar_frames = radar_frames[sorted_indices].copy()
+    # radar_frames = np.array(radar_frames)
+    # sorted_indices = np.argsort([len(frame) for frame in lidar_frames])[::-1]
+    # radar_frames = radar_frames[sorted_indices].copy()
     radar_frames = torch.tensor(radar_frames)
-    lidar_frames = [torch.tensor(lidar_frames[i]) for i in sorted_indices]
-    packed_lidar_frames = pack_sequence(lidar_frames, enforce_sorted=True)
-    poses = np.array(poses)
-    poses = torch.tensor(poses[sorted_indices])
-    return radar_frames, packed_lidar_frames, poses
+    lidar_frames = [torch.tensor(frame) for frame in lidar_frames]
+    # packed_lidar_frames = pack_sequence(lidar_frames, enforce_sorted=True)
+    # poses = np.array(poses)
+    poses = torch.tensor(poses)
+    return radar_frames, lidar_frames, poses
 
 
 def get_dataset(dataset_file_path, partial=1.0, batch_size=16, shuffle_runs=True, random_state=42):
