@@ -2,11 +2,9 @@ import os.path
 
 import torch
 import torch.nn as nn
-from twisted.conch.scripts.tkconch import frame
 
 from dataset import get_dataset
 from model_polar import RadarOccupancyModel
-from torch.nn.utils.rnn import pad_packed_sequence
 
 
 def check_memory(model, data_loader, device):
