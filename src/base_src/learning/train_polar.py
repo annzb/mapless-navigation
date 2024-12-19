@@ -2,6 +2,7 @@ import os.path
 
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 
 from dataset import get_dataset
 from model_polar import RadarOccupancyModel
@@ -33,6 +34,33 @@ def check_memory(model, data_loader, device):
     print(f"Total estimated GPU memory: {total_memory:.2f} MB")
 
 
+def combined_loss(pred_cloud, true_cloud, occupancy_threshold=0.5):
+    pred_occupied = pred_cloud[pred_cloud[:, -1] >= occupancy_threshold]
+    true_occupied = true_cloud[true_cloud[:, -1] >= occupancy_threshold]
+
+    pred_xyz, true_xyz = pred_occupied[:, :3], true_occupied[:, :3]
+    pred_probs, true_probs = pred_occupied[:, 3], true_occupied[:, 3]
+    print('pred_xyz', pred_xyz.shape, 'true_xyz', true_xyz.shape)
+
+    if pred_xyz.shape[0] == 0 or true_xyz.shape[0] == 0:
+        # No matching points available, return a high penalty
+        return torch.tensor(1.0, device=pred_cloud.device)
+
+    # Step 1: Match predicted points to ground truth using nearest neighbor
+    dists = torch.cdist(pred_xyz, true_xyz)  # [N_pred, N_true]
+    matched_dist, matched_idx = dists.min(dim=1)  # Closest true point for each predicted point
+    matched_true_probs = true_probs[matched_idx]  # True probabilities for matched points
+    print('matched_idx', matched_idx.shape, 'matched_true_probs', matched_true_probs.shape)
+
+    # Step 2: Calculate spatial and probability errors
+    spatial_loss = matched_dist.mean()  # Mean Euclidean distance
+    prob_loss = F.mse_loss(pred_probs, matched_true_probs)  # Mean squared error for probabilities
+
+    # Combine the losses
+    combined = spatial_loss + prob_loss  # Weight equally, can adjust if needed
+    return combined
+
+
 def train(model, optimizer, loss_fn, train_loader, val_loader, device, num_epochs=10, save_path="best_model.pth", occupancy_threshold=0.5):
     best_val_loss = float('inf')
 
@@ -55,7 +83,7 @@ def train(model, optimizer, loss_fn, train_loader, val_loader, device, num_epoch
                 print()
 
             raise
-            loss = loss_fn(outputs, lidar_frames[..., 3])
+            # loss = loss_fn(outputs, lidar_frames[..., 3])
 
             optimizer.zero_grad()
             loss.backward()
@@ -97,11 +125,11 @@ def evaluate(model, test_loader, device, loss_fn):
             packed_lidar_frames = packed_lidar_frames.to(device)
 
             outputs = model(radar_frames)
-            lidar_frames, lidar_lengths = pad_packed_sequence(packed_lidar_frames, batch_first=True)
-            outputs = outputs[:lidar_frames.size(0), :lidar_frames.size(1)]
-            loss = loss_fn(outputs, lidar_frames[..., 3])
+            # lidar_frames, lidar_lengths = pad_packed_sequence(packed_lidar_frames, batch_first=True)
+            # outputs = outputs[:lidar_frames.size(0), :lidar_frames.size(1)]
+            # loss = loss_fn(outputs, lidar_frames[..., 3])
 
-            test_loss += loss.item()
+            # test_loss += loss.item()
 
     test_loss /= len(test_loader)
     print(f"Test Loss: {test_loss:.4f}")
