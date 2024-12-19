@@ -133,17 +133,12 @@ class Downsampling(nn.Module):
 class CrossAttentionTransformer(nn.Module):
     def __init__(self, embed_dim, num_heads, num_layers, num_frequencies=6):
         super(CrossAttentionTransformer, self).__init__()
-        self.num_frequencies = num_frequencies
-        self.embed_dim = embed_dim
-        
-        # Transformer layers
         self.layers = nn.ModuleList([
             nn.TransformerEncoderLayer(embed_dim, num_heads, dim_feedforward=embed_dim * 4, batch_first=True)
             for _ in range(num_layers)
         ])
-        
         # Linear projection to match embedding dimension
-        self.feature_projection = nn.Linear(1 + 3 * num_frequencies, embed_dim)  # 1 feature + positional encodings
+        # self.feature_projection = nn.Linear(1 + 3 * num_frequencies, embed_dim)  # 1 feature + positional encodings
 
     def forward(self, cartesian_points):
         """
@@ -154,16 +149,15 @@ class CrossAttentionTransformer(nn.Module):
         """
         # Split xyz (for positional encoding) and other features
         xyz = cartesian_points[:, :, :3]  # [B, N, 3]
-        features = cartesian_points[:, :, 3:]  # [B, N, 1]
-        
-        # Compute positional encodings
+        features = cartesian_points[:, :, 3:]  # [B, N, 6]
+
         positional_encodings = self._positional_encoding(xyz)  # [B, N, 3 * num_frequencies]
         
         # Concatenate features with positional encodings
         combined_features = torch.cat((features, positional_encodings), dim=-1)  # [B, N, 1 + 3 * num_frequencies]
         
         # Project to transformer input dimension
-        combined_features = self.feature_projection(combined_features)  # [B, N, embed_dim]
+        # combined_features = self.feature_projection(combined_features)  # [B, N, embed_dim]
         
         # Pass through transformer layers
         for layer in self.layers:
@@ -270,9 +264,16 @@ class RadarOccupancyModel(nn.Module):
         self.num_radar_points = radar_config.num_azimuth_bins * radar_config.num_elevation_bins * radar_config.num_range_bins
         # print('self.num_radar_points', self.num_radar_points)
         self.radar_config = radar_config
-        self.sft = SphericalFourierTransform(radar_config.num_azimuth_bins, radar_config.num_elevation_bins)
+
+        embed_dim = 10
+        num_heads = 2
+        num_layers = 4
+        encoder = nn.TransformerEncoderLayer(d_model=embed_dim, nhead=num_heads)
+        self.transformer = nn.TransformerEncoder(encoder, num_layers=num_layers)
+
+        # self.sft = SphericalFourierTransform(radar_config.num_azimuth_bins, radar_config.num_elevation_bins)
         self.polar_to_cartesian = PolarToCartesian(radar_config)
-        self.down = Downsampling(input_channels=4, output_channels_rate=1.5, point_reduction_rate=2, pool_size=2, num_layers=2)
+        # self.down = Downsampling(input_channels=4, output_channels_rate=1.5, point_reduction_rate=2, pool_size=2, num_layers=2)
         # self.transformer = CrossAttentionTransformer(trans_embed_dim, trans_num_heads, trans_num_layers)
         # self.radar_downsample_1 = TrainedDropout(self.num_radar_points, radar_point_downsample_rate)
         # self.radar_downsample_2 = TrainedDropout(int(self.num_radar_points * (1 - radar_point_downsample_rate)), radar_point_downsample_rate)
@@ -282,18 +283,21 @@ class RadarOccupancyModel(nn.Module):
         # polar_frames = polar_frames.unsqueeze(-1)
         # expanded_frames = self.sft(polar_frames)
         # print('expanded_frames.shape', expanded_frames.shape)
-        cartesian_points = self.polar_to_cartesian(polar_frames)
-        print('cartesian_points.shape', cartesian_points.shape)
 
-        less_points = self.down(cartesian_points)
-        print('less_points.shape', less_points.shape)
+        transformed_frames = self.transformer(polar_frames)
+        print('transformed_frames.shape', transformed_frames.shape)
+        # cartesian_points = self.polar_to_cartesian(polar_frames)
+        # print('cartesian_points.shape', cartesian_points.shape)
+
+        # less_points = self.down(cartesian_points)
+        # print('less_points.shape', less_points.shape)
         # downsampled_radar_clouds = self.radar_downsample_1(cartesian_radar_clouds)
         # downsampled_radar_clouds = self.radar_downsample_2(downsampled_radar_clouds)
         # print('downsampled_radar_clouds.shape', downsampled_radar_clouds.shape)
 
         # transformed_features = self.transformer(cartesian_points)
         # print('transformed_features.shape', transformed_features.shape)
-        return less_points
+        return transformed_frames
 
         # log_odds = self.pointnet(transformed_features)
         # print('log_odds.shape', log_odds.shape)
