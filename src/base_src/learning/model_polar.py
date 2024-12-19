@@ -266,8 +266,8 @@ class RadarOccupancyModel(nn.Module):
         self.radar_config = radar_config
 
         embed_dim = radar_config.num_elevation_bins
-        num_heads = 2
-        num_layers = 2
+        num_heads = 4
+        num_layers = 4
         encoder = nn.TransformerEncoderLayer(d_model=embed_dim, nhead=num_heads)
         self.transformer = nn.TransformerEncoder(encoder, num_layers=num_layers)
 
@@ -290,8 +290,9 @@ class RadarOccupancyModel(nn.Module):
         print('view transformed_frames.shape', transformed_frames.shape)
         transformed_frames = transformed_frames.view(batch_size, self.radar_config.num_azimuth_bins, self.radar_config.num_range_bins, self.radar_config.num_elevation_bins)
         print('transformed_frames.shape', transformed_frames.shape)
-        # cartesian_points = self.polar_to_cartesian(polar_frames)
-        # print('cartesian_points.shape', cartesian_points.shape)
+
+        cartesian_points = self.polar_to_cartesian(transformed_frames)
+        print('cartesian_points.shape', cartesian_points.shape)
 
         # less_points = self.down(cartesian_points)
         # print('less_points.shape', less_points.shape)
@@ -301,7 +302,7 @@ class RadarOccupancyModel(nn.Module):
 
         # transformed_features = self.transformer(cartesian_points)
         # print('transformed_features.shape', transformed_features.shape)
-        return transformed_frames
+        return cartesian_points
 
         # log_odds = self.pointnet(transformed_features)
         # print('log_odds.shape', log_odds.shape)
