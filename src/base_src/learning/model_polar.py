@@ -266,14 +266,14 @@ class RadarOccupancyModel(nn.Module):
         self.radar_config = radar_config
 
         embed_dim = radar_config.num_elevation_bins
-        num_heads = 5
+        num_heads = embed_dim / 2
         num_layers = 4
         encoder = nn.TransformerEncoderLayer(d_model=embed_dim, nhead=num_heads)
         self.transformer = nn.TransformerEncoder(encoder, num_layers=num_layers)
 
         # self.sft = SphericalFourierTransform(radar_config.num_azimuth_bins, radar_config.num_elevation_bins)
         self.polar_to_cartesian = PolarToCartesian(radar_config)
-        # self.down = Downsampling(input_channels=4, output_channels_rate=1.5, point_reduction_rate=2, pool_size=2, num_layers=2)
+        self.down = Downsampling(input_channels=4, output_channels_rate=1.5, point_reduction_rate=2, pool_size=2, num_layers=2)
         # self.transformer = CrossAttentionTransformer(trans_embed_dim, trans_num_heads, trans_num_layers)
         # self.radar_downsample_1 = TrainedDropout(self.num_radar_points, radar_point_downsample_rate)
         # self.radar_downsample_2 = TrainedDropout(int(self.num_radar_points * (1 - radar_point_downsample_rate)), radar_point_downsample_rate)
@@ -294,15 +294,15 @@ class RadarOccupancyModel(nn.Module):
         cartesian_points = self.polar_to_cartesian(transformed_frames)
         print('cartesian_points.shape', cartesian_points.shape)
 
-        # less_points = self.down(cartesian_points)
-        # print('less_points.shape', less_points.shape)
+        less_points = self.down(cartesian_points)
+        print('less_points.shape', less_points.shape)
         # downsampled_radar_clouds = self.radar_downsample_1(cartesian_radar_clouds)
         # downsampled_radar_clouds = self.radar_downsample_2(downsampled_radar_clouds)
         # print('downsampled_radar_clouds.shape', downsampled_radar_clouds.shape)
 
         # transformed_features = self.transformer(cartesian_points)
         # print('transformed_features.shape', transformed_features.shape)
-        return cartesian_points
+        return less_points
 
         # log_odds = self.pointnet(transformed_features)
         # print('log_odds.shape', log_odds.shape)
