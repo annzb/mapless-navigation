@@ -266,7 +266,7 @@ class RadarOccupancyModel(nn.Module):
         self.radar_config = radar_config
 
         embed_dim = radar_config.num_elevation_bins
-        num_heads = embed_dim / 2
+        num_heads = embed_dim // 2
         num_layers = 4
         encoder = nn.TransformerEncoderLayer(d_model=embed_dim, nhead=num_heads)
         self.transformer = nn.TransformerEncoder(encoder, num_layers=num_layers)
