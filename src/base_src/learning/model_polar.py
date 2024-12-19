@@ -265,9 +265,9 @@ class RadarOccupancyModel(nn.Module):
         # print('self.num_radar_points', self.num_radar_points)
         self.radar_config = radar_config
 
-        embed_dim = 10
+        embed_dim = radar_config.num_elevation_bins
         num_heads = 2
-        num_layers = 4
+        num_layers = 2
         encoder = nn.TransformerEncoderLayer(d_model=embed_dim, nhead=num_heads)
         self.transformer = nn.TransformerEncoder(encoder, num_layers=num_layers)
 
@@ -280,11 +280,15 @@ class RadarOccupancyModel(nn.Module):
         # self.pointnet = PointNet()
 
     def forward(self, polar_frames):
+        batch_size = polar_frames.shape[0]
         # polar_frames = polar_frames.unsqueeze(-1)
         # expanded_frames = self.sft(polar_frames)
         # print('expanded_frames.shape', expanded_frames.shape)
 
-        transformed_frames = self.transformer(polar_frames)
+        reshaped_frames = polar_frames.view(batch_size, self.radar_config.num_azimuth_bins * self.radar_config.num_range_bins, self.radar_config.num_elevation_bins)
+        transformed_frames = self.transformer(reshaped_frames)
+        print('view transformed_frames.shape', transformed_frames.shape)
+        transformed_frames = transformed_frames.view(batch_size, self.radar_config.num_azimuth_bins, self.radar_config.num_range_bins, self.radar_config.num_elevation_bins)
         print('transformed_frames.shape', transformed_frames.shape)
         # cartesian_points = self.polar_to_cartesian(polar_frames)
         # print('cartesian_points.shape', cartesian_points.shape)
