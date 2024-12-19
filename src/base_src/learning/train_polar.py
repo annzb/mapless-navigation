@@ -43,7 +43,7 @@ def train(model, optimizer, loss_fn, train_loader, val_loader, device, num_epoch
         train_loss = 0.0
         for radar_frames, lidar_frames, poses in train_loader:
             radar_frames = radar_frames.to(device)
-            lidar_frames = lidar_frames.to(device)
+            lidar_frames = [lidar_cloud.to(device) for lidar_cloud in lidar_frames]
             pred_probabilities = model(radar_frames)
             print('true shape', lidar_frames[0].shape, lidar_frames[1].shape, ', output shape:', pred_probabilities.shape)
 
