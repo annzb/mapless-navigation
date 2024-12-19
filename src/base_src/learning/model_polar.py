@@ -101,6 +101,41 @@ class PolarToCartesian(nn.Module):
         # ), dim=-1)
         return cartesian_points  # [B, N, 4]
 
+
+class Downsampling(nn.Module):
+    def __init__(self, input_channels, output_channels, kernel_size=3, pool_size=2, num_layers=3):
+        """
+        Args:
+            input_channels: Number of input feature channels (e.g., 4 for [x, y, z, intensity]).
+            output_channels: Number of feature channels after convolution.
+            kernel_size: Size of the convolution kernel.
+            pool_size: Size of the pooling window.
+            num_layers: Number of convolution-pooling layers.
+        """
+        super(Downsampling, self).__init__()
+        layers = []
+        in_channels = input_channels
+        for _ in range(num_layers):
+            layers.append(nn.Conv1d(in_channels, output_channels, kernel_size, padding=kernel_size // 2))
+            layers.append(nn.ReLU())
+            layers.append(nn.MaxPool1d(pool_size))
+            in_channels = output_channels
+        self.downsampling = nn.Sequential(*layers)
+
+    def forward(self, x):
+        """
+        Args:
+            x: Tensor of shape [B, N, input_channels].
+        Returns:
+            Tensor of shape [B, N / (pool_size ** num_layers), output_channels].
+        """
+        x = x.permute(0, 2, 1)  # Change to [B, input_channels, N] for Conv1d
+        x = self.downsampling(x)
+        x = x.permute(0, 2, 1)  # Back to [B, N / (pool_size ** num_layers), output_channels]
+        return x
+
+
+
 class CrossAttentionTransformer(nn.Module):
     def __init__(self, embed_dim, num_heads, num_layers, num_frequencies=6):
         super(CrossAttentionTransformer, self).__init__()
@@ -243,7 +278,8 @@ class RadarOccupancyModel(nn.Module):
         self.radar_config = radar_config
         self.sft = SphericalFourierTransform(radar_config.num_azimuth_bins, radar_config.num_elevation_bins)
         self.polar_to_cartesian = PolarToCartesian(radar_config)
-        self.transformer = CrossAttentionTransformer(trans_embed_dim, trans_num_heads, trans_num_layers)
+        self.down = Downsampling(4, 4)
+        # self.transformer = CrossAttentionTransformer(trans_embed_dim, trans_num_heads, trans_num_layers)
         # self.radar_downsample_1 = TrainedDropout(self.num_radar_points, radar_point_downsample_rate)
         # self.radar_downsample_2 = TrainedDropout(int(self.num_radar_points * (1 - radar_point_downsample_rate)), radar_point_downsample_rate)
         # self.pointnet = PointNet()
@@ -255,13 +291,15 @@ class RadarOccupancyModel(nn.Module):
         cartesian_points = self.polar_to_cartesian(polar_frames)
         print('cartesian_points.shape', cartesian_points.shape)
 
+        less_points = self.down(polar_frames)
+        print('less_points.shape', less_points.shape)
         # downsampled_radar_clouds = self.radar_downsample_1(cartesian_radar_clouds)
         # downsampled_radar_clouds = self.radar_downsample_2(downsampled_radar_clouds)
         # print('downsampled_radar_clouds.shape', downsampled_radar_clouds.shape)
 
-        transformed_features = self.transformer(cartesian_points)
-        print('transformed_features.shape', transformed_features.shape)
-        return transformed_features
+        # transformed_features = self.transformer(cartesian_points)
+        # print('transformed_features.shape', transformed_features.shape)
+        return less_points
 
         # log_odds = self.pointnet(transformed_features)
         # print('log_odds.shape', log_odds.shape)
