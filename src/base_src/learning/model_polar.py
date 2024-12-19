@@ -101,35 +101,92 @@ class PolarToCartesian(nn.Module):
         # ), dim=-1)
         return cartesian_points  # [B, N, 4]
 
-
 class CrossAttentionTransformer(nn.Module):
-    def __init__(self, embed_dim, num_heads, num_layers):
+    def __init__(self, embed_dim, num_heads, num_layers, num_frequencies=6):
         super(CrossAttentionTransformer, self).__init__()
+        self.num_frequencies = num_frequencies
+        self.embed_dim = embed_dim
+        
+        # Transformer layers
         self.layers = nn.ModuleList([
             nn.TransformerEncoderLayer(embed_dim, num_heads, dim_feedforward=embed_dim * 4, batch_first=True)
             for _ in range(num_layers)
         ])
+        
+        # Linear projection to match embedding dimension
+        self.feature_projection = nn.Linear(1 + 3 * num_frequencies, embed_dim)  # 1 feature + positional encodings
 
     def forward(self, cartesian_points):
+        """
+        Args:
+            cartesian_points (torch.Tensor): Input tensor of shape [B, N, 4], where the last dim is [x, y, z, feature].
+        Returns:
+            torch.Tensor: Processed features of shape [B, N, embed_dim].
+        """
         # Split xyz (for positional encoding) and other features
         xyz = cartesian_points[:, :, :3]  # [B, N, 3]
-        features = cartesian_points[:, :, 3:]  # [B, N, num_features]
-
+        features = cartesian_points[:, :, 3:]  # [B, N, 1]
+        
         # Compute positional encodings
-        positional_encodings = self._positional_encoding(xyz)
-        combined_features = torch.cat((features, positional_encodings), dim=-1)  # [B, N, num_features + PE]
-
+        positional_encodings = self._positional_encoding(xyz)  # [B, N, 3 * num_frequencies]
+        
+        # Concatenate features with positional encodings
+        combined_features = torch.cat((features, positional_encodings), dim=-1)  # [B, N, 1 + 3 * num_frequencies]
+        
+        # Project to transformer input dimension
+        combined_features = self.feature_projection(combined_features)  # [B, N, embed_dim]
+        
         # Pass through transformer layers
         for layer in self.layers:
             combined_features = layer(combined_features)
-
+        
         return combined_features  # Output features with spatial awareness
 
-    def _positional_encoding(self, coords, num_frequencies=6):
-        frequencies = torch.linspace(1.0, 2**num_frequencies, num_frequencies).to(coords.device)
-        encodings = torch.cat([torch.sin(coords * freq) for freq in frequencies], dim=-1)
-        return encodings
+    def _positional_encoding(self, coords):
+        """
+        Args:
+            coords (torch.Tensor): Tensor of shape [B, N, 3] representing xyz coordinates.
+        Returns:
+            torch.Tensor: Positional encodings of shape [B, N, 3 * num_frequencies].
+        """
+        frequencies = torch.linspace(1.0, 2**self.num_frequencies, self.num_frequencies).to(coords.device)  # [num_frequencies]
+        
+        # Compute sinusoidal positional encodings
+        encodings = torch.cat([
+            torch.sin(coords.unsqueeze(-1) * freq)  # [B, N, 3, num_frequencies]
+            for freq in frequencies
+        ], dim=-1)  # Concatenate along the frequency dimension -> [B, N, 3 * num_frequencies]
+        
+        return encodings.view(coords.size(0), coords.size(1), -1)  # Flatten last two dimensions -> [B, N, 3 * num_frequencies]
 
+# class CrossAttentionTransformer(nn.Module):
+#     def __init__(self, embed_dim, num_heads, num_layers):
+#         super(CrossAttentionTransformer, self).__init__()
+#         self.layers = nn.ModuleList([
+#             nn.TransformerEncoderLayer(embed_dim, num_heads, dim_feedforward=embed_dim * 4, batch_first=True)
+#             for _ in range(num_layers)
+#         ])
+# 
+#     def forward(self, cartesian_points):
+#         # Split xyz (for positional encoding) and other features
+#         xyz = cartesian_points[:, :, :3]  # [B, N, 3]
+#         features = cartesian_points[:, :, 3:]  # [B, N, num_features]
+# 
+#         # Compute positional encodings
+#         positional_encodings = self._positional_encoding(xyz)
+#         combined_features = torch.cat((features, positional_encodings), dim=-1)  # [B, N, num_features + PE]
+# 
+#         # Pass through transformer layers
+#         for layer in self.layers:
+#             combined_features = layer(combined_features)
+# 
+#         return combined_features  # Output features with spatial awareness
+# 
+#     def _positional_encoding(self, coords, num_frequencies=6):
+#         frequencies = torch.linspace(1.0, 2**num_frequencies, num_frequencies).to(coords.device)
+#         encodings = torch.cat([torch.sin(coords * freq) for freq in frequencies], dim=-1)
+#         return encodings
+# 
 
 
 class PointNet(nn.Module):
