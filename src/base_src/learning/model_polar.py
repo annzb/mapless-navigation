@@ -103,7 +103,7 @@ class PolarToCartesian(nn.Module):
 
 
 class Downsampling(nn.Module):
-    def __init__(self, input_channels, output_channels, kernel_size=3, pool_size=2, num_layers=3):
+    def __init__(self, input_channels, output_channels, pool_size=4, num_layers=2):
         """
         Args:
             input_channels: Number of input feature channels (e.g., 4 for [x, y, z, intensity]).
@@ -116,7 +116,7 @@ class Downsampling(nn.Module):
         layers = []
         in_channels = input_channels
         for _ in range(num_layers):
-            layers.append(nn.Conv1d(in_channels, output_channels, kernel_size, padding=kernel_size // 2))
+            layers.append(nn.Conv1d(in_channels, output_channels, kernel_size=4, stride=4, padding=0))
             layers.append(nn.ReLU())
             layers.append(nn.MaxPool1d(pool_size))
             in_channels = output_channels
@@ -129,8 +129,11 @@ class Downsampling(nn.Module):
         Returns:
             Tensor of shape [B, N / (pool_size ** num_layers), output_channels].
         """
+        print('x before permute', x.shape)
         x = x.permute(0, 2, 1)  # Change to [B, input_channels, N] for Conv1d
+        print('x after permute', x.shape)
         x = self.downsampling(x)
+        print('x after downsampling', x.shape)
         x = x.permute(0, 2, 1)  # Back to [B, N / (pool_size ** num_layers), output_channels]
         return x
 
