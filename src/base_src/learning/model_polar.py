@@ -234,7 +234,7 @@ class PointNet(nn.Module):
     def forward(self, point_clouds):
         # Split into coordinates and features
         xyz = point_clouds[..., :3].permute(0, 2, 1)  # [B, 3, N_points]
-        features = point_clouds[..., 3:].permute(0, 2, 1)  # [B, 1, N_points]
+        features = point_clouds[..., 3:].permute(0, 2, 1)  # [B, n_features, N_points]
 
         # Step 2: Hierarchical feature extraction
         l0_xyz, l0_points = xyz, features
@@ -253,14 +253,14 @@ class PointNet(nn.Module):
 
         # Step 4: Predict occupancy log odds
         x = self.drop1(F.relu(self.bn1(self.conv1(l0_points))))
-        log_odds = self.conv2(x)  # Shape: [B, 1, N_points]
-        return log_odds.squeeze(1)  # Shape: [B, N_points]
+        log_odds = self.conv2(x)  # [B, 1, N_points]
+        log_odds = log_odds.permute(0, 2, 1) # [B, N_points, 1]
+        return torch.cat((point_clouds[..., :3], log_odds), dim=-1)
 
 
 class RadarOccupancyModel(nn.Module):
-    def __init__(self, radar_config, radar_point_downsample_rate=0.5, occupancy_threshold=0.5, trans_embed_dim=128, trans_num_heads=4, trans_num_layers=2):
+    def __init__(self, radar_config, radar_point_downsample_rate=0.5, trans_embed_dim=128, trans_num_heads=4, trans_num_layers=2):
         super(RadarOccupancyModel, self).__init__()
-        self.occupancy_threshold = occupancy_threshold
         self.num_radar_points = radar_config.num_azimuth_bins * radar_config.num_elevation_bins * radar_config.num_range_bins
         # print('self.num_radar_points', self.num_radar_points)
         self.radar_config = radar_config
@@ -301,9 +301,10 @@ class RadarOccupancyModel(nn.Module):
         # print('downsampled_radar_clouds.shape', downsampled_radar_clouds.shape)
 
         log_odds = self.pointnet(less_points)
-        print('log_odds.shape', log_odds.shape)
+        probabilities = torch.sigmoid(log_odds)
+        print('probabilities.shape', probabilities.shape)
         #
-        # probabilities = torch.sigmoid(log_odds)
+        #
         # print('probabilities.shape', probabilities.shape)
         #
         # keep_mask = probabilities > self.occupancy_threshold  # Shape: [B, reduced_N]
@@ -311,5 +312,9 @@ class RadarOccupancyModel(nn.Module):
         # filtered_probs = probabilities[keep_mask]  # Filtered probabilities [M]
         # print('filtered_points.shape', filtered_points.shape)
         # print('filtered_probs.shape', filtered_probs.shape)
-        return log_odds
+        return probabilities
 
+
+# We need a good loss function for this model to predict occupancy. The point-to-point functions won't work here because the model's output size is fixed and the groundtruth('s size is not fixed.
+# Right now the model outputs 9440 points per frame, while the size of groundtruth varies from a hundred to a few thousand points (not all of them are occupied, the probability is given for each point).
+# We should come up with an abstraction to

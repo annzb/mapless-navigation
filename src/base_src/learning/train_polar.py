@@ -34,7 +34,7 @@ def check_memory(model, data_loader, device):
     print(f"Total estimated GPU memory: {total_memory:.2f} MB")
 
 
-def train(model, optimizer, loss_fn, train_loader, val_loader, device, num_epochs=10, save_path="best_model.pth"):
+def train(model, optimizer, loss_fn, train_loader, val_loader, device, num_epochs=10, save_path="best_model.pth", occupancy_threshold=0.5):
     best_val_loss = float('inf')
 
     for epoch in range(num_epochs):
@@ -46,11 +46,11 @@ def train(model, optimizer, loss_fn, train_loader, val_loader, device, num_epoch
         for radar_frames, packed_lidar_frames, poses in train_loader:
             radar_frames = radar_frames.to(device)
             packed_lidar_frames = packed_lidar_frames.to(device)
+            pred_probabilities = model(radar_frames)
+            print('true shape', packed_lidar_frames.shape, ', output shape:', pred_probabilities.shape)
 
-            _, outputs = model(radar_frames)
-            print('input shape', radar_frames.shape, ', initial output shape:', outputs.shape)
-            lidar_frames, lidar_lengths = pad_packed_sequence(packed_lidar_frames, batch_first=True)
-            outputs = outputs[:lidar_frames.size(0), :lidar_frames.size(1)]
+            # lidar_frames, lidar_lengths = pad_packed_sequence(packed_lidar_frames, batch_first=True)
+            # outputs = outputs[:lidar_frames.size(0), :lidar_frames.size(1)]
             print('output shape:', outputs.shape)
             loss = loss_fn(outputs, lidar_frames[..., 3])
 
