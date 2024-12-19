@@ -216,7 +216,7 @@ class PointNet(nn.Module):
     def __init__(self):
         super(PointNet, self).__init__()
         # PointNet++ MSG backbone
-        self.sa1 = PointNetSetAbstraction(1180, 0.2, 16, 4, [32, 32, 64], False)
+        self.sa1 = PointNetSetAbstraction(1180, 0.2, 16, 9, [32, 32, 64], False)
         self.sa2 = PointNetSetAbstraction(295, 0.4, 16, 64 + 3, [64, 64, 128], False)
         self.sa3 = PointNetSetAbstraction(59, 0.6, 16, 128 + 3, [128, 128, 256], False)
         # self.sa4 = PointNetSetAbstraction(59, 0.8, 16, 256, [256, 256, 512], False)
@@ -277,7 +277,7 @@ class RadarOccupancyModel(nn.Module):
         # self.transformer = CrossAttentionTransformer(trans_embed_dim, trans_num_heads, trans_num_layers)
         # self.radar_downsample_1 = TrainedDropout(self.num_radar_points, radar_point_downsample_rate)
         # self.radar_downsample_2 = TrainedDropout(int(self.num_radar_points * (1 - radar_point_downsample_rate)), radar_point_downsample_rate)
-        # self.pointnet = PointNet()
+        self.pointnet = PointNet()
 
     def forward(self, polar_frames):
         batch_size = polar_frames.shape[0]
@@ -300,12 +300,8 @@ class RadarOccupancyModel(nn.Module):
         # downsampled_radar_clouds = self.radar_downsample_2(downsampled_radar_clouds)
         # print('downsampled_radar_clouds.shape', downsampled_radar_clouds.shape)
 
-        # transformed_features = self.transformer(cartesian_points)
-        # print('transformed_features.shape', transformed_features.shape)
-        return less_points
-
-        # log_odds = self.pointnet(transformed_features)
-        # print('log_odds.shape', log_odds.shape)
+        log_odds = self.pointnet(less_points)
+        print('log_odds.shape', log_odds.shape)
         #
         # probabilities = torch.sigmoid(log_odds)
         # print('probabilities.shape', probabilities.shape)
@@ -315,5 +311,5 @@ class RadarOccupancyModel(nn.Module):
         # filtered_probs = probabilities[keep_mask]  # Filtered probabilities [M]
         # print('filtered_points.shape', filtered_points.shape)
         # print('filtered_probs.shape', filtered_probs.shape)
-        # return filtered_points, filtered_probs
+        return log_odds
 
