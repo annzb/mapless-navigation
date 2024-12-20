@@ -18,13 +18,14 @@ def match_pointclouds(true_xyz, pred_xyz, max_distance=float('inf')):
         matched_true_idx (torch.Tensor): Indices of matched true points, or empty tensor if no matches.
         matched_pred_idx (torch.Tensor): Indices of matched predicted points, or empty tensor if no matches.
     """
-    # if true_xyz.size(0) == 0 or pred_xyz.size(0) == 0:
-    #     return (
-    #         torch.empty((0, 3), device=true_xyz.device),
-    #         torch.empty((0, 3), device=pred_xyz.device),
-    #         torch.empty((0,), dtype=torch.long, device=true_xyz.device),
-    #         torch.empty((0,), dtype=torch.long, device=pred_xyz.device),
-    #     )
+    if true_xyz.size(0) == 0 or pred_xyz.size(0) == 0:
+        return (
+            torch.empty((0, 3), device=true_xyz.device),
+            torch.empty((0, 3), device=pred_xyz.device),
+            torch.empty((0,), dtype=torch.long, device=true_xyz.device),
+            torch.empty((0,), dtype=torch.long, device=pred_xyz.device),
+        )
+
     dists = torch.cdist(true_xyz, pred_xyz)  # [N_true, N_pred]
     valid_mask = dists <= max_distance
     dists[~valid_mask] = float('inf')
@@ -83,6 +84,7 @@ class SpatialProbLoss(nn.Module):
         pred_probs, true_probs = pred_occupied[:, 3], true_occupied[:, 3]
 
         matched_true_xyz, matched_pred_xyz, matched_true_idx, matched_pred_idx = match_pointclouds(true_xyz, pred_xyz, max_distance=self.point_match_radius)
+        print('matched_true_xyz', matched_true_xyz.shape)
         unmatched_mask = torch.ones(true_xyz.size(0), device=true_xyz.device, dtype=torch.bool)
         unmatched_mask[matched_true_idx] = False
         num_unmatched_points = unmatched_mask.sum()
@@ -91,4 +93,5 @@ class SpatialProbLoss(nn.Module):
         prob_error = F.mse_loss(true_probs[matched_true_idx], pred_probs[matched_pred_idx]) + num_unmatched_points
 
         loss = spatial_error + prob_error
+        print('loss', loss)
         return loss
