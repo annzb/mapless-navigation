@@ -29,7 +29,7 @@ def train(model, optimizer, loss_fn, train_loader, val_loader, device, num_epoch
             train_loss += batch_loss.item()
 
         train_loss /= len(train_loader)
-        print('train_loss before val', train_loss)
+
         # validation
         model.eval()
         val_loss = 0.0
