@@ -88,8 +88,8 @@ class SpatialProbLoss(nn.Module):
         unmatched_mask = torch.ones(true_xyz.size(0), device=true_xyz.device, dtype=torch.bool)
         unmatched_mask[matched_true_idx] = False
         num_unmatched_points = unmatched_mask.sum()
-        spatial_error = self.point_match_radius * 10 * num_unmatched_points
-        prob_error = num_unmatched_points
+        spatial_error = (self.point_match_radius * 10 * num_unmatched_points).float()
+        prob_error = num_unmatched_points.float()
         print('spatial_error', spatial_error)
         print('prob_error', prob_error)
         if matched_true_xyz.numel() != 0:
