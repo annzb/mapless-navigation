@@ -18,6 +18,13 @@ def match_pointclouds(true_xyz, pred_xyz, max_distance=float('inf')):
         matched_true_idx (torch.Tensor): Indices of matched true points, or empty tensor if no matches.
         matched_pred_idx (torch.Tensor): Indices of matched predicted points, or empty tensor if no matches.
     """
+    # if true_xyz.size(0) == 0 or pred_xyz.size(0) == 0:
+    #     return (
+    #         torch.empty((0, 3), device=true_xyz.device),
+    #         torch.empty((0, 3), device=pred_xyz.device),
+    #         torch.empty((0,), dtype=torch.long, device=true_xyz.device),
+    #         torch.empty((0,), dtype=torch.long, device=pred_xyz.device),
+    #     )
     dists = torch.cdist(true_xyz, pred_xyz)  # [N_true, N_pred]
     valid_mask = dists <= max_distance
     dists[~valid_mask] = float('inf')
@@ -25,11 +32,12 @@ def match_pointclouds(true_xyz, pred_xyz, max_distance=float('inf')):
     matched_true_idx = []
     matched_pred_idx = []
     for i in range(dists.size(0)):
-        min_dist, min_idx = dists[i].min(dim=0)
-        if min_dist != float('inf'):  # Check if a valid match exists within the threshold
-            matched_true_idx.append(i)
-            matched_pred_idx.append(min_idx.item())
-            dists[:, min_idx] = float('inf')  # Invalidate the matched predicted point
+        if valid_mask[i].any():  # Check if there are any valid matches for this true point
+            min_dist, min_idx = dists[i].min(dim=0)
+            if min_dist != float('inf'):  # Valid match found
+                matched_true_idx.append(i)
+                matched_pred_idx.append(min_idx.item())
+                dists[:, min_idx] = float('inf')  # Invalidate the matched predicted point
 
     if not matched_true_idx:
         return (
