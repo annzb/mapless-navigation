@@ -84,9 +84,9 @@ def custom_collate_fn(batch):
 
 def get_dataset(dataset_file_path, partial=1.0, batch_size=16, shuffle_runs=True, random_state=42):
     data_dict, radar_config = read_h5_dataset(dataset_file_path)
-    radar_frames = np.array(data_dict['cascade_heatmaps'])
+    radar_frames = data_dict['cascade_heatmaps']
     lidar_frames = data_dict['lidar_map_frames']
-    poses = np.array(data_dict['cascade_poses'])
+    poses = data_dict['cascade_poses']
 
     if shuffle_runs:
         radar_frames = np.concatenate(list(radar_frames.values()), axis=0)
@@ -99,8 +99,8 @@ def get_dataset(dataset_file_path, partial=1.0, batch_size=16, shuffle_runs=True
 
     # filter empty clouds
     filtered_indices = [i for i, frame in enumerate(lidar_frames) if len(frame) > 0]
-    radar_frames = radar_frames[filtered_indices]
-    lidar_frames = [lidar_frames[i] for i in filtered_indices]
+    radar_frames = np.array(radar_frames[filtered_indices])
+    lidar_frames = [np.array(lidar_frames[i]) for i in filtered_indices]
     poses = poses[filtered_indices]
 
     # reduce dataset
