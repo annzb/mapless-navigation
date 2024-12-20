@@ -34,7 +34,7 @@ def check_memory(model, data_loader, device):
     print(f"Total estimated GPU memory: {total_memory:.2f} MB")
 
 
-def combined_loss(pred_cloud, true_cloud, occupancy_threshold=0.5, point_match_radius=1.0):
+def spatial_prob_loss(pred_cloud, true_cloud, occupancy_threshold=0.5, point_match_radius=1.0):
     pred_occupied = pred_cloud[pred_cloud[:, -1] >= occupancy_threshold]
     true_occupied = true_cloud[true_cloud[:, -1] >= occupancy_threshold]
     pred_xyz, true_xyz = pred_occupied[:, :3], true_occupied[:, :3]
@@ -47,20 +47,16 @@ def combined_loss(pred_cloud, true_cloud, occupancy_threshold=0.5, point_match_r
     matched_true_xyz, matched_pred_xyz, matched_true_idx, matched_pred_idx = match_pointclouds(true_xyz, pred_xyz, max_distance=point_match_radius)
     print('matched_true_xyz', matched_true_xyz.shape, 'matched_true_idx', matched_true_idx.shape)
     print('matched_pred_xyz', matched_pred_xyz.shape, 'matched_pred_idx', matched_pred_idx.shape)
-    raise
-    # Step 1: Match predicted points to ground truth using nearest neighbor
-    # dists = torch.cdist(pred_xyz, true_xyz)  # [N_pred, N_true]
-    # matched_dist, matched_idx = dists.min(dim=1)  # Closest true point for each predicted point
-    # matched_true_probs = true_probs[matched_idx]  # True probabilities for matched points
-    # print('matched_idx', sum(matched_idx), 'matched_true_probs', matched_true_probs)
 
-    # Step 2: Calculate spatial and probability errors
-    spatial_loss = matched_dist.mean()  # Mean Euclidean distance
-    prob_loss = F.mse_loss(pred_probs, matched_true_probs)  # Mean squared error for probabilities
+    unmatched_mask = torch.ones(true_xyz.size(0), device=true_xyz.device, dtype=torch.bool)
+    unmatched_mask[matched_true_idx] = False
+    num_unmatched_points = unmatched_mask.sum()
+    matched_distances = torch.norm(matched_true_xyz - matched_pred_xyz, dim=-1)
+    spatial_error = matched_distances.mean() + point_match_radius * num_unmatched_points
+    prob_error = F.mse_loss(true_probs[matched_true_idx], pred_probs[matched_pred_idx]) + num_unmatched_points
 
-    # Combine the losses
-    combined = spatial_loss + prob_loss  # Weight equally, can adjust if needed
-    return combined
+    loss = spatial_error + prob_error
+    return loss
 
 
 def match_pointclouds(true_xyz, pred_xyz, max_distance=float('inf')):
@@ -122,11 +118,12 @@ def train(model, optimizer, loss_fn, train_loader, val_loader, device, num_epoch
 
             batch_loss = 0
             for pred_cloud, true_cloud in zip(pred_probabilities, lidar_frames):
-                batch_loss += combined_loss(pred_cloud, true_cloud, occupancy_threshold=0.5)
+                batch_loss += spatial_prob_loss(pred_cloud, true_cloud, occupancy_threshold=0.5)
             optimizer.zero_grad()
             batch_loss.backward()
             optimizer.step()
             train_loss += batch_loss.item()
+            print('batch_loss', batch_loss)
             raise
 
         train_loss /= len(train_loader)
