@@ -19,13 +19,10 @@ def train(model, optimizer, loss_fn, train_loader, val_loader, device, num_epoch
             radar_frames = radar_frames.to(device)
             lidar_frames = [lidar_cloud.to(device) for lidar_cloud in lidar_frames]
             pred_probabilities = model(radar_frames)
-            print('pred_probabilities', pred_probabilities.requires_grad)
 
             batch_loss = 0.0
             for pred_cloud, true_cloud in zip(pred_probabilities, lidar_frames):
                 batch_loss += loss_fn(pred_cloud, true_cloud)
-            print(batch_loss.requires_grad)
-            print(batch_loss.grad_fn)  # Should not be None
             optimizer.zero_grad()
             batch_loss.backward()
             optimizer.step()
@@ -80,8 +77,8 @@ def main():
     OCCUPANCY_THRESHOLD = 0.6
     POINT_MATCH_RADIUS = 1.0
     BATCH_SIZE = 4
-    N_EPOCHS = 5
-    DATASET_PART = 0.1
+    N_EPOCHS = 50
+    DATASET_PART = 1.0
     LEARNING_RATE = 1e-3
 
     if os.path.isdir('/media/giantdrive'):
