@@ -34,23 +34,25 @@ def check_memory(model, data_loader, device):
     print(f"Total estimated GPU memory: {total_memory:.2f} MB")
 
 
-def combined_loss(pred_cloud, true_cloud, occupancy_threshold=0.5):
+def combined_loss(pred_cloud, true_cloud, occupancy_threshold=0.5, point_match_radius=1.0):
     pred_occupied = pred_cloud[pred_cloud[:, -1] >= occupancy_threshold]
     true_occupied = true_cloud[true_cloud[:, -1] >= occupancy_threshold]
-
     pred_xyz, true_xyz = pred_occupied[:, :3], true_occupied[:, :3]
     pred_probs, true_probs = pred_occupied[:, 3], true_occupied[:, 3]
     print('pred_xyz', pred_xyz.shape, 'true_xyz', true_xyz.shape)
-
     if pred_xyz.shape[0] == 0 or true_xyz.shape[0] == 0:
         # No matching points available, return a high penalty
         return torch.tensor(1.0, device=pred_cloud.device)
 
+    matched_true_xyz, matched_pred_xyz, matched_true_idx, matched_pred_idx = match_pointclouds(true_xyz, pred_xyz, max_distance=point_match_radius)
+    print('matched_true_xyz', matched_true_xyz.shape, 'matched_true_idx', matched_true_idx.shape)
+    print('matched_pred_xyz', matched_pred_xyz.shape, 'matched_pred_idx', matched_pred_idx.shape)
+    raise
     # Step 1: Match predicted points to ground truth using nearest neighbor
-    dists = torch.cdist(pred_xyz, true_xyz)  # [N_pred, N_true]
-    matched_dist, matched_idx = dists.min(dim=1)  # Closest true point for each predicted point
-    matched_true_probs = true_probs[matched_idx]  # True probabilities for matched points
-    print('matched_idx', matched_idx.shape, 'matched_true_probs', matched_true_probs.shape)
+    # dists = torch.cdist(pred_xyz, true_xyz)  # [N_pred, N_true]
+    # matched_dist, matched_idx = dists.min(dim=1)  # Closest true point for each predicted point
+    # matched_true_probs = true_probs[matched_idx]  # True probabilities for matched points
+    # print('matched_idx', sum(matched_idx), 'matched_true_probs', matched_true_probs)
 
     # Step 2: Calculate spatial and probability errors
     spatial_loss = matched_dist.mean()  # Mean Euclidean distance
@@ -59,6 +61,49 @@ def combined_loss(pred_cloud, true_cloud, occupancy_threshold=0.5):
     # Combine the losses
     combined = spatial_loss + prob_loss  # Weight equally, can adjust if needed
     return combined
+
+
+def match_pointclouds(true_xyz, pred_xyz, max_distance=float('inf')):
+    """
+    Matches true points to predicted points with a maximum distance threshold.
+
+    Args:
+        true_xyz (torch.Tensor): Ground truth points, shape [N_true, 3].
+        pred_xyz (torch.Tensor): Predicted points, shape [N_pred, 3].
+        max_distance (float): Maximum allowable distance for matching points.
+
+    Returns:
+        matched_true_xyz (torch.Tensor): Matched true points, shape [M, 3].
+        matched_pred_xyz (torch.Tensor): Matched predicted points, shape [M, 3].
+        matched_true_idx (torch.Tensor): Indices of matched true points, shape [M].
+        matched_pred_idx (torch.Tensor): Indices of matched predicted points, shape [M].
+    """
+    # Calculate pairwise distances between true and predicted points
+    dists = torch.cdist(true_xyz, pred_xyz)  # Shape: [N_true, N_pred]
+
+    # Apply maximum distance threshold
+    valid_mask = dists <= max_distance
+    dists[~valid_mask] = float('inf')  # Set distances exceeding threshold to infinity
+
+    # Perform matching
+    matched_true_idx = []
+    matched_pred_idx = []
+
+    for i in range(dists.size(0)):  # Iterate over true points
+        # Get the minimum distance for the current true point
+        min_dist, min_idx = dists[i].min(dim=0)
+        if min_dist != float('inf'):  # Check if a valid match exists within the threshold
+            matched_true_idx.append(i)
+            matched_pred_idx.append(min_idx.item())
+            dists[:, min_idx] = float('inf')  # Invalidate the matched predicted point
+
+    # Gather matched points
+    matched_true_idx = torch.tensor(matched_true_idx, dtype=torch.long, device=true_xyz.device)
+    matched_pred_idx = torch.tensor(matched_pred_idx, dtype=torch.long, device=pred_xyz.device)
+    matched_true_xyz = true_xyz[matched_true_idx]
+    matched_pred_xyz = pred_xyz[matched_pred_idx]
+
+    return matched_true_xyz, matched_pred_xyz, matched_true_idx, matched_pred_idx
 
 
 def train(model, optimizer, loss_fn, train_loader, val_loader, device, num_epochs=10, save_path="best_model.pth", occupancy_threshold=0.5):
