@@ -84,11 +84,9 @@ class SpatialProbLoss(nn.Module):
         pred_probs, true_probs = pred_occupied[:, 3], true_occupied[:, 3]
 
         matched_true_xyz, matched_pred_xyz, matched_true_idx, matched_pred_idx = match_pointclouds(true_xyz, pred_xyz, max_distance=self.point_match_radius)
-        unmatched_mask = torch.ones(true_xyz.size(0), device=true_xyz.device, dtype=torch.bool)
-        unmatched_mask[matched_true_idx] = False
-        num_unmatched_points = unmatched_mask.sum()
-        spatial_error = (self.point_match_radius * 10 * num_unmatched_points).float()
-        prob_error = num_unmatched_points.float()
+        num_unmatched_points = true_xyz.size(0) - matched_true_idx.numel()
+        spatial_error = torch.tensor((self.point_match_radius * 10 * num_unmatched_points).float(), device=pred_cloud.device, requires_grad=True)
+        prob_error = torch.tensor(num_unmatched_points.float(), device=pred_cloud.device, requires_grad=True)
         if matched_true_xyz.numel() != 0:
             matched_distances = torch.norm(matched_true_xyz - matched_pred_xyz, dim=-1)
             spatial_error += matched_distances.mean()
