@@ -75,20 +75,14 @@ def train(model, optimizer, loss_fn, train_loader, val_loader, device, num_epoch
             pred_probabilities = model(radar_frames)
             # print('true shape', lidar_frames[0].shape, lidar_frames[1].shape, ', output shape:', pred_probabilities.shape)
 
+            batch_loss = 0
             for pred_cloud, true_cloud in zip(pred_probabilities, lidar_frames):
-                print('pred_cloud', pred_cloud.shape, 'true_cloud', true_cloud.shape)
-                pred_occupied = pred_cloud[pred_cloud[:, -1] >= occupancy_threshold]
-                true_occupied = true_cloud[true_cloud[:, -1] >= occupancy_threshold]
-                print('pred_occupied', pred_occupied.shape, 'true_occupied', true_occupied.shape)
-                print()
-
-            raise
-            # loss = loss_fn(outputs, lidar_frames[..., 3])
-
+                batch_loss += combined_loss(pred_cloud, true_cloud, occupancy_threshold=0.5)
             optimizer.zero_grad()
-            loss.backward()
+            batch_loss.backward()
             optimizer.step()
-            train_loss += loss.item()
+            train_loss += batch_loss.item()
+            raise
 
         train_loss /= len(train_loader)
 
