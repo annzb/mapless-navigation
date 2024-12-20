@@ -1,9 +1,3 @@
-# - some initial architectures to test the approaches. For the radar encoder, we want to try 1) layers using a direct conversion to cartesian space 2) CNN layers 3) fourier layers (if applicable to images that are already transformed using FFT) 4) attention layers 5) combinations of those. Don't use too many layers since we just want to test how it runs
-# - some actual layer that will do the mapping like a normal fully connected layer or an lstm layer, whatever is more appropriate. We will try mapping the output of this layer with the occupancy odds of the groundtruth.
-# - the function to start training
-# - the function to evaluate a model by converting the occupancy odds into probabilities and calculating the error.
-
-
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -182,35 +176,6 @@ class CrossAttentionTransformer(nn.Module):
         
         return encodings.view(coords.size(0), coords.size(1), -1)  # Flatten last two dimensions -> [B, N, 3 * num_frequencies]
 
-# class CrossAttentionTransformer(nn.Module):
-#     def __init__(self, embed_dim, num_heads, num_layers):
-#         super(CrossAttentionTransformer, self).__init__()
-#         self.layers = nn.ModuleList([
-#             nn.TransformerEncoderLayer(embed_dim, num_heads, dim_feedforward=embed_dim * 4, batch_first=True)
-#             for _ in range(num_layers)
-#         ])
-# 
-#     def forward(self, cartesian_points):
-#         # Split xyz (for positional encoding) and other features
-#         xyz = cartesian_points[:, :, :3]  # [B, N, 3]
-#         features = cartesian_points[:, :, 3:]  # [B, N, num_features]
-# 
-#         # Compute positional encodings
-#         positional_encodings = self._positional_encoding(xyz)
-#         combined_features = torch.cat((features, positional_encodings), dim=-1)  # [B, N, num_features + PE]
-# 
-#         # Pass through transformer layers
-#         for layer in self.layers:
-#             combined_features = layer(combined_features)
-# 
-#         return combined_features  # Output features with spatial awareness
-# 
-#     def _positional_encoding(self, coords, num_frequencies=6):
-#         frequencies = torch.linspace(1.0, 2**num_frequencies, num_frequencies).to(coords.device)
-#         encodings = torch.cat([torch.sin(coords * freq) for freq in frequencies], dim=-1)
-#         return encodings
-# 
-
 
 class PointNet(nn.Module):
     def __init__(self):
@@ -281,40 +246,14 @@ class RadarOccupancyModel(nn.Module):
 
     def forward(self, polar_frames):
         batch_size = polar_frames.shape[0]
-        # polar_frames = polar_frames.unsqueeze(-1)
-        # expanded_frames = self.sft(polar_frames)
-        # print('expanded_frames.shape', expanded_frames.shape)
 
         reshaped_frames = polar_frames.view(batch_size, self.radar_config.num_azimuth_bins * self.radar_config.num_range_bins, self.radar_config.num_elevation_bins)
         transformed_frames = self.transformer(reshaped_frames)
-        print('view transformed_frames.shape', transformed_frames.shape)
         transformed_frames = transformed_frames.view(batch_size, self.radar_config.num_azimuth_bins, self.radar_config.num_range_bins, self.radar_config.num_elevation_bins)
-        print('transformed_frames.shape', transformed_frames.shape)
 
         cartesian_points = self.polar_to_cartesian(transformed_frames)
-        print('cartesian_points.shape', cartesian_points.shape)
-
         less_points = self.down(cartesian_points)
-        print('less_points.shape', less_points.shape)
-        # downsampled_radar_clouds = self.radar_downsample_1(cartesian_radar_clouds)
-        # downsampled_radar_clouds = self.radar_downsample_2(downsampled_radar_clouds)
-        # print('downsampled_radar_clouds.shape', downsampled_radar_clouds.shape)
 
         log_odds = self.pointnet(less_points)
         probabilities = torch.sigmoid(log_odds)
-        print('probabilities.shape', probabilities.shape)
-        #
-        #
-        # print('probabilities.shape', probabilities.shape)
-        #
-        # keep_mask = probabilities > self.occupancy_threshold  # Shape: [B, reduced_N]
-        # filtered_points = downsampled_radar_clouds[keep_mask]  # Filtered points [M, 4]
-        # filtered_probs = probabilities[keep_mask]  # Filtered probabilities [M]
-        # print('filtered_points.shape', filtered_points.shape)
-        # print('filtered_probs.shape', filtered_probs.shape)
         return probabilities
-
-
-# We need a good loss function for this model to predict occupancy. The point-to-point functions won't work here because the model's output size is fixed and the groundtruth('s size is not fixed.
-# Right now the model outputs 9440 points per frame, while the size of groundtruth varies from a hundred to a few thousand points (not all of them are occupied, the probability is given for each point).
-# We should come up with an abstraction to
