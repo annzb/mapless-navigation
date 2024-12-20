@@ -89,8 +89,8 @@ class SpatialProbLoss(nn.Module):
         unmatched_mask[matched_true_idx] = False
         num_unmatched_points = unmatched_mask.sum()
         matched_distances = torch.norm(matched_true_xyz - matched_pred_xyz, dim=-1)
-        print('matched_distances', matched_distances.shape)
-        spatial_error = (matched_distances.mean() if matched_distances else 0) + self.point_match_radius * 10 * num_unmatched_points
+        print('matched_distances', matched_distances.numel())
+        spatial_error = (0 if matched_distances.numel() == 0 else matched_distances.mean()) + self.point_match_radius * 10 * num_unmatched_points
         prob_error = F.mse_loss(true_probs[matched_true_idx], pred_probs[matched_pred_idx]) + num_unmatched_points
         print('spatial_error', spatial_error)
         print('prob_error', prob_error)
