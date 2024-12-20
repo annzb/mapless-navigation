@@ -4,6 +4,20 @@ import torch.nn.functional as F
 
 
 def match_pointclouds(true_xyz, pred_xyz, max_distance=float('inf')):
+    """
+    Matches true points to predicted points within a maximum distance.
+
+    Args:
+        true_xyz (torch.Tensor): Ground truth points of shape [N_true, 3].
+        pred_xyz (torch.Tensor): Predicted points of shape [N_pred, 3].
+        max_distance (float): Maximum allowable distance for matching.
+
+    Returns:
+        matched_true_xyz (torch.Tensor): Matched true points, or empty tensor if no matches.
+        matched_pred_xyz (torch.Tensor): Matched predicted points, or empty tensor if no matches.
+        matched_true_idx (torch.Tensor): Indices of matched true points, or empty tensor if no matches.
+        matched_pred_idx (torch.Tensor): Indices of matched predicted points, or empty tensor if no matches.
+    """
     dists = torch.cdist(true_xyz, pred_xyz)  # [N_true, N_pred]
     valid_mask = dists <= max_distance
     dists[~valid_mask] = float('inf')
@@ -17,6 +31,13 @@ def match_pointclouds(true_xyz, pred_xyz, max_distance=float('inf')):
             matched_pred_idx.append(min_idx.item())
             dists[:, min_idx] = float('inf')  # Invalidate the matched predicted point
 
+    if not matched_true_idx:
+        return (
+            torch.empty((0, 3), device=true_xyz.device),
+            torch.empty((0, 3), device=pred_xyz.device),
+            torch.empty((0,), dtype=torch.long, device=true_xyz.device),
+            torch.empty((0,), dtype=torch.long, device=pred_xyz.device),
+        )
     matched_true_idx = torch.tensor(matched_true_idx, dtype=torch.long, device=true_xyz.device)
     matched_pred_idx = torch.tensor(matched_pred_idx, dtype=torch.long, device=pred_xyz.device)
     matched_true_xyz = true_xyz[matched_true_idx]
@@ -58,7 +79,7 @@ class SpatialProbLoss(nn.Module):
         unmatched_mask[matched_true_idx] = False
         num_unmatched_points = unmatched_mask.sum()
         matched_distances = torch.norm(matched_true_xyz - matched_pred_xyz, dim=-1)
-        spatial_error = matched_distances.mean() + self.point_match_radius * num_unmatched_points
+        spatial_error = matched_distances.mean() + self.point_match_radius * 10 * num_unmatched_points
         prob_error = F.mse_loss(true_probs[matched_true_idx], pred_probs[matched_pred_idx]) + num_unmatched_points
 
         loss = spatial_error + prob_error

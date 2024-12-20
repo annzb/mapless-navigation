@@ -84,13 +84,13 @@ def custom_collate_fn(batch):
 
 def get_dataset(dataset_file_path, partial=1.0, batch_size=16, shuffle_runs=True, random_state=42):
     data_dict, radar_config = read_h5_dataset(dataset_file_path)
-    radar_frames = data_dict['cascade_heatmaps']
+    radar_frames = np.array(data_dict['cascade_heatmaps'])
     lidar_frames = data_dict['lidar_map_frames']
-    poses = data_dict['cascade_poses']
+    poses = np.array(data_dict['cascade_poses'])
 
     if shuffle_runs:
         radar_frames = np.concatenate(list(radar_frames.values()), axis=0)
-        lidar_frames = [frame for run_frames in lidar_frames.values() for frame in run_frames]
+        lidar_frames = [np.array(frame) for run_frames in lidar_frames.values() for frame in run_frames]
         poses = np.concatenate(list(poses.values()), axis=0)
     else:
         raise NotImplementedError("Non-shuffled runs are not implemented.")
