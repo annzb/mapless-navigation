@@ -78,8 +78,8 @@ class PolarToCartesian(nn.Module):
         cos_elevations = self.elevation_cos_weight.view(1, 1, 1, -1) * torch.cos(elevations_grid)
         sin_elevations = self.elevation_sin_weight.view(1, 1, 1, -1) * torch.sin(elevations_grid)
 
-        x = ranges_grid * cos_elevations * cos_azimuths
-        y = ranges_grid * cos_elevations * sin_azimuths
+        x = ranges_grid * cos_elevations * sin_azimuths
+        y = ranges_grid * cos_elevations * cos_azimuths
         z = ranges_grid * sin_elevations
         x = x.flatten(start_dim=1).unsqueeze(-1)
         y = y.flatten(start_dim=1).unsqueeze(-1)
@@ -87,12 +87,7 @@ class PolarToCartesian(nn.Module):
 
         intensity = polar_frames.flatten(start_dim=1, end_dim=3).unsqueeze(-1)
         cartesian_points = torch.cat((x, y, z, intensity), dim=-1)
-        # cartesian_points = torch.cat((
-        #     x.flatten(1).unsqueeze(-1),  # [B, N, 1]
-        #     y.flatten(1).unsqueeze(-1),  # [B, N, 1]
-        #     z.flatten(1).unsqueeze(-1),  # [B, N, 1]
-        #     polar_frames.flatten(1, -2)  # [B, N, num_features]
-        # ), dim=-1)
+
         return cartesian_points  # [B, N, 4]
 
 

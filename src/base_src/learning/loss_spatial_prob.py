@@ -93,3 +93,73 @@ class SpatialProbLoss(nn.Module):
             prob_error += F.mse_loss(true_probs[matched_true_idx], pred_probs[matched_pred_idx])
         loss = torch.tensor(spatial_error + prob_error, device=pred_cloud.device, requires_grad=True)
         return loss
+
+
+def test_match_pointclouds():
+    # Test 1: No true points
+    true_xyz = torch.empty((0, 3))
+    pred_xyz = torch.tensor([[1.0, 2.0, 3.0]])
+    matched_true_xyz, matched_pred_xyz, matched_true_idx, matched_pred_idx = match_pointclouds(true_xyz, pred_xyz)
+    assert matched_true_xyz.size(0) == 0
+    assert matched_pred_xyz.size(0) == 0
+    assert matched_true_idx.size(0) == 0
+    assert matched_pred_idx.size(0) == 0
+
+    # Test 2: No predicted points
+    true_xyz = torch.tensor([[1.0, 2.0, 3.0]])
+    pred_xyz = torch.empty((0, 3))
+    matched_true_xyz, matched_pred_xyz, matched_true_idx, matched_pred_idx = match_pointclouds(true_xyz, pred_xyz)
+    assert matched_true_xyz.size(0) == 0
+    assert matched_pred_xyz.size(0) == 0
+    assert matched_true_idx.size(0) == 0
+    assert matched_pred_idx.size(0) == 0
+
+    # Test 3: No points within max_distance
+    true_xyz = torch.tensor([[1.0, 1.0, 1.0]])
+    pred_xyz = torch.tensor([[10.0, 10.0, 10.0]])
+    max_distance = 5.0
+    matched_true_xyz, matched_pred_xyz, matched_true_idx, matched_pred_idx = match_pointclouds(true_xyz, pred_xyz, max_distance)
+    assert matched_true_xyz.size(0) == 0
+    assert matched_pred_xyz.size(0) == 0
+    assert matched_true_idx.size(0) == 0
+    assert matched_pred_idx.size(0) == 0
+
+    # Test 4: Single match
+    true_xyz = torch.tensor([[1.0, 2.0, 3.0]])
+    pred_xyz = torch.tensor([[1.1, 2.1, 3.1]])
+    max_distance = 0.5
+    matched_true_xyz, matched_pred_xyz, matched_true_idx, matched_pred_idx = match_pointclouds(true_xyz, pred_xyz, max_distance)
+    assert torch.allclose(matched_true_xyz, true_xyz)
+    assert torch.allclose(matched_pred_xyz, pred_xyz)
+    assert torch.equal(matched_true_idx, torch.tensor([0]))
+    assert torch.equal(matched_pred_idx, torch.tensor([0]))
+
+    # Test 5: Multiple matches
+    true_xyz = torch.tensor([[1.0, 1.0, 1.0], [2.0, 2.0, 2.0]])
+    pred_xyz = torch.tensor([[1.1, 1.1, 1.1], [2.1, 2.1, 2.1]])
+    max_distance = 0.5
+    matched_true_xyz, matched_pred_xyz, matched_true_idx, matched_pred_idx = match_pointclouds(true_xyz, pred_xyz, max_distance)
+    assert torch.allclose(matched_true_xyz, true_xyz)
+    assert torch.allclose(matched_pred_xyz, pred_xyz)
+    assert torch.equal(matched_true_idx, torch.tensor([0, 1]))
+    assert torch.equal(matched_pred_idx, torch.tensor([0, 1]))
+
+    # Test 6: Ambiguous matches (ensure 1-to-1 matching)
+    true_xyz = torch.tensor([[1.0, 1.0, 1.0], [1.01, 1.01, 1.01], [1.2, 1.2, 1.2]])
+    pred_xyz = torch.tensor([[1.1, 1.1, 1.1]])
+    max_distance = 0.5
+    matched_true_xyz, matched_pred_xyz, matched_true_idx, matched_pred_idx = match_pointclouds(true_xyz, pred_xyz, max_distance)
+    assert matched_true_xyz.size(0) == 1
+    assert matched_pred_xyz.size(0) == 1
+    assert matched_true_idx.size(0) == 1
+    assert matched_pred_idx.size(0) == 1
+    assert torch.allclose(matched_true_xyz, torch.tensor([[1.0, 1.0, 1.0]]))
+    assert torch.allclose(matched_pred_xyz, torch.tensor([[1.1, 1.1, 1.1]]))
+    print('matched_true_xyz, matched_pred_xyz, matched_true_idx, matched_pred_idx')
+    print(matched_true_xyz, matched_pred_xyz, matched_true_idx, matched_pred_idx)
+
+    print("All tests passed.")
+
+
+if __name__ == '__main__':
+    test_match_pointclouds()
