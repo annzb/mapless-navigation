@@ -85,7 +85,7 @@ def main():
         dataset_path = '/media/giantdrive/coloradar/dataset1.h5'
         device_name = 'cuda:1'
     else:
-        dataset_path = '/home/arpg/projects/coloradar_plus_processing_tools/coloradar_plus_processing_tools/dataset1.h5'
+        dataset_path = '/home/arpg/projects/coloradar_plus_processing_tools/coloradar_plus_processing_tools/dataset2.h5'
         device_name = 'cuda'
     train_loader, val_loader, test_loader, radar_config = get_dataset(dataset_path, batch_size=BATCH_SIZE,  partial=DATASET_PART)
     model = RadarOccupancyModel(radar_config)
