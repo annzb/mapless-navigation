@@ -38,48 +38,6 @@ def show_radar_pcl(cloud, intensity_threshold_percent=0.0):
     o3d.visualization.draw_geometries([pcd, axes], "Radar Point Cloud Visualization")
 
 
-# def image_to_pcl(images, radar_config):
-#     azimuth_scale = torch.ones(radar_config.num_azimuth_bins)
-#     azimuth_bias = torch.zeros(radar_config.num_azimuth_bins)
-#     azimuth_cos_weight = torch.ones(radar_config.num_azimuth_bins)
-#     azimuth_sin_weight = torch.ones(radar_config.num_azimuth_bins)
-#     elevation_scale = torch.ones(radar_config.num_elevation_bins)
-#     elevation_bias = torch.zeros(radar_config.num_elevation_bins)
-#     elevation_cos_weight = torch.ones(radar_config.num_elevation_bins)
-#     elevation_sin_weight = torch.ones(radar_config.num_elevation_bins)
-#     range_scale = torch.ones(radar_config.num_range_bins)
-#     range_bias = torch.zeros(radar_config.num_range_bins)
-#     batch_size = images.shape[0]
-#
-#     azimuths = torch.tensor(radar_config.clipped_azimuth_bins)
-#     azimuths = azimuths * azimuth_scale + azimuth_bias
-#     ranges = torch.linspace(0, radar_config.num_range_bins * radar_config.range_bin_width, radar_config.num_range_bins)
-#     ranges = ranges * range_scale + range_bias
-#     elevations = torch.tensor(radar_config.clipped_elevation_bins)
-#     elevations = elevations * elevation_scale + elevation_bias
-#
-#     azimuths_grid, ranges_grid, elevations_grid = torch.meshgrid(azimuths, ranges, elevations, indexing="ij")
-#     azimuths_grid = azimuths_grid.unsqueeze(0).expand(batch_size, -1, -1, -1)
-#     ranges_grid = ranges_grid.unsqueeze(0).expand(batch_size, -1, -1, -1)
-#     elevations_grid = elevations_grid.unsqueeze(0).expand(batch_size, -1, -1, -1)
-#
-#     cos_azimuths = azimuth_cos_weight.view(1, -1, 1, 1) * torch.cos(azimuths_grid)
-#     sin_azimuths = azimuth_sin_weight.view(1, -1, 1, 1) * torch.sin(azimuths_grid)
-#     cos_elevations = elevation_cos_weight.view(1, 1, 1, -1) * torch.cos(elevations_grid)
-#     sin_elevations = elevation_sin_weight.view(1, 1, 1, -1) * torch.sin(elevations_grid)
-#
-#     x = ranges_grid * cos_elevations * cos_azimuths
-#     y = ranges_grid * cos_elevations * sin_azimuths
-#     z = ranges_grid * sin_elevations
-#     x = x.flatten(start_dim=1).unsqueeze(-1)
-#     y = y.flatten(start_dim=1).unsqueeze(-1)
-#     z = z.flatten(start_dim=1).unsqueeze(-1)
-#
-#     intensity = images.flatten(start_dim=1, end_dim=3).unsqueeze(-1)
-#     cartesian_points = torch.cat((x, y, z, intensity), dim=-1)
-#
-#     return cartesian_points  # [B, N, 4]
-
 def image_to_pcl(images, radar_config):
     azimuth_scale = torch.ones(radar_config.num_azimuth_bins)
     azimuth_bias = torch.zeros(radar_config.num_azimuth_bins)
@@ -138,7 +96,7 @@ def visualize_polar_image(image, radar_config):
     plt.colorbar(label="Intensity")
     plt.xlabel("Range Bins")
     plt.ylabel("Azimuth Bins")
-    plt.title("Polar Image Visualization")
+    plt.title("Polar Image")
     plt.show()
 
 
@@ -156,9 +114,11 @@ def main():
         radar_clouds = image_to_pcl(radar_frames, radar_config)
         first_radar_cloud = radar_clouds[0].cpu().numpy()
         first_lidar_cloud = lidar_frames[0].cpu().numpy()
+        print('first_radar_cloud', first_radar_cloud.min(), first_radar_cloud.max(), first_radar_cloud.mean())
+        print('batch', radar_clouds.min(), radar_clouds.max(), radar_clouds.mean())
         # visualize_polar_image(radar_frames[0], radar_config)
-        show_radar_pcl(first_radar_cloud)
-        show_occupancy_pcl(first_lidar_cloud)
+        # show_radar_pcl(first_radar_cloud)
+        # show_occupancy_pcl(first_lidar_cloud)
         break
 
 

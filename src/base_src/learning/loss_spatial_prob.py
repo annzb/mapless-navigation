@@ -92,6 +92,7 @@ class SpatialProbLoss(nn.Module):
             spatial_error += matched_distances.mean()
             prob_error += F.mse_loss(true_probs[matched_true_idx], pred_probs[matched_pred_idx])
         loss = torch.tensor(spatial_error + prob_error, device=pred_cloud.device, requires_grad=True)
+        print(f'True points {true_xyz.size(0)}, matched {matched_true_idx.numel()}, spatial_error {spatial_error}, prob_error {prob_error}, loss {loss.item()}')
         return loss
 
 

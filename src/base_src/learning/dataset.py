@@ -4,7 +4,6 @@ import numpy as np
 
 import torch
 from torch.utils.data import Dataset, DataLoader
-from torch.nn.utils.rnn import pack_sequence
 from sklearn.model_selection import train_test_split
 
 from radar_config import RadarConfig
@@ -37,13 +36,13 @@ def read_h5_dataset(file_path):
 
 
 def process_radar_frames(radar_frames, intensity_mean=None, intensity_std=None):
+    print('intensity_mean, intensity_std', intensity_mean, intensity_std)
     if (intensity_mean is None) != (intensity_std is None):
         raise ValueError("Both intensity_mean and intensity_std must be provided or neither.")
-    intensity_values = radar_frames[..., 0]
     if intensity_mean is None:
-        intensity_mean = np.mean(intensity_values)
-        intensity_std = np.std(intensity_values)
-    radar_frames[..., 0] = (intensity_values - intensity_mean) / intensity_std
+        intensity_mean = np.mean(radar_frames)
+        intensity_std = np.std(radar_frames)
+    radar_frames = (radar_frames - intensity_mean) / intensity_std
     return radar_frames, intensity_mean, intensity_std
 
 
@@ -71,13 +70,8 @@ class RadarDataset(Dataset):
 
 def custom_collate_fn(batch):
     radar_frames, lidar_frames, poses = zip(*batch)
-    # radar_frames = np.array(radar_frames)
-    # sorted_indices = np.argsort([len(frame) for frame in lidar_frames])[::-1]
-    # radar_frames = radar_frames[sorted_indices].copy()
     radar_frames = torch.tensor(radar_frames)
     lidar_frames = [torch.tensor(frame) for frame in lidar_frames]
-    # packed_lidar_frames = pack_sequence(lidar_frames, enforce_sorted=True)
-    # poses = np.array(poses)
     poses = torch.tensor(poses)
     return radar_frames, lidar_frames, poses
 
