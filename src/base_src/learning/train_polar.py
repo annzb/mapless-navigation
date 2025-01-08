@@ -82,7 +82,7 @@ def main():
     LEARNING_RATE = 1e-3
 
     if os.path.isdir('/media/giantdrive'):
-        dataset_path = '/media/giantdrive/coloradar/dataset1.h5'
+        dataset_path = '/media/giantdrive/coloradar/dataset2.h5'
         device_name = 'cuda:1'
     else:
         dataset_path = '/home/arpg/projects/coloradar_plus_processing_tools/coloradar_plus_processing_tools/dataset2.h5'
