@@ -96,7 +96,7 @@ def get_dataset(dataset_file_path, partial=1.0, batch_size=16, shuffle_runs=True
         if len(frame) < 1:
             empty_frames.append(i)
     # print('total frames', len(lidar_frames), 'empty frames', len(empty_frames))
-    print(empty_frames)
+    # print(empty_frames)
 
     # filter empty clouds
     filtered_indices = [i for i, frame in enumerate(lidar_frames) if len(frame) > 0]

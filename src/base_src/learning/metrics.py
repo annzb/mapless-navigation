@@ -1,59 +1,70 @@
 import torch
 
 
-def iou(predicted_points, ground_truth_points, max_distance=0.1, probability_threshold=0.5):
-    """
-    Computes the Intersection-over-Union (IoU) between two point clouds.
-
-    Args:
-        predicted_points (torch.Tensor): Predicted point cloud of shape [N, 4] ([x, y, z, prob]).
-        ground_truth_points (torch.Tensor): Ground truth point cloud of shape [M, 4].
-        max_distance (float): Overlap radius.
-        probability_threshold (float): Threshold to filter points by their probabilities (default=0.5).
-
-    Returns:
-        float: IoU value between predicted and ground truth point clouds.
-    """
-    pred_occupancy = (predicted_points[:, 3] >= probability_threshold).float()
-    gt_occupancy = (ground_truth_points[:, 3] >= probability_threshold).float()
-    pred_coords = predicted_points[pred_occupancy.bool(), :3]
-    gt_coords = ground_truth_points[gt_occupancy.bool(), :3]
-
-    # Count intersections based on closeness
-    pairwise_distances = torch.cdist(pred_coords.unsqueeze(0), gt_coords.unsqueeze(0), p=2).squeeze(0)  # [P, G]
-    intersection = (pairwise_distances.min(dim=1).values < max_distance).sum()
-    union = len(pred_coords) + len(gt_coords) - intersection
-
-    if union == 0:
-        return 0.0
-    iou_score = intersection / union
-    return iou_score.item()
+class Metric:
+    def __init__(self, **kwargs):
+        for k, v in kwargs.items():
+            setattr(self, k, v)
 
 
-def weighted_chamfer(predicted_points, ground_truth_points):
-    """
-    Computes the weighted Chamfer distance between two point clouds.
+class IoU(Metric):
+    def __init__(self,  max_point_distance=0.1, probability_threshold=0.5):
+        super().__init__(max_point_distance=max_point_distance, probability_threshold=probability_threshold)
 
-    Args:
-        predicted_points (torch.Tensor): Predicted point cloud of shape [N, 4] ([x, y, z, prob]).
-        ground_truth_points (torch.Tensor): Ground truth point cloud of shape [M, 4].
+    def __call__(self, predicted_points, ground_truth_points):
+        """
+        Computes the Intersection-over-Union (IoU) between two point clouds.
 
-    Returns:
-        float: Weighted Chamfer distance.
-    """
-    pred_coords = predicted_points[:, :3]
-    gt_coords = ground_truth_points[:, :3]
-    gt_probs = ground_truth_points[:, 3]
-    pairwise_distances = torch.cdist(pred_coords.unsqueeze(0), gt_coords.unsqueeze(0), p=2).squeeze(0)
+        Args:
+            predicted_points (torch.Tensor): Predicted point cloud of shape [N, 4] ([x, y, z, prob]).
+            ground_truth_points (torch.Tensor): Ground truth point cloud of shape [M, 4].
+            max_distance (float): Overlap radius.
+            probability_threshold (float): Threshold to filter points by their probabilities (default=0.5).
 
-    # Forward Chamfer Distance (Predicted -> Ground Truth)
-    # forward_distances, forward_indices = pairwise_distances.min(dim=1)
-    # forward_weights = pred_probs
-    # forward_chamfer = torch.sum(forward_weights * forward_distances ** 2) / torch.sum(forward_weights)
+        Returns:
+            float: IoU value between predicted and ground truth point clouds.
+        """
+        pred_occupancy = (predicted_points[:, 3] >= self.probability_threshold).float()
+        gt_occupancy = (ground_truth_points[:, 3] >= self.probability_threshold).float()
+        pred_coords = predicted_points[pred_occupancy.bool(), :3]
+        gt_coords = ground_truth_points[gt_occupancy.bool(), :3]
 
-    # Backward Chamfer Distance (Ground Truth -> Predicted)
-    backward_distances, backward_indices = pairwise_distances.min(dim=0)
-    backward_chamfer = torch.sum(gt_probs * backward_distances ** 2) / torch.sum(gt_probs)
+        # Count intersections based on closeness
+        pairwise_distances = torch.cdist(pred_coords.unsqueeze(0), gt_coords.unsqueeze(0), p=2).squeeze(0)  # [P, G]
+        intersection = (pairwise_distances.min(dim=1).values < self.max_point_distance).sum()
+        union = len(pred_coords) + len(gt_coords) - intersection
 
-    total_chamfer = backward_chamfer  # + forward_chamfer
-    return total_chamfer.item()
+        if union == 0:
+            return 0.0
+        iou_score = intersection / union
+        return iou_score.item()
+
+
+class WeightedChamfer:
+    def __call__(self, predicted_points, ground_truth_points):
+        """
+        Computes the weighted Chamfer distance between two point clouds.
+
+        Args:
+            predicted_points (torch.Tensor): Predicted point cloud of shape [N, 4] ([x, y, z, prob]).
+            ground_truth_points (torch.Tensor): Ground truth point cloud of shape [M, 4].
+
+        Returns:
+            float: Weighted Chamfer distance.
+        """
+        pred_coords = predicted_points[:, :3]
+        gt_coords = ground_truth_points[:, :3]
+        gt_probs = ground_truth_points[:, 3]
+        pairwise_distances = torch.cdist(pred_coords.unsqueeze(0), gt_coords.unsqueeze(0), p=2).squeeze(0)
+
+        # Forward Chamfer Distance (Predicted -> Ground Truth)
+        # forward_distances, forward_indices = pairwise_distances.min(dim=1)
+        # forward_weights = pred_probs
+        # forward_chamfer = torch.sum(forward_weights * forward_distances ** 2) / torch.sum(forward_weights)
+
+        # Backward Chamfer Distance (Ground Truth -> Predicted)
+        backward_distances, backward_indices = pairwise_distances.min(dim=0)
+        backward_chamfer = torch.sum(gt_probs * backward_distances ** 2) / torch.sum(gt_probs)
+
+        total_chamfer = backward_chamfer  # + forward_chamfer
+        return total_chamfer.item()
