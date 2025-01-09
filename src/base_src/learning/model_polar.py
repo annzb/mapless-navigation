@@ -106,7 +106,7 @@ class Downsampling(nn.Module):
         in_channels = input_channels
         for _ in range(num_layers):
             output_channels = int(in_channels * output_channels_rate)
-            layers.append(nn.Conv1d(in_channels, output_channels, kernel_size=point_reduction_rate, stride=point_reduction_rate, padding=0))
+            layers.append(nn.Conv1d(in_channels, output_channels, kernel_size=point_reduction_rate, stride=point_reduction_rate - 1, padding=0))
             layers.append(nn.ReLU())
             layers.append(nn.MaxPool1d(pool_size))
             in_channels = output_channels
