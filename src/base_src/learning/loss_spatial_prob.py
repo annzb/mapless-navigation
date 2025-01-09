@@ -35,10 +35,12 @@ class SoftMatchingLoss(nn.Module):
         total_smoothness_loss = 0
 
         for b in range(batch_size):
-            pred_coords = predicted_points[b][:, :3]  # [N, 3]
-            pred_probs = predicted_points[b][:, 3]  # [N]
-            gt_coords = ground_truth_points_list[b][:, :3]  # [M, 3]
-            gt_probs = ground_truth_points_list[b][:, 3]  # [M]
+            pred_points = predicted_points[b]  # [N, 4]
+            gt_points = ground_truth_points_list[b]  # [M, 4]
+            pred_coords = pred_points[:, :3]  # [N, 3]
+            pred_probs = pred_points[:, 3]  # [N]
+            gt_coords = gt_points[:, :3]  # [M, 3]
+            gt_probs = gt_points[:, 3]  # [M]
 
             # Compute pairwise distances
             pairwise_distances = torch.cdist(gt_coords.unsqueeze(0), pred_coords.unsqueeze(0), p=2).squeeze(0)  # [M, N]
