@@ -119,59 +119,6 @@ class Downsampling(nn.Module):
         return x
 
 
-class CrossAttentionTransformer(nn.Module):
-    def __init__(self, embed_dim, num_heads, num_layers, num_frequencies=6):
-        super(CrossAttentionTransformer, self).__init__()
-        self.layers = nn.ModuleList([
-            nn.TransformerEncoderLayer(embed_dim, num_heads, dim_feedforward=embed_dim * 4, batch_first=True)
-            for _ in range(num_layers)
-        ])
-        # Linear projection to match embedding dimension
-        # self.feature_projection = nn.Linear(1 + 3 * num_frequencies, embed_dim)  # 1 feature + positional encodings
-
-    def forward(self, cartesian_points):
-        """
-        Args:
-            cartesian_points (torch.Tensor): Input tensor of shape [B, N, 4], where the last dim is [x, y, z, feature].
-        Returns:
-            torch.Tensor: Processed features of shape [B, N, embed_dim].
-        """
-        # Split xyz (for positional encoding) and other features
-        xyz = cartesian_points[:, :, :3]  # [B, N, 3]
-        features = cartesian_points[:, :, 3:]  # [B, N, 6]
-
-        positional_encodings = self._positional_encoding(xyz)  # [B, N, 3 * num_frequencies]
-        
-        # Concatenate features with positional encodings
-        combined_features = torch.cat((features, positional_encodings), dim=-1)  # [B, N, 1 + 3 * num_frequencies]
-        
-        # Project to transformer input dimension
-        # combined_features = self.feature_projection(combined_features)  # [B, N, embed_dim]
-        
-        # Pass through transformer layers
-        for layer in self.layers:
-            combined_features = layer(combined_features)
-        
-        return combined_features  # Output features with spatial awareness
-
-    def _positional_encoding(self, coords):
-        """
-        Args:
-            coords (torch.Tensor): Tensor of shape [B, N, 3] representing xyz coordinates.
-        Returns:
-            torch.Tensor: Positional encodings of shape [B, N, 3 * num_frequencies].
-        """
-        frequencies = torch.linspace(1.0, 2**self.num_frequencies, self.num_frequencies).to(coords.device)  # [num_frequencies]
-        
-        # Compute sinusoidal positional encodings
-        encodings = torch.cat([
-            torch.sin(coords.unsqueeze(-1) * freq)  # [B, N, 3, num_frequencies]
-            for freq in frequencies
-        ], dim=-1)  # Concatenate along the frequency dimension -> [B, N, 3 * num_frequencies]
-        
-        return encodings.view(coords.size(0), coords.size(1), -1)  # Flatten last two dimensions -> [B, N, 3 * num_frequencies]
-
-
 class PointNet(nn.Module):
     def __init__(self):
         super(PointNet, self).__init__()
@@ -233,7 +180,7 @@ class RadarOccupancyModel(nn.Module):
 
         # self.sft = SphericalFourierTransform(radar_config.num_azimuth_bins, radar_config.num_elevation_bins)
         self.polar_to_cartesian = PolarToCartesian(radar_config)
-        self.down = Downsampling(input_channels=4, output_channels_rate=1.5, point_reduction_rate=2, pool_size=2, num_layers=2)
+        self.down = Downsampling(input_channels=4, output_channels_rate=2, point_reduction_rate=2, pool_size=2, num_layers=3)
         # self.transformer = CrossAttentionTransformer(trans_embed_dim, trans_num_heads, trans_num_layers)
         # self.radar_downsample_1 = TrainedDropout(self.num_radar_points, radar_point_downsample_rate)
         # self.radar_downsample_2 = TrainedDropout(int(self.num_radar_points * (1 - radar_point_downsample_rate)), radar_point_downsample_rate)
@@ -242,19 +189,26 @@ class RadarOccupancyModel(nn.Module):
     def forward(self, polar_frames):
         batch_size = polar_frames.shape[0]
         print('input shape:', polar_frames.shape)
+        # [B, 128, 118, 10]
         reshaped_frames = polar_frames.view(batch_size, self.radar_config.num_azimuth_bins * self.radar_config.num_range_bins, self.radar_config.num_elevation_bins)
+        # [B, 15104, 10]
         print('view shape:', reshaped_frames.shape)
         transformed_frames = self.transformer(reshaped_frames)
+        # [B, 15104, 10]
         print('transformed_frames shape:', transformed_frames.shape)
         transformed_frames = transformed_frames.view(batch_size, self.radar_config.num_azimuth_bins, self.radar_config.num_range_bins, self.radar_config.num_elevation_bins)
+        # [B, 128, 118, 10]
         print('transformed_frames view shape:', transformed_frames.shape)
 
         cartesian_points = self.polar_to_cartesian(transformed_frames)
+        # [B, 151040, 4]
         print('cartesian_points shape:', cartesian_points.shape)
         less_points = self.down(cartesian_points)
+        # [B, 9440, 9]
         print('less_points shape:', less_points.shape)
 
         log_odds = self.pointnet(less_points)
+        # # [B, 9440, 4]
         print('output shape:', log_odds.shape)
         probabilities = torch.sigmoid(log_odds)
         return probabilities
