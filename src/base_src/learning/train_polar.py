@@ -29,6 +29,7 @@ def train(model, optimizer, loss_fn, train_loader, val_loader, device, num_epoch
 
             batch_loss = 0.0
             for pred_cloud, true_cloud in zip(pred_probabilities, lidar_frames):
+                print('true_cloud.shape', true_cloud.shape)
                 batch_loss += loss_fn(pred_cloud, true_cloud)
                 for metric_name, metric_data in train_scores.items():
                     train_scores[metric_name]['value'] += metric_data['func'](pred_cloud, true_cloud)
