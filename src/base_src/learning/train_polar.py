@@ -15,6 +15,7 @@ def train(model, optimizer, loss_fn, train_loader, val_loader, device, num_epoch
 
         model.train()
         train_loss = 0.0
+
         for radar_frames, lidar_frames, poses in train_loader:
             radar_frames = radar_frames.to(device)
             lidar_frames = [lidar_cloud.to(device) for lidar_cloud in lidar_frames]
@@ -23,10 +24,12 @@ def train(model, optimizer, loss_fn, train_loader, val_loader, device, num_epoch
             batch_loss = 0.0
             for pred_cloud, true_cloud in zip(pred_probabilities, lidar_frames):
                 batch_loss += loss_fn(pred_cloud, true_cloud)
+            train_loss += batch_loss.item()
+            batch_loss /= len(radar_frames)
+
             optimizer.zero_grad()
             batch_loss.backward()
             optimizer.step()
-            train_loss += batch_loss.item()
 
         train_loss /= len(train_loader)
 
@@ -67,7 +70,6 @@ def evaluate(model, test_loader, device, loss_fn):
             for pred_cloud, true_cloud in zip(pred_probabilities, lidar_frames):
                 batch_loss += loss_fn(pred_cloud, true_cloud)
             test_loss += batch_loss.item()
-
 
     test_loss /= len(test_loader)
     print(f"Test Loss: {test_loss:.4f}")
