@@ -184,6 +184,8 @@ class RadarOccupancyModel(nn.Module):
         self.down = Downsampling(input_channels=4, output_channels_rate=2, point_reduction_rate=4, pool_size=2, num_layers=3, padding=1)
         self.pointnet = PointNet()
 
+        self.name = 'trans+cart+down+pointnet_v1.0'
+
     def forward(self, polar_frames):
         batch_size = polar_frames.shape[0]
         # print('input shape:', polar_frames.shape)
