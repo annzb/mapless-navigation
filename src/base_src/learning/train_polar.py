@@ -3,7 +3,7 @@ import os.path
 import torch
 
 from dataset import get_dataset
-from loss_spatial_prob import SpatialProbLoss
+from loss_spatial_prob import SpatialProbLoss, SoftMatchingLoss
 from model_polar import RadarOccupancyModel
 
 
@@ -94,7 +94,8 @@ def main():
     model.to(device)
 
     optimizer = torch.optim.Adam(model.parameters(), lr=LEARNING_RATE)
-    loss_fn = SpatialProbLoss(occupancy_threshold=OCCUPANCY_THRESHOLD, point_match_radius=POINT_MATCH_RADIUS)
+    loss_fn = SoftMatchingLoss()
+    # loss_fn = SpatialProbLoss(occupancy_threshold=OCCUPANCY_THRESHOLD, point_match_radius=POINT_MATCH_RADIUS)
     train(model, optimizer, loss_fn, train_loader, val_loader, device, num_epochs=N_EPOCHS, save_path="best_model.pth")
     model.load_state_dict(torch.load("best_model.pth"))
     evaluate(model, test_loader, device, loss_fn)

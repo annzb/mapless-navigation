@@ -186,27 +186,27 @@ class RadarOccupancyModel(nn.Module):
 
     def forward(self, polar_frames):
         batch_size = polar_frames.shape[0]
-        print('input shape:', polar_frames.shape)
+        # print('input shape:', polar_frames.shape)
         # [B, 128, 118, 10]
         reshaped_frames = polar_frames.view(batch_size, self.radar_config.num_azimuth_bins * self.radar_config.num_range_bins, self.radar_config.num_elevation_bins)
         # [B, 15104, 10]
-        print('view shape:', reshaped_frames.shape)
+        # print('view shape:', reshaped_frames.shape)
         transformed_frames = self.transformer(reshaped_frames)
         # [B, 15104, 10]
-        print('transformed_frames shape:', transformed_frames.shape)
+        # print('transformed_frames shape:', transformed_frames.shape)
         transformed_frames = transformed_frames.view(batch_size, self.radar_config.num_azimuth_bins, self.radar_config.num_range_bins, self.radar_config.num_elevation_bins)
         # [B, 128, 118, 10]
-        print('transformed_frames view shape:', transformed_frames.shape)
+        # print('transformed_frames view shape:', transformed_frames.shape)
 
         cartesian_points = self.polar_to_cartesian(transformed_frames)
         # [B, 151040, 4]
-        print('cartesian_points shape:', cartesian_points.shape)
+        # print('cartesian_points shape:', cartesian_points.shape)
         less_points = self.down(cartesian_points)
         # [B, 2360, 32]
-        print('less_points shape:', less_points.shape)
+        # print('less_points shape:', less_points.shape)
 
         log_odds = self.pointnet(less_points)
-        # # [B, 9440, 4]
-        print('output shape:', log_odds.shape)
+        # [B, 2360, 4]
+        # print('output shape:', log_odds.shape)
         probabilities = torch.sigmoid(log_odds)
         return probabilities

@@ -3,6 +3,100 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 
+class SoftMatchingLoss(nn.Module):
+    def __init__(self, alpha=1.0, beta=1.0, smoothness_weight=0.1):
+        """
+        Initializes the loss function.
+
+        Args:
+            alpha (float): Weight for the spatial loss term.
+            beta (float): Weight for the probability loss term.
+            smoothness_weight (float): Weight for the spatial smoothness regularization.
+        """
+        super(SoftMatchingLoss, self).__init__()
+        self.alpha = alpha
+        self.beta = beta
+        self.smoothness_weight = smoothness_weight
+
+    def forward(self, predicted_points, ground_truth_points_list):
+        """
+        Computes the loss.
+
+        Args:
+            predicted_points (torch.Tensor): Predicted point cloud with shape [B, N, 4] ([x, y, z, prob]).
+            ground_truth_points_list (list of torch.Tensor): List of ground truth point clouds of varying sizes [M_i, 4].
+
+        Returns:
+            torch.Tensor: Combined loss value.
+        """
+        batch_size = len(ground_truth_points_list)
+        total_spatial_loss = 0
+        total_probability_loss = 0
+        total_smoothness_loss = 0
+
+        for b in range(batch_size):
+            pred_coords = predicted_points[b][:, :3]  # [N, 3]
+            pred_probs = predicted_points[b][:, 3]  # [N]
+            gt_coords = ground_truth_points_list[b][:, :3]  # [M, 3]
+            gt_probs = ground_truth_points_list[b][:, 3]  # [M]
+
+            # Compute pairwise distances
+            pairwise_distances = torch.cdist(gt_coords.unsqueeze(0), pred_coords.unsqueeze(0), p=2).squeeze(0)  # [M, N]
+
+            # Compute soft matching weights
+            matching_weights = torch.softmax(-pairwise_distances, dim=-1)  # [M, N]
+
+            # Spatial loss: Weighted squared distances
+            spatial_loss = torch.sum(matching_weights * pairwise_distances.pow(2), dim=-1).mean()
+
+            # Probability loss: Weighted mean squared error
+            pred_probs_expanded = pred_probs.unsqueeze(0).expand_as(matching_weights)  # [M, N]
+            gt_probs_expanded = gt_probs.unsqueeze(1).expand_as(matching_weights)  # [M, N]
+            probability_loss = torch.sum(matching_weights * (pred_probs_expanded - gt_probs_expanded).pow(2), dim=-1).mean()
+
+            # Spatial smoothness regularization
+            smoothness_loss = self._compute_spatial_smoothness(pred_coords, pred_probs)
+
+            total_spatial_loss += spatial_loss
+            total_probability_loss += probability_loss
+            total_smoothness_loss += smoothness_loss
+
+            print(f'\nSample stats: pred points {len(pred_probs)}, true points {len(gt_probs)}, pairwise_distances.shape {pairwise_distances.shape}, matching_weights.shape {matching_weights.shape}, spatial_loss {spatial_loss}')
+            print(f'pred_probs_expanded.shape {pred_probs_expanded.shape}, gt_probs_expanded.shape {gt_probs_expanded.shape}, spatial_loss {probability_loss}, smoothness_loss {smoothness_loss}')
+
+        # Average losses across the batch
+        total_spatial_loss /= batch_size
+        total_probability_loss /= batch_size
+        total_smoothness_loss /= batch_size
+
+        # Combine losses
+        total_loss = self.alpha * total_spatial_loss + self.beta * total_probability_loss + self.smoothness_weight * total_smoothness_loss
+        return total_loss
+
+    @staticmethod
+    def _compute_spatial_smoothness(coords, probs):
+        """
+        Computes spatial smoothness loss to encourage similar probabilities for neighboring points.
+
+        Args:
+            coords (torch.Tensor): Coordinates of shape [N, 3].
+            probs (torch.Tensor): Probabilities of shape [N].
+
+        Returns:
+            torch.Tensor: Smoothness loss value.
+        """
+        # Compute pairwise distances
+        pairwise_distances = torch.cdist(coords.unsqueeze(0), coords.unsqueeze(0), p=2).squeeze(0)  # [N, N]
+        weights = torch.exp(-pairwise_distances)  # Closer points have higher weights
+
+        # Compute pairwise differences in probabilities
+        probs_diff = probs.unsqueeze(1) - probs.unsqueeze(0)  # [N, N]
+        smoothness_loss = (weights * probs_diff.pow(2)).mean()  # Weighted squared differences
+
+        return smoothness_loss
+
+
+
 def match_pointclouds(true_xyz, pred_xyz, max_distance=float('inf')):
     """
     Matches true points to predicted points within a maximum distance.
