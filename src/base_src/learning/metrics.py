@@ -28,10 +28,11 @@ class IoU(Metric):
         gt_occupancy = (ground_truth_points[:, 3] >= self.probability_threshold).float()
         pred_coords = predicted_points[pred_occupancy.bool(), :3]
         gt_coords = ground_truth_points[gt_occupancy.bool(), :3]
+        if pred_coords.size(0) == 0 or gt_coords.size(0) == 0:
+            return 0.0
 
         # Count intersections based on closeness
         pairwise_distances = torch.cdist(pred_coords.unsqueeze(0), gt_coords.unsqueeze(0), p=2).squeeze(0)
-        print('pred_coords.shape', pred_coords.shape, 'gt_coords.shape', gt_coords.shape, 'pairwise_distances.shape', pairwise_distances.shape)
         intersection = (pairwise_distances.min(dim=1).values < self.max_point_distance).sum()
         union = len(pred_coords) + len(gt_coords) - intersection
 
