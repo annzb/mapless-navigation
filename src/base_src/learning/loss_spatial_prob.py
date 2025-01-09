@@ -56,6 +56,8 @@ class SoftMatchingLoss(nn.Module):
 
         # Combine losses
         total_loss = self.alpha * spatial_loss + self.beta * probability_loss + self.smoothness_weight * smoothness_loss
+        if total_loss.isnan():
+            raise RuntimeError('Loss is NaN.')
         return total_loss
 
     @staticmethod

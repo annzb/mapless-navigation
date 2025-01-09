@@ -131,8 +131,8 @@ class PointNet(nn.Module):
         self.sa3 = PointNetSetAbstraction(295, 0.6, 16, 128 + 3, [128, 128, 256], False)
         # self.sa4 = PointNetSetAbstraction(59, 0.8, 16, 256, [256, 256, 512], False)
         # self.fp4 = PointNetFeaturePropagation(768, [256, 256])
-        self.fp3 = PointNetFeaturePropagation(384, [256, 256])
-        self.fp2 = PointNetFeaturePropagation(320, [256, 128])
+        self.fp3 = PointNetFeaturePropagation(512, [256, 256])
+        self.fp2 = PointNetFeaturePropagation(256, [256, 128])
         self.fp1 = PointNetFeaturePropagation(128, [128, 128, 128])
 
         # Prediction layers
@@ -210,5 +210,12 @@ class RadarOccupancyModel(nn.Module):
         log_odds = self.pointnet(less_points)
         # [B, 2360, 4]
         # print('output shape:', log_odds.shape)
-        probabilities = torch.sigmoid(log_odds)
+        probabilities = self.apply_sigmoid(log_odds)
+        return probabilities
+
+    def apply_sigmoid(self, pcl_batch):
+        coords = pcl_batch[..., :3]
+        probs = pcl_batch[..., 3]
+        probs = torch.sigmoid(probs)
+        probabilities = torch.cat((coords, probs.unsqueeze(-1)), dim=-1)
         return probabilities

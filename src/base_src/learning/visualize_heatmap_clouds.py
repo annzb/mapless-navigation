@@ -4,7 +4,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import open3d as o3d
 from dataset import get_dataset
-from scipy.spatial.transform import Rotation as R
+from model_polar import RadarOccupancyModel
 
 
 def show_occupancy_pcl(cloud, prob_threshold=0):
@@ -82,6 +82,19 @@ def image_to_pcl(images, radar_config):
     return cartesian_points  # [B, N, 4]
 
 
+def apply_layers(model, polar_frames):
+    batch_size = polar_frames.shape[0]
+    reshaped_frames = polar_frames.view(batch_size, model.radar_config.num_azimuth_bins * model.radar_config.num_range_bins, model.radar_config.num_elevation_bins)
+    transformed_frames = model.transformer(reshaped_frames)
+    transformed_frames = transformed_frames.view(batch_size, model.radar_config.num_azimuth_bins, model.radar_config.num_range_bins, model.radar_config.num_elevation_bins)
+    cartesian_points = model.polar_to_cartesian(transformed_frames)
+    less_points = model.down(cartesian_points)
+    log_odds = model.pointnet(less_points)
+    print('log_odds', log_odds.shape)
+    probabilities = model.apply_sigmoid(less_points)
+    return probabilities
+
+
 def visualize_polar_image(image, radar_config):
     """
     Visualize the polar image as a 2D intensity map.
@@ -103,23 +116,42 @@ def visualize_polar_image(image, radar_config):
 def main():
     BATCH_SIZE = 4
     DATASET_PART = 0.1
+    model_path = "/home/arpg/projects/mapping-ros/src/mapless-navigation/best_model_jan9.pth"
 
     if os.path.isdir('/media/giantdrive'):
         dataset_path = '/media/giantdrive/coloradar/dataset1.h5'
+        device_name = 'cuda:1'
     else:
         dataset_path = '/home/arpg/projects/coloradar_plus_processing_tools/coloradar_plus_processing_tools/dataset1.h5'
+        device_name = 'cuda'
     train_loader, val_loader, test_loader, radar_config = get_dataset(dataset_path, batch_size=BATCH_SIZE, partial=DATASET_PART)
 
-    for radar_frames, lidar_frames, _ in train_loader:
-        radar_clouds = image_to_pcl(radar_frames, radar_config)
-        first_radar_cloud = radar_clouds[0].cpu().numpy()
-        first_lidar_cloud = lidar_frames[0].cpu().numpy()
-        print('first_radar_cloud', first_radar_cloud.min(), first_radar_cloud.max(), first_radar_cloud.mean())
-        print('batch', radar_clouds.min(), radar_clouds.max(), radar_clouds.mean())
-        # visualize_polar_image(radar_frames[0], radar_config)
-        # show_radar_pcl(first_radar_cloud)
-        # show_occupancy_pcl(first_lidar_cloud)
-        break
+    model = RadarOccupancyModel(radar_config)
+    device = torch.device(device_name if torch.cuda.is_available() else "cpu")
+    print('\ndevice', device)
+    model.load_state_dict(torch.load(model_path, map_location=device))
+    model.to(device)
+    model.eval()
+
+    with torch.no_grad():
+        for radar_frames, lidar_frames, _ in train_loader:
+            radar_clouds = image_to_pcl(radar_frames, radar_config)
+            first_radar_cloud = radar_clouds[0].cpu().numpy()  # radar_clouds[0].cpu().numpy()
+            radar_frames = radar_frames.to(device)
+            predicted_clouds = apply_layers(model, radar_frames)  # model(radar_frames)
+            first_predicted_cloud = predicted_clouds[0].cpu().numpy()
+            first_lidar_cloud = lidar_frames[0].cpu().numpy()
+            # print('first_radar_cloud', first_radar_cloud.min(), first_radar_cloud.max(), first_radar_cloud.mean())
+            # print('batch', radar_clouds.min(), radar_clouds.max(), radar_clouds.mean())
+            # visualize_polar_image(radar_frames[0], radar_config)
+            # show_radar_pcl(first_radar_cloud)
+            show_occupancy_pcl(first_predicted_cloud)
+            print(first_predicted_cloud[0])
+            print(first_predicted_cloud[1])
+            print(first_predicted_cloud[2])
+            print(first_predicted_cloud[3])
+            # print(first_predicted_cloud[:, 3].max())
+            break
 
 
 if __name__ == '__main__':
