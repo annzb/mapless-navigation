@@ -1,7 +1,6 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from pytorch3d.loss import emd_loss
 
 
 def match_pointclouds(true_xyz, pred_xyz, max_distance=float('inf')):
