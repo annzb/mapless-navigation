@@ -96,11 +96,19 @@ def get_dataset(dataset_file_path, partial=1.0, batch_size=16, shuffle_runs=True
     _, num_azimuth_bins, num_range_bins, num_elevation_bins = radar_frames.shape
     radar_config.set_radar_frame_params(num_azimuth_bins=num_azimuth_bins, num_range_bins=num_range_bins, num_elevation_bins=num_elevation_bins)
 
+    empty_frames = []
+    for i, frame in enumerate(lidar_frames):
+        if len(frame) < 1:
+            empty_frames.append(i)
+    print('total frames', len(lidar_frames), 'empty frames', len(empty_frames))
+    print(empty_frames)
+
     # filter empty clouds
     filtered_indices = [i for i, frame in enumerate(lidar_frames) if len(frame) > 0]
     radar_frames = np.array(radar_frames[filtered_indices])
     lidar_frames = [np.array(lidar_frames[i]) for i in filtered_indices]
     poses = poses[filtered_indices]
+    print('non empty frames', len(filtered_indices))
 
     # reduce dataset
     num_samples = int(len(radar_frames) * partial)
