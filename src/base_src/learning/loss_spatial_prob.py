@@ -51,8 +51,8 @@ class SoftMatchingLoss(nn.Module):
         # Spatial smoothness regularization
         smoothness_loss = self._compute_spatial_smoothness(pred_coords, pred_probs)
 
-        print(f'\nSample stats: pred points {len(pred_probs)}, true points {len(gt_probs)}, pairwise_distances.shape {pairwise_distances.shape}, matching_weights.shape {matching_weights.shape}, spatial_loss {spatial_loss}')
-        print(f'pred_probs_expanded.shape {pred_probs_expanded.shape}, gt_probs_expanded.shape {gt_probs_expanded.shape}, spatial_loss {probability_loss}, smoothness_loss {smoothness_loss}')
+        # print(f'\nSample stats: pred points {len(pred_probs)}, true points {len(gt_probs)}, pairwise_distances.shape {pairwise_distances.shape}, matching_weights.shape {matching_weights.shape}, spatial_loss {spatial_loss}')
+        # print(f'pred_probs_expanded.shape {pred_probs_expanded.shape}, gt_probs_expanded.shape {gt_probs_expanded.shape}, probability_loss {probability_loss}, smoothness_loss {smoothness_loss}')
 
         # Combine losses
         total_loss = self.alpha * spatial_loss + self.beta * probability_loss + self.smoothness_weight * smoothness_loss
