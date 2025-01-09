@@ -126,9 +126,9 @@ class PointNet(nn.Module):
     def __init__(self):
         super(PointNet, self).__init__()
         # PointNet++ MSG backbone
-        self.sa1 = PointNetSetAbstraction(1180, 0.2, 16, 9, [32, 32, 64], False)
-        self.sa2 = PointNetSetAbstraction(295, 0.4, 16, 64 + 3, [64, 64, 128], False)
-        self.sa3 = PointNetSetAbstraction(59, 0.6, 16, 128 + 3, [128, 128, 256], False)
+        self.sa1 = PointNetSetAbstraction(1180, 0.2, 16, 32, [32, 32, 64], False)
+        self.sa2 = PointNetSetAbstraction(590, 0.4, 16, 64 + 3, [64, 64, 128], False)
+        self.sa3 = PointNetSetAbstraction(295, 0.6, 16, 128 + 3, [128, 128, 256], False)
         # self.sa4 = PointNetSetAbstraction(59, 0.8, 16, 256, [256, 256, 512], False)
         # self.fp4 = PointNetFeaturePropagation(768, [256, 256])
         self.fp3 = PointNetFeaturePropagation(384, [256, 256])
@@ -172,7 +172,6 @@ class RadarOccupancyModel(nn.Module):
     def __init__(self, radar_config, radar_point_downsample_rate=0.5, trans_embed_dim=128, trans_num_heads=4, trans_num_layers=2):
         super(RadarOccupancyModel, self).__init__()
         self.num_radar_points = radar_config.num_azimuth_bins * radar_config.num_elevation_bins * radar_config.num_range_bins
-        # print('self.num_radar_points', self.num_radar_points)
         self.radar_config = radar_config
 
         embed_dim = radar_config.num_elevation_bins
@@ -181,12 +180,8 @@ class RadarOccupancyModel(nn.Module):
         encoder = nn.TransformerEncoderLayer(d_model=embed_dim, nhead=num_heads)
         self.transformer = nn.TransformerEncoder(encoder, num_layers=num_layers)
 
-        # self.sft = SphericalFourierTransform(radar_config.num_azimuth_bins, radar_config.num_elevation_bins)
         self.polar_to_cartesian = PolarToCartesian(radar_config)
         self.down = Downsampling(input_channels=4, output_channels_rate=2, point_reduction_rate=4, pool_size=2, num_layers=3, padding=1)
-        # self.transformer = CrossAttentionTransformer(trans_embed_dim, trans_num_heads, trans_num_layers)
-        # self.radar_downsample_1 = TrainedDropout(self.num_radar_points, radar_point_downsample_rate)
-        # self.radar_downsample_2 = TrainedDropout(int(self.num_radar_points * (1 - radar_point_downsample_rate)), radar_point_downsample_rate)
         self.pointnet = PointNet()
 
     def forward(self, polar_frames):
@@ -207,7 +202,7 @@ class RadarOccupancyModel(nn.Module):
         # [B, 151040, 4]
         print('cartesian_points shape:', cartesian_points.shape)
         less_points = self.down(cartesian_points)
-        # [B, 9440, 9]
+        # [B, 2360, 32]
         print('less_points shape:', less_points.shape)
 
         log_odds = self.pointnet(less_points)
