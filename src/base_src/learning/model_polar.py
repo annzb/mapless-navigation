@@ -131,7 +131,7 @@ class PointNet(nn.Module):
         self.sa3 = PointNetSetAbstraction(295, 0.6, 16, 128 + 3, [128, 128, 256], False)
         # self.sa4 = PointNetSetAbstraction(59, 0.8, 16, 256, [256, 256, 512], False)
         # self.fp4 = PointNetFeaturePropagation(768, [256, 256])
-        self.fp3 = PointNetFeaturePropagation(512, [256, 256])
+        self.fp3 = PointNetFeaturePropagation(384, [256, 256])
         self.fp2 = PointNetFeaturePropagation(256, [256, 128])
         self.fp1 = PointNetFeaturePropagation(128, [128, 128, 128])
 
