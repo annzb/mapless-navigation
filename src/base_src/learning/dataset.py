@@ -48,7 +48,12 @@ def process_radar_frames(radar_frames, intensity_mean=None, intensity_std=None):
 
 def process_lidar_frames(lidar_frames):
     for i in range(len(lidar_frames)):
+        if len(lidar_frames[i] < 1):
+            print('WARNING: lidar frame', i, 'has no points')
+        # print(f'lidar_frames[{i}]', lidar_frames[i].shape, lidar_frames[i].min(), lidar_frames[i].mean(), lidar_frames[i].max())
+        # print(f'lidar_frames[{i}][..., 3]', lidar_frames[i][..., 3].shape, lidar_frames[i][..., 3].min(), lidar_frames[i][..., 3].mean(), lidar_frames[i][..., 3].max())
         lidar_frames[i][..., 3] = 1 / (1 + np.exp(-lidar_frames[i][..., 3]))
+        # print(f'lidar_frames[{i}][..., 3]', lidar_frames[i][..., 3].shape, lidar_frames[i][..., 3].min(), lidar_frames[i][..., 3].mean(), lidar_frames[i][..., 3].max())
     return lidar_frames
 
 

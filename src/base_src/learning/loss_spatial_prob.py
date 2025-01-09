@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from pytorch3d.loss import emd_loss
 
 
 def match_pointclouds(true_xyz, pred_xyz, max_distance=float('inf')):
@@ -92,7 +93,7 @@ class SpatialProbLoss(nn.Module):
             spatial_error += matched_distances.mean()
             prob_error += F.mse_loss(true_probs[matched_true_idx], pred_probs[matched_pred_idx])
         loss = torch.tensor(spatial_error + prob_error, device=pred_cloud.device, requires_grad=True)
-        print(f'True points {true_xyz.size(0)}, matched {matched_true_idx.numel()}, spatial_error {spatial_error}, prob_error {prob_error}, loss {loss.item()}')
+        # print(f'True points {true_xyz.size(0)}, matched {matched_true_idx.numel()}, spatial_error {spatial_error}, prob_error {prob_error}, loss {loss.item()}')
         return loss
 
 
@@ -164,3 +165,44 @@ def test_match_pointclouds():
 
 if __name__ == '__main__':
     test_match_pointclouds()
+
+
+"""
+1) 0 gt points?
+2) bad point matching
+3) loss shouldn't depend on the number of true points (need more averaging)
+
+True points 2630, matched 21, spatial_error 26090.669921875, prob_error 2609.046630859375, loss 28699.716796875
+True points 1725, matched 4, spatial_error 17210.92578125, prob_error 1721.0487060546875, loss 18931.974609375
+True points 2619, matched 21, spatial_error 25980.6796875, prob_error 2598.048828125, loss 28578.728515625
+True points 1907, matched 0, spatial_error 19070.0, prob_error 1907.0, loss 20977.0
+True points 2539, matched 0, spatial_error 25390.0, prob_error 2539.0, loss 27929.0
+True points 79, matched 0, spatial_error 790.0, prob_error 79.0, loss 869.0
+True points 2305, matched 0, spatial_error 23050.0, prob_error 2305.0, loss 25355.0
+True points 2628, matched 21, spatial_error 26070.677734375, prob_error 2607.0419921875, loss 28677.71875
+True points 199, matched 0, spatial_error 1990.0, prob_error 199.0, loss 2189.0
+True points 5, matched 0, spatial_error 50.0, prob_error 5.0, loss 55.0
+True points 1115, matched 16, spatial_error 10990.677734375, prob_error 1099.05712890625, loss 12089.734375
+True points 302, matched 0, spatial_error 3020.0, prob_error 302.0, loss 3322.0
+True points 1721, matched 0, spatial_error 17210.0, prob_error 1721.0, loss 18931.0
+True points 2658, matched 5, spatial_error 26530.759765625, prob_error 2653.062255859375, loss 29183.822265625
+True points 1864, matched 0, spatial_error 18640.0, prob_error 1864.0, loss 20504.0
+True points 1948, matched 0, spatial_error 19480.0, prob_error 1948.0, loss 21428.0
+True points 2621, matched 21, spatial_error 26000.677734375, prob_error 2600.049072265625, loss 28600.7265625
+True points 24, matched 0, spatial_error 240.0, prob_error 24.0, loss 264.0
+True points 2628, matched 21, spatial_error 26070.68359375, prob_error 2607.0546875, loss 28677.73828125
+True points 861, matched 0, spatial_error 8610.0, prob_error 861.0, loss 9471.0
+True points 1303, matched 0, spatial_error 13030.0, prob_error 1303.0, loss 14333.0
+True points 138, matched 0, spatial_error 1380.0, prob_error 138.0, loss 1518.0
+True points 2624, matched 21, spatial_error 26030.67578125, prob_error 2603.034912109375, loss 28633.7109375
+True points 1444, matched 0, spatial_error 14440.0, prob_error 1444.0, loss 15884.0
+True points 1948, matched 0, spatial_error 19480.0, prob_error 1948.0, loss 21428.0
+True points 1688, matched 9, spatial_error 16790.900390625, prob_error 1679.0498046875, loss 18469.94921875
+True points 18, matched 0, spatial_error 180.0, prob_error 18.0, loss 198.0
+True points 1774, matched 50, spatial_error 17240.6328125, prob_error 1724.07177734375, loss 18964.705078125
+True points 1623, matched 0, spatial_error 16230.0, prob_error 1623.0, loss 17853.0
+True points 2272, matched 12, spatial_error 22600.81640625, prob_error 2260.05615234375, loss 24860.873046875
+True points 1512, matched 0, spatial_error 15120.0, prob_error 1512.0, loss 16632.0
+True points 2528, matched 19, spatial_error 25090.68359375, prob_error 2509.033203125, loss 27599.716796875
+True points 1522, matched 13, spatial_error 15090.873046875, prob_error 1509.0450439453125, loss 16599.9179687
+"""

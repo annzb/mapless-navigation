@@ -241,14 +241,20 @@ class RadarOccupancyModel(nn.Module):
 
     def forward(self, polar_frames):
         batch_size = polar_frames.shape[0]
-
+        print('input shape:', polar_frames.shape)
         reshaped_frames = polar_frames.view(batch_size, self.radar_config.num_azimuth_bins * self.radar_config.num_range_bins, self.radar_config.num_elevation_bins)
+        print('view shape:', reshaped_frames.shape)
         transformed_frames = self.transformer(reshaped_frames)
+        print('transformed_frames shape:', transformed_frames.shape)
         transformed_frames = transformed_frames.view(batch_size, self.radar_config.num_azimuth_bins, self.radar_config.num_range_bins, self.radar_config.num_elevation_bins)
+        print('transformed_frames view shape:', transformed_frames.shape)
 
         cartesian_points = self.polar_to_cartesian(transformed_frames)
+        print('cartesian_points shape:', cartesian_points.shape)
         less_points = self.down(cartesian_points)
+        print('less_points shape:', less_points.shape)
 
         log_odds = self.pointnet(less_points)
+        print('output shape:', log_odds.shape)
         probabilities = torch.sigmoid(log_odds)
         return probabilities
