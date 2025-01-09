@@ -92,7 +92,7 @@ class PolarToCartesian(nn.Module):
 
 
 class Downsampling(nn.Module):
-    def __init__(self, input_channels, output_channels_rate=1.0, point_reduction_rate=2, pool_size=2, num_layers=2):
+    def __init__(self, input_channels, output_channels_rate=1.0, point_reduction_rate=2, pool_size=2, num_layers=2, padding=0):
         """
         Args:
             input_channels: Number of input feature channels (e.g., 4 for [x, y, z, intensity]).
@@ -109,7 +109,7 @@ class Downsampling(nn.Module):
         in_channels = input_channels
         for _ in range(num_layers):
             output_channels = int(in_channels * output_channels_rate)
-            layers.append(nn.Conv1d(in_channels, output_channels, kernel_size=kernel_size, stride=stride, padding=0))
+            layers.append(nn.Conv1d(in_channels, output_channels, kernel_size=kernel_size, stride=stride, padding=padding))
             layers.append(nn.ReLU())
             layers.append(nn.MaxPool1d(pool_size))
             in_channels = output_channels
@@ -183,7 +183,7 @@ class RadarOccupancyModel(nn.Module):
 
         # self.sft = SphericalFourierTransform(radar_config.num_azimuth_bins, radar_config.num_elevation_bins)
         self.polar_to_cartesian = PolarToCartesian(radar_config)
-        self.down = Downsampling(input_channels=4, output_channels_rate=2, point_reduction_rate=4, pool_size=2, num_layers=2)
+        self.down = Downsampling(input_channels=4, output_channels_rate=2, point_reduction_rate=4, pool_size=2, num_layers=3, padding=1)
         # self.transformer = CrossAttentionTransformer(trans_embed_dim, trans_num_heads, trans_num_layers)
         # self.radar_downsample_1 = TrainedDropout(self.num_radar_points, radar_point_downsample_rate)
         # self.radar_downsample_2 = TrainedDropout(int(self.num_radar_points * (1 - radar_point_downsample_rate)), radar_point_downsample_rate)
