@@ -3,6 +3,82 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 
+class SoftMatchingLossScaled(nn.Module):
+    def __init__(self, alpha=1.0, beta=1.0, matching_temperature=1, distance_threshold=1.0):
+        """
+        Initializes the loss function.
+
+        Args:
+            alpha (float): Weight for the spatial loss term.
+            beta (float): Weight for the probability loss term.
+            matching_temperature (float): Scaling factor for sharper matching.
+            distance_threshold (float): Maximum allowable distance for a match.
+        """
+        super(SoftMatchingLossScaled, self).__init__()
+        self.alpha = alpha
+        self.beta = beta
+        self.temperature = matching_temperature
+        self.distance_threshold = distance_threshold
+
+    def forward(self, predicted_points, ground_truth_points):
+        """
+        Computes the loss.
+
+        Args:
+            predicted_points (torch.Tensor): Predicted point cloud with shape [N, 4] ([x, y, z, prob]).
+            ground_truth_points (torch.Tensor): Ground truth point cloud with shape [M, 4].
+
+        Returns:
+            torch.Tensor: Combined loss value.
+        """
+        pred_coords = predicted_points[:, :3]  # [N, 3]
+        pred_probs = predicted_points[:, 3]  # [N]
+        gt_coords = ground_truth_points[:, :3]  # [M, 3]
+        gt_probs = ground_truth_points[:, 3]  # [M]
+
+        # Handle empty tensors
+        if pred_coords.size(0) == 0 or gt_coords.size(0) == 0:
+            print("Warning: Empty predicted or ground truth coordinates.")
+            return torch.tensor(float('inf'), requires_grad=True)  # Return large loss for empty inputs
+
+        # Compute pairwise distances
+        pairwise_distances = torch.cdist(gt_coords, pred_coords, p=2)
+        valid_matches = pairwise_distances < self.distance_threshold
+        if (valid_matches.sum() == 0):
+            print("Warning: No valid matches found.")
+            return torch.tensor(1e6, requires_grad=True)  # Large fallback loss
+        pairwise_distances[~valid_matches] = 1e6  # Ignore distances above threshold
+
+        # Softmax with temperature
+        matching_weights_gt_to_pred = torch.softmax(-pairwise_distances / self.temperature, dim=-1)
+        matching_weights_pred_to_gt = torch.softmax(-pairwise_distances.t() / self.temperature, dim=-1)
+
+        # Spatial loss: Bidirectional weighted squared distances
+        spatial_loss_gt_to_pred = (
+            torch.sum(matching_weights_gt_to_pred * pairwise_distances.pow(2), dim=-1)
+            .mean() if matching_weights_gt_to_pred.numel() > 0 else torch.tensor(0.0, device=pairwise_distances.device)
+        )
+        spatial_loss_pred_to_gt = (
+            torch.sum(matching_weights_pred_to_gt * pairwise_distances.t().pow(2), dim=-1)
+            .mean() if matching_weights_pred_to_gt.numel() > 0 else torch.tensor(0.0, device=pairwise_distances.device)
+        )
+        spatial_loss = (spatial_loss_gt_to_pred + spatial_loss_pred_to_gt) / 2
+
+        # Probability loss: Bidirectional weighted mean squared error
+        pred_probs_expanded = pred_probs.unsqueeze(0).expand_as(matching_weights_gt_to_pred)
+        gt_probs_expanded = gt_probs.unsqueeze(1).expand_as(matching_weights_gt_to_pred)
+        probability_loss_gt_to_pred = torch.sum(matching_weights_gt_to_pred * (pred_probs_expanded - gt_probs_expanded).pow(2), dim=-1).mean()
+        pred_probs_expanded_t = pred_probs.unsqueeze(1).expand_as(matching_weights_pred_to_gt)
+        gt_probs_expanded_t = gt_probs.unsqueeze(0).expand_as(matching_weights_pred_to_gt)
+        probability_loss_pred_to_gt = torch.sum(matching_weights_pred_to_gt * (pred_probs_expanded_t - gt_probs_expanded_t).pow(2), dim=-1).mean()
+        probability_loss = (probability_loss_gt_to_pred + probability_loss_pred_to_gt) / 2
+
+        total_loss = self.alpha * spatial_loss + self.beta * probability_loss
+        if total_loss.isnan():
+            raise RuntimeError('Loss is NaN.')
+        return total_loss
+
+
 class SoftMatchingLoss(nn.Module):
     def __init__(self, alpha=1.0, beta=1.0, smoothness_weight=0.1):
         """
@@ -55,7 +131,9 @@ class SoftMatchingLoss(nn.Module):
         # print(f'pred_probs_expanded.shape {pred_probs_expanded.shape}, gt_probs_expanded.shape {gt_probs_expanded.shape}, probability_loss {probability_loss}, smoothness_loss {smoothness_loss}')
 
         # Combine losses
-        total_loss = self.alpha * spatial_loss + self.beta * probability_loss + self.smoothness_weight * smoothness_loss
+        total_loss = self.alpha * spatial_loss + self.beta * probability_loss # + self.smoothness_weight * smoothness_loss
+        print('spatial_loss', spatial_loss)
+        print('probability_loss', probability_loss)
         if total_loss.isnan():
             raise RuntimeError('Loss is NaN.')
         return total_loss

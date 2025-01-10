@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from torch_geometric.nn import fps
 from Pointnet_Pointnet2_pytorch.models.pointnet2_utils import PointNetSetAbstraction, PointNetFeaturePropagation
 
 
@@ -169,10 +170,11 @@ class PointNet(nn.Module):
 
 
 class RadarOccupancyModel(nn.Module):
-    def __init__(self, radar_config, radar_point_downsample_rate=0.5, trans_embed_dim=128, trans_num_heads=4, trans_num_layers=2):
+    def __init__(self, radar_config, occupancy_threshold=0.5, radar_point_downsample_rate=0.5, trans_embed_dim=128, trans_num_heads=4, trans_num_layers=2):
         super(RadarOccupancyModel, self).__init__()
         self.num_radar_points = radar_config.num_azimuth_bins * radar_config.num_elevation_bins * radar_config.num_range_bins
         self.radar_config = radar_config
+        self.occupancy_threshold = occupancy_threshold
 
         embed_dim = radar_config.num_elevation_bins
         num_heads = embed_dim // 2
@@ -218,4 +220,92 @@ class RadarOccupancyModel(nn.Module):
         probs = pcl_batch[..., 3]
         probs = torch.sigmoid(probs)
         probabilities = torch.cat((coords, probs.unsqueeze(-1)), dim=-1)
+        return probabilities
+
+    def filter_probs(self, cloud):
+        return cloud[cloud[:, 3] >= self.occupancy_threshold]
+
+
+class AdaptiveDownsampling(nn.Module):
+    def __init__(self, ratio=0.5):
+        super(AdaptiveDownsampling, self).__init__()
+        self.ratio = ratio
+
+    def forward(self, points, features):
+        """
+        Downsample points using farthest point sampling (FPS).
+        Args:
+            points: [B, N, 3] - Point cloud coordinates.
+            features: [B, N, C] - Point cloud features.
+        Returns:
+            downsampled_points, downsampled_features
+        """
+        batch_size, num_points, _ = points.shape
+        idx = fps(points.view(-1, 3), batch=torch.arange(batch_size, device=points.device).repeat_interleave(num_points), ratio=self.ratio)
+        idx = idx.view(batch_size, -1)
+        downsampled_points = torch.gather(points, 1, idx.unsqueeze(-1).expand(-1, -1, 3))
+        downsampled_features = torch.gather(features, 1, idx.unsqueeze(-1).expand(-1, -1, features.shape[-1]))
+        return downsampled_points, downsampled_features
+
+
+class PointNet2(nn.Module):
+    def __init__(self):
+        super(PointNet2, self).__init__()
+        # PointNet++ MSG backbone
+        self.sa1 = PointNetSetAbstraction(1180, 0.2, 16, 32, [32, 32, 64], False)
+        self.sa2 = PointNetSetAbstraction(590, 0.4, 16, 64 + 3, [64, 64, 128], False)
+        self.sa3 = PointNetSetAbstraction(295, 0.6, 16, 128 + 3, [128, 128, 256], False)
+        self.fp3 = PointNetFeaturePropagation(384, [256, 256])
+        self.fp2 = PointNetFeaturePropagation(320, [256, 128])
+        self.fp1 = PointNetFeaturePropagation(128, [128, 128, 128])
+
+        # Global context pooling
+        self.global_pool = nn.AdaptiveAvgPool1d(1)
+
+        # Prediction layers
+        self.conv1 = nn.Conv1d(256, 128, 1)
+        self.bn1 = nn.BatchNorm1d(128)
+        self.drop1 = nn.Dropout(0.5)
+        self.conv2 = nn.Conv1d(128, 1, 1)  # Single channel for log odds
+
+    def forward(self, points, features):
+        xyz = points.permute(0, 2, 1)  # [B, 3, N_points]
+        features = features.permute(0, 2, 1)  # [B, n_features, N_points]
+
+        l0_xyz, l0_points = xyz, features
+        l1_xyz, l1_points = self.sa1(l0_xyz, l0_points)
+        l2_xyz, l2_points = self.sa2(l1_xyz, l1_points)
+        l3_xyz, l3_points = self.sa3(l2_xyz, l2_points)
+
+        l2_points = self.fp3(l2_xyz, l3_xyz, l2_points, l3_points)
+        l1_points = self.fp2(l1_xyz, l2_xyz, l1_points, l2_points)
+        l0_points = self.fp1(l0_xyz, l1_xyz, None, l1_points)
+
+        # Incorporate global context
+        global_context = self.global_pool(l0_points).expand_as(l0_points)
+        combined_features = torch.cat((l0_points, global_context), dim=1)
+
+        x = self.drop1(F.relu(self.bn1(self.conv1(combined_features))))
+        log_odds = self.conv2(x)  # [B, 1, N_points]
+        log_odds = log_odds.permute(0, 2, 1)  # [B, N_points, 1]
+        return log_odds
+
+
+class RadarOccupancyModel2(RadarOccupancyModel):
+    def __init__(self, *args, **kwargs):
+        super(RadarOccupancyModel, self).__init__(*args, **kwargs)
+        self.adaptive_down = AdaptiveDownsampling(ratio=0.5)
+        self.pointnet = PointNet2()
+        self.name = 'cart+adown+pointnet_v1.0'
+
+    def forward(self, polar_frames):
+        cartesian_points = self.polar_to_cartesian(polar_frames)  # [B, N, 4]
+        points = cartesian_points[..., :3]  # [B, N, 3]
+        features = cartesian_points[..., 3:]  # [B, N, 1]
+
+        downsampled_points, downsampled_features = self.adaptive_down(points, features)
+        print('downsampled_points, downsampled_features', downsampled_points.shape, downsampled_features.shape)
+        log_odds = self.pointnet(downsampled_points, downsampled_features)
+        print('log_odds', log_odds.shape)
+        probabilities = self.apply_sigmoid(log_odds)
         return probabilities

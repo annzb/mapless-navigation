@@ -76,7 +76,7 @@ def custom_collate_fn(batch):
     return radar_frames, lidar_frames, poses
 
 
-def get_dataset(dataset_file_path, partial=1.0, batch_size=16, shuffle_runs=True, random_state=42):
+def get_dataset(dataset_file_path, partial=1.0, batch_size=16, shuffle_runs=True, random_state=42, occupancy_threshold=0.0):
     data_dict, radar_config = read_h5_dataset(dataset_file_path)
     radar_frames = data_dict['cascade_heatmaps']
     lidar_frames = data_dict['lidar_map_frames']
@@ -91,19 +91,12 @@ def get_dataset(dataset_file_path, partial=1.0, batch_size=16, shuffle_runs=True
     _, num_azimuth_bins, num_range_bins, num_elevation_bins = radar_frames.shape
     radar_config.set_radar_frame_params(num_azimuth_bins=num_azimuth_bins, num_range_bins=num_range_bins, num_elevation_bins=num_elevation_bins)
 
-    empty_frames = []
-    for i, frame in enumerate(lidar_frames):
-        if len(frame) < 1:
-            empty_frames.append(i)
-    # print('total frames', len(lidar_frames), 'empty frames', len(empty_frames))
-    # print(empty_frames)
-
     # filter empty clouds
-    filtered_indices = [i for i, frame in enumerate(lidar_frames) if len(frame) > 0]
+    filtered_indices = [i for i, frame in enumerate(lidar_frames) if len(frame) > 0 and any(frame[:, 3] >= occupancy_threshold)]
+    print(f'Filtered {len(radar_frames) - len(filtered_indices)} empty frames out of {len(radar_frames)}.')
     radar_frames = np.array(radar_frames[filtered_indices])
     lidar_frames = [lidar_frames[i] for i in filtered_indices]
     poses = poses[filtered_indices]
-    # print('non empty frames', len(filtered_indices), len(lidar_frames))
 
     # reduce dataset
     num_samples = int(len(radar_frames) * partial)
@@ -132,4 +125,3 @@ def get_dataset(dataset_file_path, partial=1.0, batch_size=16, shuffle_runs=True
     test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False, collate_fn=custom_collate_fn)
 
     return train_loader, val_loader, test_loader, radar_config
-

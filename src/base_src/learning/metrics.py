@@ -55,18 +55,18 @@ class WeightedChamfer:
             float: Weighted Chamfer distance.
         """
         pred_coords = predicted_points[:, :3]
+        pred_probs = ground_truth_points[:, 3]
         gt_coords = ground_truth_points[:, :3]
         gt_probs = ground_truth_points[:, 3]
         pairwise_distances = torch.cdist(pred_coords.unsqueeze(0), gt_coords.unsqueeze(0), p=2).squeeze(0)
 
         # Forward Chamfer Distance (Predicted -> Ground Truth)
-        # forward_distances, forward_indices = pairwise_distances.min(dim=1)
-        # forward_weights = pred_probs
-        # forward_chamfer = torch.sum(forward_weights * forward_distances ** 2) / torch.sum(forward_weights)
+        forward_distances, forward_indices = pairwise_distances.min(dim=1)
+        forward_chamfer = torch.sum(pred_probs * forward_distances ** 2) / torch.sum(pred_probs)
 
         # Backward Chamfer Distance (Ground Truth -> Predicted)
         backward_distances, backward_indices = pairwise_distances.min(dim=0)
         backward_chamfer = torch.sum(gt_probs * backward_distances ** 2) / torch.sum(gt_probs)
 
-        total_chamfer = backward_chamfer  # + forward_chamfer
+        total_chamfer = backward_chamfer + forward_chamfer
         return total_chamfer.item()

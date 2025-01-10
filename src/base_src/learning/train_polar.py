@@ -5,8 +5,8 @@ import wandb
 
 import metrics as metric_defs
 from dataset import get_dataset
-from loss_spatial_prob import SpatialProbLoss, SoftMatchingLoss
-from model_polar import RadarOccupancyModel
+from loss_spatial_prob import SoftMatchingLossScaled
+from model_polar import RadarOccupancyModel2
 
 
 def train(model, optimizer, loss_fn, train_loader, val_loader, device, num_epochs=10, save_path="best_model.pth", metrics=tuple()):
@@ -29,9 +29,11 @@ def train(model, optimizer, loss_fn, train_loader, val_loader, device, num_epoch
 
             batch_loss = 0.0
             for pred_cloud, true_cloud in zip(pred_probabilities, lidar_frames):
-                batch_loss += loss_fn(pred_cloud, true_cloud)
+                pred_cloud_filtered = model.filter_probs(pred_cloud)
+                true_cloud_filtered = model.filter_probs(true_cloud)
+                batch_loss += loss_fn(pred_cloud_filtered, true_cloud_filtered)
                 for metric_name, metric_data in train_scores.items():
-                    train_scores[metric_name]['value'] += metric_data['func'](pred_cloud, true_cloud)
+                    train_scores[metric_name]['value'] += metric_data['func'](pred_cloud_filtered, true_cloud_filtered)
                 # train_iou += metrics.iou(pred_cloud, true_cloud)
                 # train_chamfer += metrics.weighted_chamfer(pred_cloud, true_cloud)
             train_loss += batch_loss.item()
@@ -62,9 +64,11 @@ def train(model, optimizer, loss_fn, train_loader, val_loader, device, num_epoch
                 pred_probabilities = model(radar_frames)
 
                 for pred_cloud, true_cloud in zip(pred_probabilities, lidar_frames):
-                    val_loss += loss_fn(pred_cloud, true_cloud).item()
+                    pred_cloud_filtered = model.filter_probs(pred_cloud)
+                    true_cloud_filtered = model.filter_probs(true_cloud)
+                    val_loss += loss_fn(pred_cloud_filtered, true_cloud_filtered).item()
                     for metric_name, metric_data in val_scores.items():
-                        val_scores[metric_name]['value'] += metric_data['func'](pred_cloud, true_cloud)
+                        val_scores[metric_name]['value'] += metric_data['func'](pred_cloud_filtered, true_cloud_filtered)
                     # val_iou += metrics.iou(pred_cloud, true_cloud)
                     # val_chamfer += metrics.weighted_chamfer(pred_cloud, true_cloud)
 
@@ -101,9 +105,11 @@ def evaluate(model, test_loader, device, loss_fn, metrics=tuple()):
             pred_probabilities = model(radar_frames)
 
             for pred_cloud, true_cloud in zip(pred_probabilities, lidar_frames):
-                test_loss += loss_fn(pred_cloud, true_cloud).item()
+                pred_cloud_filtered = model.filter_probs(pred_cloud)
+                true_cloud_filtered = model.filter_probs(true_cloud)
+                test_loss += loss_fn(pred_cloud_filtered, true_cloud_filtered).item()
                 for metric_name, metric_data in test_scores.items():
-                    test_scores[metric_name]['value'] += metric_data['func'](pred_cloud, true_cloud)
+                    test_scores[metric_name]['value'] += metric_data['func'](pred_cloud_filtered, true_cloud_filtered)
                 # test_iou += metrics.iou(pred_cloud, true_cloud)
                 # test_chamfer += metrics.weighted_chamfer(pred_cloud, true_cloud)
 
@@ -123,12 +129,12 @@ def main():
     OCCUPANCY_THRESHOLD = 0.6
     POINT_MATCH_RADIUS = 0.2
     BATCH_SIZE = 4
-    N_EPOCHS = 100
+    N_EPOCHS = 10
     DATASET_PART = 1.0
     LEARNING_RATE = 0.01
     loss_spatial_weight = 1.0
     loss_probability_weight = 1.0
-    loss_smoothness_weight = 0.1
+    loss_matching_temperature = 0.2
     model_save_path = "best_model.pth"
 
     if os.path.isdir('/media/giantdrive'):
@@ -137,14 +143,13 @@ def main():
     else:
         dataset_path = '/home/arpg/projects/coloradar_plus_processing_tools/coloradar_plus_processing_tools/dataset2.h5'
         device_name = 'cuda'
-    train_loader, val_loader, test_loader, radar_config = get_dataset(dataset_path, batch_size=BATCH_SIZE,  partial=DATASET_PART)
-    model = RadarOccupancyModel(radar_config)
+    train_loader, val_loader, test_loader, radar_config = get_dataset(dataset_path, batch_size=BATCH_SIZE,  partial=DATASET_PART, occupancy_threshold=OCCUPANCY_THRESHOLD)
+    model = RadarOccupancyModel2(radar_config, occupancy_threshold=OCCUPANCY_THRESHOLD)
     device = torch.device(device_name if torch.cuda.is_available() else "cpu")
     print('\ndevice', device)
     model.to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr=LEARNING_RATE)
-    loss_fn = SoftMatchingLoss()
-    # loss_fn = SpatialProbLoss(occupancy_threshold=OCCUPANCY_THRESHOLD, point_match_radius=POINT_MATCH_RADIUS)
+    loss_fn = SoftMatchingLossScaled(alpha=loss_spatial_weight, beta=loss_probability_weight, matching_temperature=loss_matching_temperature, distance_threshold=POINT_MATCH_RADIUS)
     metrics = (
         metric_defs.IoU(max_point_distance=POINT_MATCH_RADIUS, probability_threshold=OCCUPANCY_THRESHOLD),
         metric_defs.WeightedChamfer()
@@ -159,11 +164,13 @@ def main():
             "epochs": N_EPOCHS,
             "dataset_part": DATASET_PART,
             "batch_size": BATCH_SIZE,
+            "occupancy_threshold": OCCUPANCY_THRESHOLD,
+            "point_match_radius": POINT_MATCH_RADIUS,
             "loss": {
                 "name": loss_fn.__class__.__name__,
                 "spatial_weight": loss_spatial_weight,
                 "probability_weight": loss_probability_weight,
-                "smoothness_weight": loss_smoothness_weight
+                "matching_temperature": loss_matching_temperature
             }
         }
     )
