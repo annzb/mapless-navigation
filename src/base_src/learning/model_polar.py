@@ -243,9 +243,11 @@ class AdaptiveDownsampling(nn.Module):
         batch_size, num_points, _ = points.shape
         idx = fps(points.view(-1, 3), batch=torch.arange(batch_size, device=points.device).repeat_interleave(num_points), ratio=self.ratio)
         idx = idx.view(batch_size, -1)
-        print("points shape:", points.shape)
+        print('num_points', num_points)
+        print("points shape:", points.view(-1, 3).shape)
         print("idx shape:", idx.shape)
         print("Expanded idx shape:", idx.unsqueeze(-1).expand(-1, -1, 3).shape)
+        print('idx', idx[:10])
         print("idx.min():", idx.min().item(), "idx.max():", idx.max().item())
         assert idx.min() >= 0, "Error: Negative index in idx."
         assert idx.max() < points.size(
