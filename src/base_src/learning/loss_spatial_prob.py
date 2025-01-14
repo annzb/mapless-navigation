@@ -57,7 +57,8 @@ class SoftMatchingLossScaled(nn.Module):
             matching_weights_pred_to_gt * (pred_probs_expanded_t - gt_probs_expanded_t).pow(2), dim=-1
         ).mean()
         probability_loss = (probability_loss_gt_to_pred + probability_loss_pred_to_gt) / 2
-        print('spatial loss', spatial_loss.item(), 'probability loss', probability_loss.item())
+
+        # print('spatial loss', spatial_loss.item(), 'probability loss', probability_loss.item())
         total_loss = self.alpha * spatial_loss + self.beta * probability_loss
         if total_loss.isnan():
             raise RuntimeError('Loss is NaN.')

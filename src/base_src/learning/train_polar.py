@@ -124,10 +124,10 @@ def main():
     OCCUPANCY_THRESHOLD = 0.6
     POINT_MATCH_RADIUS = 0.5
     BATCH_SIZE = 4
-    N_EPOCHS = 100
-    DATASET_PART = 0.1
+    N_EPOCHS = 10
+    DATASET_PART = 1.0
     LEARNING_RATE = 0.01
-    loss_spatial_weight = 1.0
+    loss_spatial_weight = 0.5
     loss_probability_weight = 1.0
     loss_matching_temperature = 0.2
     model_save_path = "best_model.pth"
