@@ -294,7 +294,7 @@ class PointNet2(nn.Module):
 class RadarOccupancyModel2(RadarOccupancyModel):
     def __init__(self, *args, **kwargs):
         super(RadarOccupancyModel2, self).__init__(*args, **kwargs)
-        self.adaptive_down = AdaptiveDownsampling(ratio=0.02)
+        self.adaptive_down = AdaptiveDownsampling(ratio=0.025)
         self.pointnet = PointNet2()
         self.name = 'cart+adown+pointnet_v1.0'
 
