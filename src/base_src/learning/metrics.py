@@ -62,6 +62,8 @@ class WeightedChamfer:
 
         # Forward Chamfer Distance (Predicted -> Ground Truth)
         forward_distances, forward_indices = pairwise_distances.min(dim=1)
+        print('pred_probs', pred_probs.shape)
+        print('forward_distances', forward_distances.shape)
         forward_chamfer = torch.sum(pred_probs * forward_distances ** 2) / torch.sum(pred_probs)
 
         # Backward Chamfer Distance (Ground Truth -> Predicted)
