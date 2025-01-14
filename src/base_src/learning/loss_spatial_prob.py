@@ -26,8 +26,8 @@ class SoftMatchingLossScaled(nn.Module):
         pairwise_distances = torch.cdist(gt_coords, pred_coords, p=2)
         valid_matches = pairwise_distances <= self.distance_threshold
         if valid_matches.sum() == 0:
-            return predicted_points.new_tensor(1e4, requires_grad=True)
-        pairwise_distances = pairwise_distances.masked_fill(~valid_matches, 1e4)  # Avoid in-place operation
+            return predicted_points.new_tensor(self.big_dist, requires_grad=True)
+        pairwise_distances = pairwise_distances.masked_fill(~valid_matches, self.big_dist)  # Avoid in-place operation
 
         # Softmax with temperature
         matching_weights_gt_to_pred = torch.softmax(-pairwise_distances / self.temperature, dim=-1)
