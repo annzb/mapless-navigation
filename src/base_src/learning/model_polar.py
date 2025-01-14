@@ -2,6 +2,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch_geometric.nn import fps
+
+import radar_config
 from Pointnet_Pointnet2_pytorch.models.pointnet2_utils import PointNetSetAbstraction, PointNetFeaturePropagation
 
 
@@ -20,22 +22,22 @@ class SphericalFourierTransform(nn.Module):
         # return torch.cat((polar_frames, magnitude), dim=-1)
 
 
-class TrainedDropout(nn.Module):
-    def __init__(self, num_points, retain_fraction=0.5):
-        super(TrainedDropout, self).__init__()
-        self.retain_fraction = retain_fraction
-        self.dropout_weights = nn.Parameter(torch.full((num_points,), 0.5))
-
-    def forward(self, points):
-        batch_size, num_points, _ = points.shape
-        probabilities = torch.sigmoid(self.dropout_weights)
-        num_retain = int(num_points * self.retain_fraction)
-        _, indices = torch.topk(probabilities, num_retain, largest=True, sorted=False)
-        keep_mask = torch.zeros(batch_size, num_points, device=points.device)
-        keep_mask[:, indices] = 1
-        keep_mask = keep_mask.bool()
-        downsampled_points = points[keep_mask].view(batch_size, num_retain, -1)  # Reshape to [B, num_retain, 4]
-        return downsampled_points
+# class TrainedDropout(nn.Module):
+#     def __init__(self, num_points, retain_fraction=0.5):
+#         super(TrainedDropout, self).__init__()
+#         self.retain_fraction = retain_fraction
+#         self.dropout_weights = nn.Parameter(torch.full((num_points,), 0.5))
+#
+#     def forward(self, points):
+#         batch_size, num_points, _ = points.shape
+#         probabilities = torch.sigmoid(self.dropout_weights)
+#         num_retain = int(num_points * self.retain_fraction)
+#         _, indices = torch.topk(probabilities, num_retain, largest=True, sorted=False)
+#         keep_mask = torch.zeros(batch_size, num_points, device=points.device)
+#         keep_mask[:, indices] = 1
+#         keep_mask = keep_mask.bool()
+#         downsampled_points = points[keep_mask].view(batch_size, num_retain, -1)  # Reshape to [B, num_retain, 4]
+#         return downsampled_points
 
 
 class PolarToCartesian(nn.Module):
@@ -226,41 +228,6 @@ class RadarOccupancyModel(nn.Module):
         return cloud[cloud[:, 3] >= self.occupancy_threshold]
 
 
-# class AdaptiveDownsampling(nn.Module):
-#     def __init__(self, ratio=0.5):
-#         super(AdaptiveDownsampling, self).__init__()
-#         self.ratio = ratio
-#
-#     def forward(self, points, features):
-#         """
-#         Downsample points using farthest point sampling (FPS).
-#         Args:
-#             points: [B, N, 3] - Point cloud coordinates.
-#             features: [B, N, C] - Point cloud features.
-#         Returns:
-#             downsampled_points, downsampled_features
-#         """
-#         batch_size, num_points, _ = points.shape
-#         idx = fps(
-#             points.view(-1, 3).cpu(),
-#             batch=torch.arange(batch_size).repeat_interleave(num_points).cpu(),
-#             ratio=self.ratio
-#         ).to(points.device)
-#         idx = idx.view(batch_size, -1)
-#         print('num_points', num_points)
-#         print("points shape:", points.view(-1, 3).shape)
-#         print("idx shape:", idx.shape)
-#         print("Expanded idx shape:", idx.unsqueeze(-1).expand(-1, -1, 3).shape)
-#         print('idx', idx[:10])
-#         print("idx.min():", idx.min().item(), "idx.max():", idx.max().item())
-#         assert idx.min() >= 0, "Error: Negative index in idx."
-#         assert idx.max() < points.size(
-#             1), f"Error: Index {idx.max().item()} out of bounds for points.size(1) {points.size(1)}."
-#         downsampled_points = torch.gather(points, 1, idx.unsqueeze(-1).expand(-1, -1, 3))
-#         downsampled_features = torch.gather(features, 1, idx.unsqueeze(-1).expand(-1, -1, features.shape[-1]))
-#         return downsampled_points, downsampled_features
-
-
 class AdaptiveDownsampling(nn.Module):
     def __init__(self, ratio=0.5):
         super(AdaptiveDownsampling, self).__init__()
@@ -281,16 +248,9 @@ class AdaptiveDownsampling(nn.Module):
 
         # Flatten the batch dimension for FPS
         flat_points = points.view(-1, 3)  # [B * N, 3]
-        # print(f"batch.min(): {batch_indices.min().item()}, batch.max(): {batch_indices.max().item()}, batch size: {batch_indices.size(0)}")
-        # Apply FPS
         idx = fps(flat_points.cpu(), batch=batch_indices.cpu(), ratio=self.ratio).to(points.device)  # Global indices
-        # idx = fps(flat_points, batch=batch_indices, ratio=self.ratio)
-        # print("idx.min():", idx.min().item(), "idx.max():", idx.max().item())
-        # Recover batch-wise indices
-        batch_idx = idx // num_points  # [global_idx] -> batch number
-        local_idx = idx % num_points  # [global_idx] -> index within the batch
-        # print("local_idx.min():", local_idx.min().item(), "local_idx.max():", local_idx.max().item())
-        # Initialize empty lists for storing downsampled points/features
+        batch_idx = idx // num_points
+        local_idx = idx % num_points
         downsampled_points = []
         downsampled_features = []
 
@@ -307,13 +267,49 @@ class AdaptiveDownsampling(nn.Module):
         return downsampled_points, downsampled_features
 
 
+class TrainedDownsampling(nn.Module):
+    def __init__(self, num_points, retain_fraction=0.5):
+        """
+        Args:
+            retain_fraction (float): Fraction of points to retain during dropout (0 < retain_fraction <= 1).
+        """
+        super(TrainedDownsampling, self).__init__()
+        self.retain_fraction = retain_fraction
+        self.dropout_weights = nn.Parameter(torch.rand(num_points))
+
+    def forward(self, points):
+        """
+        Forward pass to downsample points based on learned dropout probabilities.
+        Args:
+            points (torch.Tensor): Input points of shape [B, N, C].
+
+        Returns:
+            torch.Tensor: Downsampled points of shape [B, num_retain, C].
+        """
+        batch_size, num_points, num_features = points.shape
+        retain_probabilities = torch.sigmoid(self.dropout_weights)  # [N]
+        num_retain = max(1, int(num_points * self.retain_fraction))  # At least 1 point retained
+
+        # Expand retain probabilities to match batch size
+        batch_retain_probabilities = retain_probabilities.unsqueeze(0).expand(batch_size, -1)  # [B, N]
+
+        # Perform top-k selection across the batch
+        _, indices = torch.topk(batch_retain_probabilities, num_retain, dim=1, largest=True, sorted=False)  # [B, num_retain]
+
+        # Gather points based on top-k indices
+        indices_expanded = indices.unsqueeze(-1).expand(-1, -1, num_features)  # [B, num_retain, C]
+        downsampled_points = torch.gather(points, 1, indices_expanded)  # [B, num_retain, C]
+
+        return downsampled_points
+
+
 class PointNet2(nn.Module):
     def __init__(self):
         super(PointNet2, self).__init__()
         # PointNet++ MSG backbone
-        self.sa1 = PointNetSetAbstraction(1888, 0.2, 16, 1 + 3, [32, 32, 64], False)
-        self.sa2 = PointNetSetAbstraction(472, 0.4, 16, 64 + 3, [64, 64, 128], False)
-        self.sa3 = PointNetSetAbstraction(118, 0.6, 16, 128 + 3, [128, 128, 256], False)
+        self.sa1 = PointNetSetAbstraction(3776, 0.2, 16, 1 + 3, [32, 32, 64], False)
+        self.sa2 = PointNetSetAbstraction(944, 0.4, 16, 64 + 3, [64, 64, 128], False)
+        self.sa3 = PointNetSetAbstraction(236, 0.6, 16, 128 + 3, [128, 128, 256], False)
         self.fp3 = PointNetFeaturePropagation(384, [256, 256])
         self.fp2 = PointNetFeaturePropagation(320, [256, 128])
         self.fp1 = PointNetFeaturePropagation(128, [128, 128, 128])
@@ -353,18 +349,22 @@ class PointNet2(nn.Module):
 class RadarOccupancyModel2(RadarOccupancyModel):
     def __init__(self, *args, **kwargs):
         super(RadarOccupancyModel2, self).__init__(*args, **kwargs)
-        self.adaptive_down = AdaptiveDownsampling(ratio=0.05)
+        # self.adaptive_down = AdaptiveDownsampling(ratio=0.05)
+        num_points = radar_config.num_azimuth_bins * radar_config.num_range_bins * radar_config.num_elevation_bins
+        self.down = TrainedDownsampling(num_points, retain_fraction=0.1)
         self.pointnet = PointNet2()
         self.name = 'cart+adown+pointnet_v1.0'
 
     def forward(self, polar_frames):
         cartesian_points = self.polar_to_cartesian(polar_frames)  # [B, N, 4]
-        points = cartesian_points[..., :3]  # [B, N, 3]
-        features = cartesian_points[..., 3:]  # [B, N, 1]
-
-        downsampled_points, downsampled_features = self.adaptive_down(points, features)
+        print('cartesian_points', cartesian_points.shape)
+        downsampled_points = self.down(cartesian_points)
+        print('downsampled_points', downsampled_points.shape)
+        points = downsampled_points[..., :3]  # [B, N, 3]
+        features = downsampled_points[..., 3:]  # [B, N, 1]
+        # downsampled_points, downsampled_features = self.adaptive_down(points, features)
         # print('downsampled_points, downsampled_features', downsampled_points.shape, downsampled_features.shape)
-        log_odds = self.pointnet(downsampled_points, downsampled_features)
-        # print('log_odds', log_odds.shape)
+        log_odds = self.pointnet(points, features)
+        print('log_odds', log_odds.shape)
         probabilities = self.apply_sigmoid(log_odds)
         return probabilities
