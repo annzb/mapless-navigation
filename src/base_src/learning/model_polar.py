@@ -260,6 +260,9 @@ class RadarOccupancyModel(nn.Module):
 #         downsampled_features = torch.gather(features, 1, idx.unsqueeze(-1).expand(-1, -1, features.shape[-1]))
 #         return downsampled_points, downsampled_features
 
+
+from torch_geometric.nn import fps
+
 class AdaptiveDownsampling(nn.Module):
     def __init__(self, ratio=0.5):
         super(AdaptiveDownsampling, self).__init__()
@@ -267,32 +270,40 @@ class AdaptiveDownsampling(nn.Module):
 
     def forward(self, points, features):
         """
-        Downsample points using farthest point sampling (FPS).
+        Downsample points using farthest point sampling (FPS) while handling global indices.
         Args:
             points: [B, N, 3] - Point cloud coordinates.
             features: [B, N, C] - Point cloud features.
         Returns:
-            downsampled_points, downsampled_features
+            downsampled_points: [B, N', 3]
+            downsampled_features: [B, N', C]
         """
         batch_size, num_points, _ = points.shape
+        batch_indices = torch.arange(batch_size, device=points.device).repeat_interleave(num_points)
 
-        # Flatten points and create batch indices
+        # Flatten the batch dimension for FPS
         flat_points = points.view(-1, 3)  # [B * N, 3]
-        batch_indices = torch.arange(batch_size, device=points.device).repeat_interleave(num_points)  # [B * N]
 
-        # Perform FPS
-        idx = fps(flat_points, batch=batch_indices, ratio=self.ratio)  # Global indices [B * ratio * N]
+        # Apply FPS
+        idx = fps(flat_points, batch=batch_indices, ratio=self.ratio)  # Global indices
 
-        # Map global indices back to batch-local indices
-        idx = idx.view(batch_size, -1) - (torch.arange(batch_size, device=points.device) * num_points).view(-1, 1)
+        # Recover batch-wise indices
+        batch_idx = idx // num_points  # [global_idx] -> batch number
+        local_idx = idx % num_points  # [global_idx] -> index within the batch
 
-        # Ensure indices are within bounds
-        assert idx.max() < num_points, f"Error: Index {idx.max()} out of bounds for points.size(1) {num_points}."
-        assert idx.min() >= 0, f"Error: Negative index {idx.min()} encountered."
+        # Initialize empty lists for storing downsampled points/features
+        downsampled_points = []
+        downsampled_features = []
 
-        # Gather points and features based on batch-local indices
-        downsampled_points = torch.gather(points, 1, idx.unsqueeze(-1).expand(-1, -1, 3))
-        downsampled_features = torch.gather(features, 1, idx.unsqueeze(-1).expand(-1, -1, features.shape[-1]))
+        for b in range(batch_size):
+            mask = batch_idx == b  # Get indices corresponding to the current batch
+            selected_local_idx = local_idx[mask]  # Indices within the batch
+            downsampled_points.append(points[b, selected_local_idx])  # Gather points
+            downsampled_features.append(features[b, selected_local_idx])  # Gather features
+
+        # Stack results back to [B, N', *]
+        downsampled_points = torch.stack(downsampled_points, dim=0)
+        downsampled_features = torch.stack(downsampled_features, dim=0)
 
         return downsampled_points, downsampled_features
 
