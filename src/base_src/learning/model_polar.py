@@ -282,10 +282,11 @@ class AdaptiveDownsampling(nn.Module):
         batch_indices = torch.arange(batch_size, device=points.device).repeat_interleave(num_points)
 
         # Flatten the batch dimension for FPS
-        flat_points = points.view(-1, 3)  # [B * N, 3]
+        flat_points = points.view(-1, 3).to(points.device)  # [B * N, 3]
 
         # Apply FPS
-        idx = fps(flat_points.cpu(), batch=batch_indices.cpu(), ratio=self.ratio)  # Global indices
+        # idx = fps(flat_points.cpu(), batch=batch_indices.cpu(), ratio=self.ratio).to(points.device)  # Global indices
+        idx = fps(flat_points, batch=batch_indices, ratio=self.ratio).to(points.device)
         # print("idx.min():", idx.min().item(), "idx.max():", idx.max().item())
         # Recover batch-wise indices
         batch_idx = idx // num_points  # [global_idx] -> batch number
