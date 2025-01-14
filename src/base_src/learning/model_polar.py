@@ -241,7 +241,11 @@ class AdaptiveDownsampling(nn.Module):
             downsampled_points, downsampled_features
         """
         batch_size, num_points, _ = points.shape
-        idx = fps(points.view(-1, 3), batch=torch.arange(batch_size, device=points.device).repeat_interleave(num_points), ratio=self.ratio)
+        idx = fps(
+            points.view(-1, 3).cpu(),
+            batch=torch.arange(batch_size).repeat_interleave(num_points).cpu(),
+            ratio=self.ratio
+        ).to(points.device)
         idx = idx.view(batch_size, -1)
         print('num_points', num_points)
         print("points shape:", points.view(-1, 3).shape)
