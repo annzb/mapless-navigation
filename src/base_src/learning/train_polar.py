@@ -2,7 +2,7 @@ import os.path
 
 import torch
 import wandb
-# torch.autograd.set_detect_anomaly(True)
+torch.autograd.set_detect_anomaly(True)
 
 import metrics as metric_defs
 from dataset import get_dataset
@@ -32,12 +32,15 @@ def train(model, optimizer, loss_fn, train_loader, val_loader, device, num_epoch
             for pred_cloud, true_cloud in zip(pred_probabilities, lidar_frames):
                 pred_cloud_filtered = model.filter_probs(pred_cloud)
                 true_cloud_filtered = model.filter_probs(true_cloud)
-                batch_loss = batch_loss + loss_fn(pred_cloud_filtered, true_cloud_filtered)
+                sample_loss = loss_fn(pred_cloud_filtered, true_cloud_filtered)
+                print('sample_loss', sample_loss.item())
+                batch_loss = batch_loss + sample_loss
                 for metric_name, metric_data in train_scores.items():
                     train_scores[metric_name]['value'] += metric_data['func'](pred_cloud_filtered, true_cloud_filtered)
 
             train_loss += batch_loss.item()
-            batch_loss /= len(radar_frames)
+            batch_loss = batch_loss / len(radar_frames)
+            print('batch_loss', batch_loss)
 
             optimizer.zero_grad()
             batch_loss.backward()
@@ -46,8 +49,6 @@ def train(model, optimizer, loss_fn, train_loader, val_loader, device, num_epoch
         train_loss /= len(train_loader)
         for metric_name, metric_data in train_scores.items():
             train_scores[metric_name]['value'] /= len(train_loader)
-        # train_iou /= len(train_loader)
-        # train_chamfer /= len(train_loader)
 
         # validation
         model.eval()
@@ -124,7 +125,7 @@ def main():
     POINT_MATCH_RADIUS = 0.2
     BATCH_SIZE = 4
     N_EPOCHS = 100
-    DATASET_PART = 1.0
+    DATASET_PART = 0.01
     LEARNING_RATE = 0.01
     loss_spatial_weight = 1.0
     loss_probability_weight = 1.0
