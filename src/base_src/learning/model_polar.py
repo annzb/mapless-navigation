@@ -252,7 +252,7 @@ class PointNet2(nn.Module):
     def __init__(self):
         super(PointNet2, self).__init__()
         # PointNet++ MSG backbone
-        self.sa1 = PointNetSetAbstraction(1180, 0.2, 16, 32, [32, 32, 64], False)
+        self.sa1 = PointNetSetAbstraction(1180, 0.2, 16, 1 + 3, [32, 32, 64], False)
         self.sa2 = PointNetSetAbstraction(590, 0.4, 16, 64 + 3, [64, 64, 128], False)
         self.sa3 = PointNetSetAbstraction(295, 0.6, 16, 128 + 3, [128, 128, 256], False)
         self.fp3 = PointNetFeaturePropagation(384, [256, 256])
