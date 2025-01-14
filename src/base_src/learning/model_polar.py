@@ -226,6 +226,40 @@ class RadarOccupancyModel(nn.Module):
         return cloud[cloud[:, 3] >= self.occupancy_threshold]
 
 
+# class AdaptiveDownsampling(nn.Module):
+#     def __init__(self, ratio=0.5):
+#         super(AdaptiveDownsampling, self).__init__()
+#         self.ratio = ratio
+#
+#     def forward(self, points, features):
+#         """
+#         Downsample points using farthest point sampling (FPS).
+#         Args:
+#             points: [B, N, 3] - Point cloud coordinates.
+#             features: [B, N, C] - Point cloud features.
+#         Returns:
+#             downsampled_points, downsampled_features
+#         """
+#         batch_size, num_points, _ = points.shape
+#         idx = fps(
+#             points.view(-1, 3).cpu(),
+#             batch=torch.arange(batch_size).repeat_interleave(num_points).cpu(),
+#             ratio=self.ratio
+#         ).to(points.device)
+#         idx = idx.view(batch_size, -1)
+#         print('num_points', num_points)
+#         print("points shape:", points.view(-1, 3).shape)
+#         print("idx shape:", idx.shape)
+#         print("Expanded idx shape:", idx.unsqueeze(-1).expand(-1, -1, 3).shape)
+#         print('idx', idx[:10])
+#         print("idx.min():", idx.min().item(), "idx.max():", idx.max().item())
+#         assert idx.min() >= 0, "Error: Negative index in idx."
+#         assert idx.max() < points.size(
+#             1), f"Error: Index {idx.max().item()} out of bounds for points.size(1) {points.size(1)}."
+#         downsampled_points = torch.gather(points, 1, idx.unsqueeze(-1).expand(-1, -1, 3))
+#         downsampled_features = torch.gather(features, 1, idx.unsqueeze(-1).expand(-1, -1, features.shape[-1]))
+#         return downsampled_points, downsampled_features
+
 class AdaptiveDownsampling(nn.Module):
     def __init__(self, ratio=0.5):
         super(AdaptiveDownsampling, self).__init__()
@@ -241,23 +275,25 @@ class AdaptiveDownsampling(nn.Module):
             downsampled_points, downsampled_features
         """
         batch_size, num_points, _ = points.shape
-        idx = fps(
-            points.view(-1, 3).cpu(),
-            batch=torch.arange(batch_size).repeat_interleave(num_points).cpu(),
-            ratio=self.ratio
-        ).to(points.device)
-        idx = idx.view(batch_size, -1)
-        print('num_points', num_points)
-        print("points shape:", points.view(-1, 3).shape)
-        print("idx shape:", idx.shape)
-        print("Expanded idx shape:", idx.unsqueeze(-1).expand(-1, -1, 3).shape)
-        print('idx', idx[:10])
-        print("idx.min():", idx.min().item(), "idx.max():", idx.max().item())
-        assert idx.min() >= 0, "Error: Negative index in idx."
-        assert idx.max() < points.size(
-            1), f"Error: Index {idx.max().item()} out of bounds for points.size(1) {points.size(1)}."
+
+        # Flatten points and create batch indices
+        flat_points = points.view(-1, 3)  # [B * N, 3]
+        batch_indices = torch.arange(batch_size, device=points.device).repeat_interleave(num_points)  # [B * N]
+
+        # Perform FPS
+        idx = fps(flat_points, batch=batch_indices, ratio=self.ratio)  # Global indices [B * ratio * N]
+
+        # Map global indices back to batch-local indices
+        idx = idx.view(batch_size, -1) - (torch.arange(batch_size, device=points.device) * num_points).view(-1, 1)
+
+        # Ensure indices are within bounds
+        assert idx.max() < num_points, f"Error: Index {idx.max()} out of bounds for points.size(1) {num_points}."
+        assert idx.min() >= 0, f"Error: Negative index {idx.min()} encountered."
+
+        # Gather points and features based on batch-local indices
         downsampled_points = torch.gather(points, 1, idx.unsqueeze(-1).expand(-1, -1, 3))
         downsampled_features = torch.gather(features, 1, idx.unsqueeze(-1).expand(-1, -1, features.shape[-1]))
+
         return downsampled_points, downsampled_features
 
 
