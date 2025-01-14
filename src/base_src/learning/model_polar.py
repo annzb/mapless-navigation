@@ -286,11 +286,11 @@ class AdaptiveDownsampling(nn.Module):
 
         # Apply FPS
         idx = fps(flat_points.cpu(), batch=batch_indices.cpu(), ratio=self.ratio).to(points.device)  # Global indices
-
+        print("idx.min():", idx.min().item(), "idx.max():", idx.max().item())
         # Recover batch-wise indices
         batch_idx = idx.cpu() // num_points  # [global_idx] -> batch number
         local_idx = idx.cpu() % num_points  # [global_idx] -> index within the batch
-
+        print("local_idx.min():", local_idx.min().item(), "local_idx.max():", local_idx.max().item())
         # Initialize empty lists for storing downsampled points/features
         downsampled_points = []
         downsampled_features = []
@@ -348,7 +348,7 @@ class PointNet2(nn.Module):
         x = self.drop1(F.relu(self.bn1(self.conv1(combined_features))))
         log_odds = self.conv2(x)  # [B, 1, N_points]
         log_odds = log_odds.permute(0, 2, 1)  # [B, N_points, 1]
-        return log_odds
+        return torch.cat((points[..., :3], log_odds), dim=-1)
 
 
 class RadarOccupancyModel2(RadarOccupancyModel):
