@@ -31,11 +31,10 @@ def train(model, optimizer, loss_fn, train_loader, val_loader, device, num_epoch
             for pred_cloud, true_cloud in zip(pred_probabilities, lidar_frames):
                 pred_cloud_filtered = model.filter_probs(pred_cloud)
                 true_cloud_filtered = model.filter_probs(true_cloud)
-                batch_loss += loss_fn(pred_cloud_filtered, true_cloud_filtered)
+                batch_loss = batch_loss + loss_fn(pred_cloud_filtered, true_cloud_filtered)
                 for metric_name, metric_data in train_scores.items():
                     train_scores[metric_name]['value'] += metric_data['func'](pred_cloud_filtered, true_cloud_filtered)
-                # train_iou += metrics.iou(pred_cloud, true_cloud)
-                # train_chamfer += metrics.weighted_chamfer(pred_cloud, true_cloud)
+
             train_loss += batch_loss.item()
             batch_loss /= len(radar_frames)
 
@@ -66,17 +65,13 @@ def train(model, optimizer, loss_fn, train_loader, val_loader, device, num_epoch
                 for pred_cloud, true_cloud in zip(pred_probabilities, lidar_frames):
                     pred_cloud_filtered = model.filter_probs(pred_cloud)
                     true_cloud_filtered = model.filter_probs(true_cloud)
-                    val_loss += loss_fn(pred_cloud_filtered, true_cloud_filtered).item()
+                    val_loss = val_loss + loss_fn(pred_cloud_filtered, true_cloud_filtered).item()
                     for metric_name, metric_data in val_scores.items():
                         val_scores[metric_name]['value'] += metric_data['func'](pred_cloud_filtered, true_cloud_filtered)
-                    # val_iou += metrics.iou(pred_cloud, true_cloud)
-                    # val_chamfer += metrics.weighted_chamfer(pred_cloud, true_cloud)
 
         val_loss /= len(val_loader)
         for metric_name, metric_data in val_scores.items():
             val_scores[metric_name]['value'] /= len(val_loader)
-        # val_iou /= len(train_loader)
-        # val_chamfer /= len(train_loader)
 
         # save model
         if val_loss < best_val_loss:
@@ -107,11 +102,9 @@ def evaluate(model, test_loader, device, loss_fn, metrics=tuple()):
             for pred_cloud, true_cloud in zip(pred_probabilities, lidar_frames):
                 pred_cloud_filtered = model.filter_probs(pred_cloud)
                 true_cloud_filtered = model.filter_probs(true_cloud)
-                test_loss += loss_fn(pred_cloud_filtered, true_cloud_filtered).item()
+                test_loss = test_loss + loss_fn(pred_cloud_filtered, true_cloud_filtered).item()
                 for metric_name, metric_data in test_scores.items():
                     test_scores[metric_name]['value'] += metric_data['func'](pred_cloud_filtered, true_cloud_filtered)
-                # test_iou += metrics.iou(pred_cloud, true_cloud)
-                # test_chamfer += metrics.weighted_chamfer(pred_cloud, true_cloud)
 
     test_loss /= len(test_loader)
     for metric_name, metric_data in test_scores.items():
