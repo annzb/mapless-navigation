@@ -350,7 +350,7 @@ class RadarOccupancyModel2(RadarOccupancyModel):
     def __init__(self, *args, **kwargs):
         super(RadarOccupancyModel2, self).__init__(*args, **kwargs)
         # self.adaptive_down = AdaptiveDownsampling(ratio=0.05)
-        num_points = radar_config.num_azimuth_bins * radar_config.num_range_bins * radar_config.num_elevation_bins
+        num_points = self.radar_config.num_azimuth_bins * self.radar_config.num_range_bins * self.radar_config.num_elevation_bins
         self.down = TrainedDownsampling(num_points, retain_fraction=0.1)
         self.pointnet = PointNet2()
         self.name = 'cart+adown+pointnet_v1.0'
