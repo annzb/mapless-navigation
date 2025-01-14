@@ -285,12 +285,12 @@ class AdaptiveDownsampling(nn.Module):
         flat_points = points.view(-1, 3)  # [B * N, 3]
 
         # Apply FPS
-        idx = fps(flat_points.cpu(), batch=batch_indices.cpu(), ratio=self.ratio).to(points.device)  # Global indices
-        print("idx.min():", idx.min().item(), "idx.max():", idx.max().item())
+        idx = fps(flat_points, batch=batch_indices, ratio=self.ratio)  # Global indices
+        # print("idx.min():", idx.min().item(), "idx.max():", idx.max().item())
         # Recover batch-wise indices
-        batch_idx = idx.cpu() // num_points  # [global_idx] -> batch number
-        local_idx = idx.cpu() % num_points  # [global_idx] -> index within the batch
-        print("local_idx.min():", local_idx.min().item(), "local_idx.max():", local_idx.max().item())
+        batch_idx = idx // num_points  # [global_idx] -> batch number
+        local_idx = idx % num_points  # [global_idx] -> index within the batch
+        # print("local_idx.min():", local_idx.min().item(), "local_idx.max():", local_idx.max().item())
         # Initialize empty lists for storing downsampled points/features
         downsampled_points = []
         downsampled_features = []
@@ -313,8 +313,8 @@ class PointNet2(nn.Module):
         super(PointNet2, self).__init__()
         # PointNet++ MSG backbone
         self.sa1 = PointNetSetAbstraction(1888, 0.2, 16, 1 + 3, [32, 32, 64], False)
-        self.sa2 = PointNetSetAbstraction(944, 0.4, 16, 64 + 3, [64, 64, 128], False)
-        self.sa3 = PointNetSetAbstraction(472, 0.6, 16, 128 + 3, [128, 128, 256], False)
+        self.sa2 = PointNetSetAbstraction(472, 0.4, 16, 64 + 3, [64, 64, 128], False)
+        self.sa3 = PointNetSetAbstraction(118, 0.6, 16, 128 + 3, [128, 128, 256], False)
         self.fp3 = PointNetFeaturePropagation(384, [256, 256])
         self.fp2 = PointNetFeaturePropagation(320, [256, 128])
         self.fp1 = PointNetFeaturePropagation(128, [128, 128, 128])
@@ -354,7 +354,7 @@ class PointNet2(nn.Module):
 class RadarOccupancyModel2(RadarOccupancyModel):
     def __init__(self, *args, **kwargs):
         super(RadarOccupancyModel2, self).__init__(*args, **kwargs)
-        self.adaptive_down = AdaptiveDownsampling(ratio=0.025)
+        self.adaptive_down = AdaptiveDownsampling(ratio=0.05)
         self.pointnet = PointNet2()
         self.name = 'cart+adown+pointnet_v1.0'
 
