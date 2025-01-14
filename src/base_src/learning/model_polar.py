@@ -243,6 +243,9 @@ class AdaptiveDownsampling(nn.Module):
         batch_size, num_points, _ = points.shape
         idx = fps(points.view(-1, 3), batch=torch.arange(batch_size, device=points.device).repeat_interleave(num_points), ratio=self.ratio)
         idx = idx.view(batch_size, -1)
+        print("points shape:", points.shape)
+        print("idx shape:", idx.shape)
+        print("Expanded idx shape:", idx.unsqueeze(-1).expand(-1, -1, 3).shape)
         downsampled_points = torch.gather(points, 1, idx.unsqueeze(-1).expand(-1, -1, 3))
         downsampled_features = torch.gather(features, 1, idx.unsqueeze(-1).expand(-1, -1, features.shape[-1]))
         return downsampled_points, downsampled_features
