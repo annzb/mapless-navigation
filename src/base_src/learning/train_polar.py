@@ -33,14 +33,14 @@ def train(model, optimizer, loss_fn, train_loader, val_loader, device, num_epoch
                 pred_cloud_filtered = model.filter_probs(pred_cloud)
                 true_cloud_filtered = model.filter_probs(true_cloud)
                 sample_loss = loss_fn(pred_cloud_filtered, true_cloud_filtered)
-                print('sample_loss', sample_loss.item())
+                # print('sample_loss', sample_loss.item())
                 batch_loss = batch_loss + sample_loss
                 for metric_name, metric_data in train_scores.items():
                     train_scores[metric_name]['value'] += metric_data['func'](pred_cloud_filtered, true_cloud_filtered)
 
             train_loss += batch_loss.item()
             batch_loss = batch_loss / len(radar_frames)
-            print('batch_loss', batch_loss)
+            # print('batch_loss', batch_loss)
 
             optimizer.zero_grad()
             batch_loss.backward()

@@ -307,7 +307,7 @@ class PointNet2(nn.Module):
     def __init__(self):
         super(PointNet2, self).__init__()
         # PointNet++ MSG backbone
-        self.sa1 = PointNetSetAbstraction(3776, 0.2, 16, 1 + 3, [32, 32, 64], False)
+        self.sa1 = PointNetSetAbstraction(3776, 0.2, 16, 32 + 3, [32, 32, 64], False)
         self.sa2 = PointNetSetAbstraction(944, 0.4, 16, 64 + 3, [64, 64, 128], False)
         self.sa3 = PointNetSetAbstraction(236, 0.6, 16, 128 + 3, [128, 128, 256], False)
         self.fp3 = PointNetFeaturePropagation(384, [256, 256])
@@ -351,20 +351,20 @@ class RadarOccupancyModel2(RadarOccupancyModel):
         super(RadarOccupancyModel2, self).__init__(*args, **kwargs)
         # self.adaptive_down = AdaptiveDownsampling(ratio=0.05)
         num_points = self.radar_config.num_azimuth_bins * self.radar_config.num_range_bins * self.radar_config.num_elevation_bins
-        self.down = TrainedDownsampling(num_points, retain_fraction=0.1)
+        self.down = TrainedDownsampling(num_points, retain_fraction=0.05)
         self.pointnet = PointNet2()
         self.name = 'cart+adown+pointnet_v1.0'
 
     def forward(self, polar_frames):
-        cartesian_points = self.polar_to_cartesian(polar_frames)  # [B, N, 4]
+        cartesian_points = self.polar_to_cartesian(polar_frames)  # [B, 151040, 4]
         print('cartesian_points', cartesian_points.shape)
-        downsampled_points = self.down(cartesian_points)
+        downsampled_points = self.down(cartesian_points)  # [B, 7552, 4]
         print('downsampled_points', downsampled_points.shape)
         points = downsampled_points[..., :3]  # [B, N, 3]
         features = downsampled_points[..., 3:]  # [B, N, 1]
         # downsampled_points, downsampled_features = self.adaptive_down(points, features)
         # print('downsampled_points, downsampled_features', downsampled_points.shape, downsampled_features.shape)
-        log_odds = self.pointnet(points, features)
+        log_odds = self.pointnet(points, features)  # [B, 7552, 4]
         print('log_odds', log_odds.shape)
         probabilities = self.apply_sigmoid(log_odds)
         return probabilities
