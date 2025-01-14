@@ -285,7 +285,7 @@ class AdaptiveDownsampling(nn.Module):
         flat_points = points.view(-1, 3)  # [B * N, 3]
 
         # Apply FPS
-        idx = fps(flat_points, batch=batch_indices, ratio=self.ratio)  # Global indices
+        idx = fps(flat_points.cpu(), batch=batch_indices.cpu(), ratio=self.ratio)  # Global indices
         # print("idx.min():", idx.min().item(), "idx.max():", idx.max().item())
         # Recover batch-wise indices
         batch_idx = idx // num_points  # [global_idx] -> batch number
