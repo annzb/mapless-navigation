@@ -2,7 +2,7 @@ import os.path
 
 import torch
 import wandb
-torch.autograd.set_detect_anomaly(True)
+# torch.autograd.set_detect_anomaly(True)
 
 import metrics as metric_defs
 from dataset import get_dataset
