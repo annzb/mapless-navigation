@@ -122,7 +122,7 @@ def evaluate(model, test_loader, device, loss_fn, metrics=tuple()):
 
 def main():
     OCCUPANCY_THRESHOLD = 0.6
-    POINT_MATCH_RADIUS = 0.2
+    POINT_MATCH_RADIUS = 0.5
     BATCH_SIZE = 4
     N_EPOCHS = 100
     DATASET_PART = 0.01
