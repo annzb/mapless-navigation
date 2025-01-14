@@ -246,6 +246,10 @@ class AdaptiveDownsampling(nn.Module):
         print("points shape:", points.shape)
         print("idx shape:", idx.shape)
         print("Expanded idx shape:", idx.unsqueeze(-1).expand(-1, -1, 3).shape)
+        print("idx.min():", idx.min().item(), "idx.max():", idx.max().item())
+        assert idx.min() >= 0, "Error: Negative index in idx."
+        assert idx.max() < points.size(
+            1), f"Error: Index {idx.max().item()} out of bounds for points.size(1) {points.size(1)}."
         downsampled_points = torch.gather(points, 1, idx.unsqueeze(-1).expand(-1, -1, 3))
         downsampled_features = torch.gather(features, 1, idx.unsqueeze(-1).expand(-1, -1, features.shape[-1]))
         return downsampled_points, downsampled_features
