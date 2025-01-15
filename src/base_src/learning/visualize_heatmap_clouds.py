@@ -4,7 +4,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import open3d as o3d
 from dataset import get_dataset
-from model_polar import RadarOccupancyModel
+from model_polar import RadarOccupancyModel2
 from loss_spatial_prob import SoftMatchingLossScaled
 import metrics as metric_defs
 
@@ -119,21 +119,21 @@ def main():
     OCCUPANCY_THRESHOLD = 0.6
     POINT_MATCH_RADIUS = 0.2
     BATCH_SIZE = 4
-    DATASET_PART = 0.1
+    DATASET_PART = 0.05
     loss_spatial_weight = 1.0
     loss_probability_weight = 1.0
     loss_matching_temperature = 0.2
-    model_path = "/home/arpg/projects/mapping-ros/src/mapless-navigation/best_model_jan10.pth"
+    model_path = "/home/arpg/projects/mapping-ros/src/mapless-navigation/best_model_jan14.pth"
 
     if os.path.isdir('/media/giantdrive'):
         dataset_path = '/media/giantdrive/coloradar/dataset1.h5'
         device_name = 'cuda:1'
     else:
         dataset_path = '/home/arpg/projects/coloradar_plus_processing_tools/coloradar_plus_processing_tools/dataset1.h5'
-        device_name = 'cuda'
+        device_name = 'cpu'
     train_loader, val_loader, test_loader, radar_config = get_dataset(dataset_path, batch_size=BATCH_SIZE, partial=DATASET_PART)
 
-    model = RadarOccupancyModel(radar_config, occupancy_threshold=OCCUPANCY_THRESHOLD)
+    model = RadarOccupancyModel2(radar_config, occupancy_threshold=OCCUPANCY_THRESHOLD)
     device = torch.device(device_name if torch.cuda.is_available() else "cpu")
     print('\ndevice', device)
     model.load_state_dict(torch.load(model_path, map_location=device))
@@ -148,19 +148,19 @@ def main():
         for radar_frames, lidar_frames, _ in train_loader:
             radar_frames = radar_frames.to(device)
             # lidar_frames = [lidar_cloud.to(device) for lidar_cloud in lidar_frames]
-            pred_frames = apply_layers(model, radar_frames)
+            pred_frames = model(radar_frames)
 
             # radar_clouds = image_to_pcl(radar_frames, radar_config)
             # first_radar_cloud = radar_clouds[0].cpu().numpy()
             # predicted_clouds = apply_layers(model, radar_frames)  # model(radar_frames)
-            first_predicted_cloud = pred_frames[0].cpu().numpy()
+            first_predicted_cloud = pred_frames[0].cpu()
             # first_lidar_cloud = lidar_frames[0].cpu().numpy()
 
             # print('first_radar_cloud', first_radar_cloud.min(), first_radar_cloud.max(), first_radar_cloud.mean())
             # print('batch', radar_clouds.min(), radar_clouds.max(), radar_clouds.mean())
             # visualize_polar_image(radar_frames[0], radar_config)
             # show_radar_pcl(first_radar_cloud)
-            show_occupancy_pcl(first_predicted_cloud)
+            show_occupancy_pcl(first_predicted_cloud.numpy())
 
             # print(first_predicted_cloud[0])
             # print(first_predicted_cloud[1])
@@ -168,10 +168,10 @@ def main():
             # print(first_predicted_cloud[3])
             # print(first_predicted_cloud[:, 3].max())
 
-            # gt_cloud = model.filter_probs(lidar_frames[0])
+            gt_cloud = model.filter_probs(lidar_frames[0])
             # gt_loss = loss_fn(gt_cloud, gt_cloud).item()
             # print('gt_loss', gt_loss)
-            # print('gt iou', iou(gt_cloud, gt_cloud))
+            print('iou', iou(gt_cloud, first_predicted_cloud))
             # print('gt chamfer', chamfer(gt_cloud, gt_cloud))
             break
 

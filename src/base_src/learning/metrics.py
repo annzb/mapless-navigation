@@ -33,7 +33,10 @@ class IoU(Metric):
 
         # Count intersections based on closeness
         pairwise_distances = torch.cdist(pred_coords.unsqueeze(0), gt_coords.unsqueeze(0), p=2).squeeze(0)
-        intersection = (pairwise_distances.min(dim=1).values < self.max_point_distance).sum()
+        intersection = (
+                               (pairwise_distances.min(dim=1).values <= self.max_point_distance).sum() +
+                               (pairwise_distances.min(dim=0).values <= self.max_point_distance).sum()
+                       ) // 2
         union = len(pred_coords) + len(gt_coords) - intersection
 
         if union == 0:

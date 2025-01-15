@@ -36,6 +36,7 @@ def train(model, optimizer, loss_fn, train_loader, val_loader, device, num_epoch
                 # print('sample_loss', sample_loss.item())
                 batch_loss = batch_loss + sample_loss
                 for metric_name, metric_data in train_scores.items():
+                    print('sample', metric_name, metric_data['func'](pred_cloud_filtered, true_cloud_filtered))
                     train_scores[metric_name]['value'] += metric_data['func'](pred_cloud_filtered, true_cloud_filtered)
 
             train_loss += batch_loss.item()
@@ -49,6 +50,7 @@ def train(model, optimizer, loss_fn, train_loader, val_loader, device, num_epoch
         train_loss /= len(train_loader)
         for metric_name, metric_data in train_scores.items():
             train_scores[metric_name]['value'] /= len(train_loader)
+            print('train', metric_name, train_scores[metric_name]['value'])
 
         # validation
         model.eval()
@@ -124,7 +126,7 @@ def main():
     OCCUPANCY_THRESHOLD = 0.6
     POINT_MATCH_RADIUS = 0.5
     BATCH_SIZE = 4
-    N_EPOCHS = 10
+    N_EPOCHS = 100
     DATASET_PART = 1.0
     LEARNING_RATE = 0.01
     loss_spatial_weight = 0.5
