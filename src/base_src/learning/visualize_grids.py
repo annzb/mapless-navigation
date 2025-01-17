@@ -6,10 +6,11 @@ import open3d as o3d
 import torch.nn as nn
 from dataset import get_dataset, clouds_to_grids
 from model_polar import PolarToCartesian
-from model_unet import Unet1C3DPolar
+from model_unet import Unet1C3DPolar, CloudsToGrids
 from loss_spatial_prob import SoftMatchingLossScaled
 import metrics as metric_defs
 from train_polar import get_model
+from visualize_heatmap_clouds import show_radar_pcl
 
 
 def show_radar_grid(grid, voxel_size, point_range, intensity_threshold_percent=0.0):
@@ -120,6 +121,7 @@ def main():
     # model.eval()
 
     ptc = PolarToCartesian(radar_config)
+    ctg = CloudsToGrids(voxel_size=octomap_voxel_size, point_range=radar_config.point_range)
 
     loss_fn = SoftMatchingLossScaled(alpha=loss_spatial_weight, beta=loss_probability_weight, matching_temperature=loss_matching_temperature, distance_threshold=POINT_MATCH_RADIUS)
     iou = metric_defs.IoU(max_point_distance=POINT_MATCH_RADIUS, probability_threshold=OCCUPANCY_THRESHOLD)
@@ -130,6 +132,7 @@ def main():
             radar_frames = radar_frames.to(device)
             radar_cartesian_points = ptc(radar_frames)
             radar_grids = clouds_to_grids(radar_cartesian_points.cpu().numpy(), voxel_size=octomap_voxel_size, point_range=radar_config.point_range)
+            radar_grids_trained = ctg(radar_cartesian_points)
             lidar_frames = lidar_frames.to(device)
             # pred_frames = model(radar_frames)
 
@@ -149,7 +152,9 @@ def main():
             # print('batch', radar_clouds.min(), radar_clouds.max(), radar_clouds.mean())
             # visualize_polar_image(radar_frames[0], radar_config)
             # show_occupancy_grid(lidar_frames[0].cpu().numpy(), voxel_size=octomap_voxel_size, point_range=radar_config.point_range)
+            # show_radar_pcl(radar_cartesian_points[0].cpu().numpy())
             show_radar_grid(radar_grids[0], voxel_size=octomap_voxel_size, point_range=radar_config.point_range)
+            show_radar_grid(radar_grids_trained[0], voxel_size=octomap_voxel_size, point_range=radar_config.point_range)
             # show_occupancy_pcl(first_predicted_cloud.numpy())
 
             # print(first_predicted_cloud[0])

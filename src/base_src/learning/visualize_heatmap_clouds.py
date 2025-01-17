@@ -86,9 +86,9 @@ def image_to_pcl(images, radar_config):
 
 
 def apply_layers(model, polar_frames, radar_config):
-    ptc = PolarToCartesian(radar_config)
-    cartesian_points = ptc(polar_frames)
-    # cartesian_points = model.polar_to_cartesian(polar_frames)
+    # ptc = PolarToCartesian(radar_config)
+    # cartesian_points = ptc(polar_frames)
+    cartesian_points = model.polar_to_cartesian(polar_frames)
     # downsampled_points = model.down(cartesian_points)
     # points = downsampled_points[..., :3]
     # features = downsampled_points[..., 3:]
@@ -114,7 +114,7 @@ def main():
     loss_spatial_weight = 1.0
     loss_probability_weight = 1.0
     loss_matching_temperature = 0.2
-    model_path = "/home/arpg/projects/mapping-ros/src/mapless-navigation/best_model_jan16.pth"
+    model_path = "/home/arpg/projects/mapping-ros/src/mapless-navigation/best_point_model_jan17.pth"
 
     if os.path.isdir('/media/giantdrive'):
         dataset_path = '/media/giantdrive/coloradar/dataset2.h5'
@@ -140,16 +140,16 @@ def main():
             radar_frames = radar_frames.to(device)
             # lidar_frames = [lidar_cloud.to(device) for lidar_cloud in lidar_frames]
             # pred_frames = model(radar_frames)
-            model.polar_to_cartesian.azimuth_cos_weight = nn.Parameter(torch.ones(radar_config.num_azimuth_bins))
-            model.polar_to_cartesian.azimuth_sin_weight = nn.Parameter(torch.ones(radar_config.num_azimuth_bins))
-            model.polar_to_cartesian.azimuth_scale = nn.Parameter(torch.ones(radar_config.num_azimuth_bins))
-            model.polar_to_cartesian.azimuth_bias = nn.Parameter(torch.zeros(radar_config.num_azimuth_bins))
-            model.polar_to_cartesian.elevation_scale = nn.Parameter(torch.ones(radar_config.num_elevation_bins))
+            # model.polar_to_cartesian.azimuth_cos_weight = nn.Parameter(torch.ones(radar_config.num_azimuth_bins))
+            # model.polar_to_cartesian.azimuth_sin_weight = nn.Parameter(torch.ones(radar_config.num_azimuth_bins))
+            # model.polar_to_cartesian.azimuth_scale = nn.Parameter(torch.ones(radar_config.num_azimuth_bins))
+            # model.polar_to_cartesian.azimuth_bias = nn.Parameter(torch.zeros(radar_config.num_azimuth_bins))
+            # model.polar_to_cartesian.elevation_scale = nn.Parameter(torch.ones(radar_config.num_elevation_bins))
             model.polar_to_cartesian.elevation_bias = nn.Parameter(torch.zeros(radar_config.num_elevation_bins))
             # model.polar_to_cartesian.elevation_cos_weight = nn.Parameter(torch.ones(radar_config.num_elevation_bins))
             # model.polar_to_cartesian.elevation_sin_weight = nn.Parameter(torch.ones(radar_config.num_elevation_bins))
-            model.polar_to_cartesian.range_scale = nn.Parameter(torch.ones(radar_config.num_range_bins))
-            model.polar_to_cartesian.range_bias = nn.Parameter(torch.zeros(radar_config.num_range_bins))
+            # model.polar_to_cartesian.range_scale = nn.Parameter(torch.ones(radar_config.num_range_bins))
+            # model.polar_to_cartesian.range_bias = nn.Parameter(torch.zeros(radar_config.num_range_bins))
 
             pred_frames = apply_layers(model, radar_frames, radar_config)
             # print('azimuth_scale', model.polar_to_cartesian.azimuth_scale)

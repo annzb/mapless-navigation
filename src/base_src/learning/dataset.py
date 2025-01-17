@@ -149,8 +149,8 @@ def get_dataset(dataset_file_path, partial=1.0, batch_size=16, shuffle_runs=True
     else:
         raise NotImplementedError("Non-shuffled runs are not implemented.")
     _, num_azimuth_bins, num_range_bins, num_elevation_bins = radar_frames.shape
-    radar_config.set_radar_frame_params(num_azimuth_bins=num_azimuth_bins, num_range_bins=num_range_bins, num_elevation_bins=num_elevation_bins)
-    print('point range:', radar_config.point_range)
+    radar_config.set_radar_frame_params(num_azimuth_bins=num_azimuth_bins, num_range_bins=num_range_bins, num_elevation_bins=num_elevation_bins, grid_voxel_size=grid_voxel_size)
+    # print('point range:', radar_config.point_range)
 
     # filter empty clouds
     filtered_indices = [i for i, frame in enumerate(lidar_frames) if len(frame) > 0 and any(frame[:, 3] >= occupancy_threshold)]

@@ -13,7 +13,11 @@ class RadarConfig:
     num_elevation_bins: Optional[int]
     clipped_azimuth_bins: Optional[List[float]]
     clipped_elevation_bins: Optional[List[float]]
+    num_radar_points: Optional[int]
     point_range: Optional[Tuple]
+    grid_size: Optional[Tuple]
+    grid_resolution: Optional[float]
+    num_grid_voxels: Optional[int]
 
     # Initial heatmap parameters
     total_range_bins: int
@@ -114,10 +118,11 @@ class RadarConfig:
             doppler_bin_width=radar_config_dict["internal"]["dopplerBinWidth"],
 
             num_range_bins=None, num_azimuth_bins=None, num_elevation_bins=None,
-            clipped_azimuth_bins=None, clipped_elevation_bins=None, point_range=None
+            clipped_azimuth_bins=None, clipped_elevation_bins=None, num_radar_points=None,
+            point_range=None, grid_size=None, grid_resolution=None, num_grid_voxels=None
         )
 
-    def set_radar_frame_params(self, num_azimuth_bins: int, num_elevation_bins: int, num_range_bins: int, grid_voxel_size=0.1):
+    def set_radar_frame_params(self, num_azimuth_bins: int, num_elevation_bins: int, num_range_bins: int, grid_voxel_size: float = 0.1):
         self.num_azimuth_bins = num_azimuth_bins
         self.num_elevation_bins = num_elevation_bins
         self.num_range_bins = num_range_bins
@@ -126,7 +131,15 @@ class RadarConfig:
         elevation_bins_to_clip = (self.total_elevation_bins - num_elevation_bins) // 2
         self.clipped_elevation_bins = self.elevation_bins[elevation_bins_to_clip: self.total_elevation_bins - elevation_bins_to_clip]
 
+        self.num_radar_points = num_azimuth_bins * num_elevation_bins * num_range_bins
         y_max = self.num_range_bins * self.range_bin_width
         x_max = (y_max * np.tan(self.clipped_azimuth_bins[-1]) // grid_voxel_size) * grid_voxel_size
         z_max = (y_max * np.tan(self.clipped_elevation_bins[-1]) // grid_voxel_size) * grid_voxel_size
-        self.point_range = ( -x_max, x_max, 0, y_max, -z_max, z_max)
+        self.point_range = (-x_max, x_max, 0, y_max, -z_max, z_max)
+        self.grid_resolution = grid_voxel_size
+        self.grid_size = (
+            math.ceil(x_max * 2 / grid_voxel_size),
+            math.ceil(y_max / grid_voxel_size),
+            math.ceil(z_max * 2 / grid_voxel_size)
+        )
+        self.num_grid_voxels = self.grid_size[0] * self.grid_size[1] * self.grid_size[2]

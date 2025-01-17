@@ -1,4 +1,5 @@
 import os.path
+from pprint import pprint
 
 import torch
 import wandb
@@ -12,7 +13,27 @@ from model_unet import Unet1C3DPolar
 from torch.optim.lr_scheduler import LambdaLR
 
 
-def train(model, optimizer, loss_fn, train_loader, val_loader, device, num_epochs=10, save_path="best_model.pth", metrics=tuple(), scheduler=None):
+class Logger:
+    def __init__(self, print_log=True, loggers=tuple()):
+        self.print_log = print_log
+        self.loggers = loggers
+
+    def init(self, **kwargs):
+        for logger in self.loggers:
+            logger.init(**kwargs)
+
+    def log(self, stuff):
+        if self.print_log:
+            pprint(stuff)
+        for logger in self.loggers:
+            logger.log(stuff)
+
+    def finish(self, **kwargs):
+        for logger in self.loggers:
+            logger.finish(**kwargs)
+
+
+def train(model, optimizer, loss_fn, train_loader, val_loader, device, num_epochs=10, save_path="best_model.pth", metrics=tuple(), scheduler=None, logger=Logger()):
     best_val_loss = float('inf')
 
     for epoch in range(num_epochs):
@@ -90,11 +111,11 @@ def train(model, optimizer, loss_fn, train_loader, val_loader, device, num_epoch
         for scores in (train_scores, val_scores):
             for metric_name, metric_data in scores.items():
                 log[metric_name] = metric_data['value']
-        wandb.log(log)
-        print(f"Train Loss: {train_loss:.4f}, Val Loss: {val_loss:.4f}, Best Val Loss: {best_val_loss:.4f}")
+        logger.log(log)
+        # print(f"Train Loss: {train_loss:.4f}, Val Loss: {val_loss:.4f}, Best Val Loss: {best_val_loss:.4f}")
 
 
-def evaluate(model, test_loader, device, loss_fn, metrics=tuple()):
+def evaluate(model, test_loader, device, loss_fn, metrics=tuple(), logger=Logger()):
     model.eval()
     test_scores = {}
     for metric in metrics:
@@ -122,12 +143,12 @@ def evaluate(model, test_loader, device, loss_fn, metrics=tuple()):
     log = {"test_loss": test_loss}
     for metric_name, metric_data in test_scores.items():
         log[metric_name] = metric_data['value']
-    wandb.log(log)
-    print(f"Test Loss: {test_loss:.4f}")
+    logger.log(log)
+    # print(f"Test Loss: {test_loss:.4f}")
 
 
 def get_model(radar_config, occupancy_threshold=0.5, grid=False):
-    return Unet1C3DPolar() if grid else RadarOccupancyModel2(radar_config, occupancy_threshold=occupancy_threshold)
+    return Unet1C3DPolar(radar_config) if grid else RadarOccupancyModel2(radar_config, occupancy_threshold=occupancy_threshold)
 
 
 def init_lr(total_epochs, start_lr, end_lr):
@@ -141,8 +162,7 @@ def run(use_grid_data=False, octomap_voxel_size=0.25, model_save_name="best_mode
     POINT_MATCH_RADIUS = 0.5
     BATCH_SIZE = 4
     N_EPOCHS = 100
-    DATASET_PART = 1.0
-    LEARNING_RATE = 0.05
+    LEARNING_RATE = 0.01
 
     loss_spatial_weight = 0.5
     loss_probability_weight = 1.0
@@ -152,19 +172,24 @@ def run(use_grid_data=False, octomap_voxel_size=0.25, model_save_name="best_mode
     if os.path.isdir('/media/giantdrive'):
         dataset_path = '/media/giantdrive/coloradar/dataset2.h5'
         device_name = 'cuda:0' if use_grid_data else 'cuda:1'
+        dataset_part = 1.0
+        logger = Logger(print_log=True, loggers=(wandb, ))
     else:
         dataset_path = '/home/arpg/projects/coloradar_plus_processing_tools/dataset2.h5'
-        device_name = 'cuda'
-    train_loader, val_loader, test_loader, radar_config = get_dataset(dataset_path, batch_size=BATCH_SIZE,  partial=DATASET_PART, occupancy_threshold=OCCUPANCY_THRESHOLD, grid=use_grid_data, grid_voxel_size=octomap_voxel_size)
+        device_name = 'cpu'
+        dataset_part = 0.05
+        logger = Logger(print_log=True)
+
+    train_loader, val_loader, test_loader, radar_config = get_dataset(dataset_path, batch_size=BATCH_SIZE,  partial=dataset_part, occupancy_threshold=OCCUPANCY_THRESHOLD, grid=use_grid_data, grid_voxel_size=octomap_voxel_size)
     # model = RadarOccupancyModel2(radar_config, occupancy_threshold=OCCUPANCY_THRESHOLD)
     model = get_model(radar_config, occupancy_threshold=OCCUPANCY_THRESHOLD, grid=use_grid_data)
     device = torch.device(device_name if torch.cuda.is_available() else "cpu")
     print('\ndevice', device)
     model.to(device)
 
-    lr_lambda = init_lr(N_EPOCHS, LEARNING_RATE, LEARNING_RATE / 10)
+    # lr_lambda = init_lr(N_EPOCHS, LEARNING_RATE, LEARNING_RATE / 10)
     optimizer = torch.optim.Adam(model.parameters(), lr=LEARNING_RATE)
-    scheduler = LambdaLR(optimizer, lr_lambda=lr_lambda)
+    # scheduler = LambdaLR(optimizer, lr_lambda=lr_lambda)
 
     loss_fn = SoftMatchingLossScaled(alpha=loss_spatial_weight, beta=loss_probability_weight, matching_temperature=loss_matching_temperature, distance_threshold=POINT_MATCH_RADIUS)
     metrics = (
@@ -172,14 +197,14 @@ def run(use_grid_data=False, octomap_voxel_size=0.25, model_save_name="best_mode
         metric_defs.WeightedChamfer()
     )
 
-    wandb.init(
+    logger.init(
         project="radar-occupancy",
         config={
             "dataset": os.path.basename(dataset_path),
             "model": model.name,
             "learning_rate": LEARNING_RATE,
             "epochs": N_EPOCHS,
-            "dataset_part": DATASET_PART,
+            "dataset_part": dataset_part,
             "batch_size": BATCH_SIZE,
             "occupancy_threshold": OCCUPANCY_THRESHOLD,
             "point_match_radius": POINT_MATCH_RADIUS,
@@ -191,11 +216,11 @@ def run(use_grid_data=False, octomap_voxel_size=0.25, model_save_name="best_mode
             }
         }
     )
-    train(model, optimizer, loss_fn, train_loader, val_loader, device, num_epochs=N_EPOCHS, save_path=model_save_path, metrics=metrics, scheduler=scheduler)
+    train(model, optimizer, loss_fn, train_loader, val_loader, device, num_epochs=N_EPOCHS, save_path=model_save_path, metrics=metrics) # , scheduler=scheduler)
     model.load_state_dict(torch.load(model_save_path))
     evaluate(model, test_loader, device, loss_fn, metrics=metrics)
-    wandb.log({"best_model_path":  os.path.abspath(model_save_path)})
-    wandb.finish()
+    logger.log({"best_model_path":  os.path.abspath(model_save_path)})
+    logger.finish()
 
 
 if __name__ == '__main__':

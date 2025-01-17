@@ -45,18 +45,18 @@ class PolarToCartesian(nn.Module):
         super(PolarToCartesian, self).__init__()
         self.radar_config = radar_config
 
-        self.azimuth_scale = nn.Parameter(torch.ones(radar_config.num_azimuth_bins))
-        self.azimuth_bias = nn.Parameter(torch.zeros(radar_config.num_azimuth_bins))
-        self.azimuth_cos_weight = nn.Parameter(torch.ones(radar_config.num_azimuth_bins))
-        self.azimuth_sin_weight = nn.Parameter(torch.ones(radar_config.num_azimuth_bins))
+        self.azimuth_scale = nn.Parameter(torch.ones(radar_config.num_azimuth_bins), requires_grad=True)
+        self.azimuth_bias = nn.Parameter(torch.zeros(radar_config.num_azimuth_bins), requires_grad=True)
+        self.azimuth_cos_weight = nn.Parameter(torch.ones(radar_config.num_azimuth_bins), requires_grad=True)
+        self.azimuth_sin_weight = nn.Parameter(torch.ones(radar_config.num_azimuth_bins), requires_grad=True)
 
-        self.elevation_scale = nn.Parameter(torch.ones(radar_config.num_elevation_bins))
-        self.elevation_bias = nn.Parameter(torch.zeros(radar_config.num_elevation_bins))
+        # self.elevation_scale = nn.Parameter(torch.ones(radar_config.num_elevation_bins))
+        # self.elevation_bias = nn.Parameter(torch.zeros(radar_config.num_elevation_bins))
         # self.elevation_cos_weight = nn.Parameter(torch.ones(radar_config.num_elevation_bins))
         # self.elevation_sin_weight = nn.Parameter(torch.ones(radar_config.num_elevation_bins))
 
-        self.range_scale = nn.Parameter(torch.ones(radar_config.num_range_bins))
-        self.range_bias = nn.Parameter(torch.zeros(radar_config.num_range_bins))
+        self.range_scale = nn.Parameter(torch.ones(radar_config.num_range_bins), requires_grad=True)
+        self.range_bias = nn.Parameter(torch.zeros(radar_config.num_range_bins), requires_grad=True)
 
     def forward(self, polar_frames):
         batch_size = polar_frames.shape[0]
@@ -68,7 +68,7 @@ class PolarToCartesian(nn.Module):
         ranges = ranges * self.range_scale + self.range_bias
 
         elevations = torch.tensor(self.radar_config.clipped_elevation_bins, device=polar_frames.device)
-        elevations = elevations * self.elevation_scale + self.elevation_bias
+        # elevations = elevations * self.elevation_scale + self.elevation_bias
 
         azimuths_grid, ranges_grid, elevations_grid = torch.meshgrid(azimuths, ranges, elevations, indexing="ij")
         azimuths_grid = azimuths_grid.unsqueeze(0).expand(batch_size, -1, -1, -1)
@@ -77,6 +77,8 @@ class PolarToCartesian(nn.Module):
 
         cos_azimuths = self.azimuth_cos_weight.view(1, -1, 1, 1) * torch.cos(azimuths_grid)
         sin_azimuths = self.azimuth_sin_weight.view(1, -1, 1, 1) * torch.sin(azimuths_grid)
+        # cos_azimuths = torch.cos(azimuths_grid)
+        # sin_azimuths = torch.sin(azimuths_grid)
         # cos_elevations = self.elevation_cos_weight.view(1, 1, 1, -1) * torch.cos(elevations_grid)
         # sin_elevations = self.elevation_sin_weight.view(1, 1, 1, -1) * torch.sin(elevations_grid)
         cos_elevations = torch.cos(elevations_grid)
