@@ -8,9 +8,10 @@ import metrics as metric_defs
 from dataset import get_dataset
 from loss_spatial_prob import SoftMatchingLossScaled
 from model_polar import RadarOccupancyModel2
+from torch.optim.lr_scheduler import LambdaLR
 
 
-def train(model, optimizer, loss_fn, train_loader, val_loader, device, num_epochs=10, save_path="best_model.pth", metrics=tuple()):
+def train(model, optimizer, loss_fn, train_loader, val_loader, device, num_epochs=10, save_path="best_model.pth", metrics=tuple(), scheduler=None):
     best_val_loss = float('inf')
 
     for epoch in range(num_epochs):
@@ -46,6 +47,8 @@ def train(model, optimizer, loss_fn, train_loader, val_loader, device, num_epoch
             optimizer.zero_grad()
             batch_loss.backward()
             optimizer.step()
+            if scheduler is not None:
+                scheduler.step()
 
         train_loss /= len(train_loader)
         for metric_name, metric_data in train_scores.items():
@@ -122,13 +125,19 @@ def evaluate(model, test_loader, device, loss_fn, metrics=tuple()):
     print(f"Test Loss: {test_loss:.4f}")
 
 
+def init_lr(total_epochs, start_lr, end_lr):
+    def lr_lambda(epoch):
+        return 1.0 - (epoch / total_epochs) * ((start_lr - end_lr) / start_lr)
+    return lr_lambda
+
+
 def main():
     OCCUPANCY_THRESHOLD = 0.6
     POINT_MATCH_RADIUS = 0.5
     BATCH_SIZE = 4
     N_EPOCHS = 100
     DATASET_PART = 1.0
-    LEARNING_RATE = 0.01
+    LEARNING_RATE = 0.1
     loss_spatial_weight = 0.5
     loss_probability_weight = 1.0
     loss_matching_temperature = 0.2
@@ -145,7 +154,11 @@ def main():
     device = torch.device(device_name if torch.cuda.is_available() else "cpu")
     print('\ndevice', device)
     model.to(device)
+
+    lr_lambda = init_lr(N_EPOCHS, LEARNING_RATE, LEARNING_RATE / 10)
     optimizer = torch.optim.Adam(model.parameters(), lr=LEARNING_RATE)
+    scheduler = LambdaLR(optimizer, lr_lambda=lr_lambda)
+
     loss_fn = SoftMatchingLossScaled(alpha=loss_spatial_weight, beta=loss_probability_weight, matching_temperature=loss_matching_temperature, distance_threshold=POINT_MATCH_RADIUS)
     metrics = (
         metric_defs.IoU(max_point_distance=POINT_MATCH_RADIUS, probability_threshold=OCCUPANCY_THRESHOLD),
@@ -171,7 +184,7 @@ def main():
             }
         }
     )
-    train(model, optimizer, loss_fn, train_loader, val_loader, device, num_epochs=N_EPOCHS, save_path=model_save_path, metrics=metrics)
+    train(model, optimizer, loss_fn, train_loader, val_loader, device, num_epochs=N_EPOCHS, save_path=model_save_path, metrics=metrics, scheduler=scheduler)
     model.load_state_dict(torch.load(model_save_path))
     evaluate(model, test_loader, device, loss_fn, metrics=metrics)
     wandb.log({"best_model_path":  os.path.abspath(model_save_path)})

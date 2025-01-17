@@ -3,8 +3,9 @@ import torch
 import numpy as np
 import matplotlib.pyplot as plt
 import open3d as o3d
+import torch.nn as nn
 from dataset import get_dataset
-from model_polar import RadarOccupancyModel2
+from model_polar import RadarOccupancyModel2, PolarToCartesian
 from loss_spatial_prob import SoftMatchingLossScaled
 import metrics as metric_defs
 
@@ -84,17 +85,25 @@ def image_to_pcl(images, radar_config):
     return cartesian_points  # [B, N, 4]
 
 
-def apply_layers(model, polar_frames):
-    batch_size = polar_frames.shape[0]
-    reshaped_frames = polar_frames.view(batch_size, model.radar_config.num_azimuth_bins * model.radar_config.num_range_bins, model.radar_config.num_elevation_bins)
-    transformed_frames = model.transformer(reshaped_frames)
-    transformed_frames = transformed_frames.view(batch_size, model.radar_config.num_azimuth_bins, model.radar_config.num_range_bins, model.radar_config.num_elevation_bins)
-    cartesian_points = model.polar_to_cartesian(transformed_frames)
-    less_points = model.down(cartesian_points)
-    log_odds = model.pointnet(less_points)
-    print('less_points', less_points.shape)
-    probabilities = model.apply_sigmoid(less_points)
-    return probabilities
+def apply_layers(model, polar_frames, radar_config):
+    ptc = PolarToCartesian(radar_config)
+    cartesian_points = ptc(polar_frames)
+    # cartesian_points = model.polar_to_cartesian(polar_frames)
+    # downsampled_points = model.down(cartesian_points)
+    # points = downsampled_points[..., :3]
+    # features = downsampled_points[..., 3:]
+    # log_odds = self.pointnet(points, features)
+    # probabilities = self.apply_sigmoid(log_odds)
+    return cartesian_points
+
+    # reshaped_frames = polar_frames.view(batch_size, model.radar_config.num_azimuth_bins * model.radar_config.num_range_bins, model.radar_config.num_elevation_bins)
+    # transformed_frames = model.transformer(reshaped_frames)
+    # transformed_frames = transformed_frames.view(batch_size, model.radar_config.num_azimuth_bins, model.radar_config.num_range_bins, model.radar_config.num_elevation_bins)
+    # cartesian_points = model.polar_to_cartesian(transformed_frames)
+    # less_points = model.down(cartesian_points)
+    # log_odds = model.pointnet(less_points)
+    # print('less_points', less_points.shape)
+    # probabilities = model.apply_sigmoid(less_points)
 
 
 def visualize_polar_image(image, radar_config):
@@ -123,7 +132,7 @@ def main():
     loss_spatial_weight = 1.0
     loss_probability_weight = 1.0
     loss_matching_temperature = 0.2
-    model_path = "/home/arpg/projects/mapping-ros/src/mapless-navigation/best_model_jan14.pth"
+    model_path = "/home/arpg/projects/mapping-ros/src/mapless-navigation/best_model_jan16.pth"
 
     if os.path.isdir('/media/giantdrive'):
         dataset_path = '/media/giantdrive/coloradar/dataset1.h5'
@@ -148,7 +157,23 @@ def main():
         for radar_frames, lidar_frames, _ in train_loader:
             radar_frames = radar_frames.to(device)
             # lidar_frames = [lidar_cloud.to(device) for lidar_cloud in lidar_frames]
-            pred_frames = model(radar_frames)
+            # pred_frames = model(radar_frames)
+            model.polar_to_cartesian.azimuth_cos_weight = nn.Parameter(torch.ones(radar_config.num_azimuth_bins))
+            model.polar_to_cartesian.azimuth_sin_weight = nn.Parameter(torch.ones(radar_config.num_azimuth_bins))
+            model.polar_to_cartesian.azimuth_scale = nn.Parameter(torch.ones(radar_config.num_azimuth_bins))
+            model.polar_to_cartesian.azimuth_bias = nn.Parameter(torch.zeros(radar_config.num_azimuth_bins))
+            model.polar_to_cartesian.elevation_scale = nn.Parameter(torch.ones(radar_config.num_elevation_bins))
+            model.polar_to_cartesian.elevation_bias = nn.Parameter(torch.zeros(radar_config.num_elevation_bins))
+            # model.polar_to_cartesian.elevation_cos_weight = nn.Parameter(torch.ones(radar_config.num_elevation_bins))
+            # model.polar_to_cartesian.elevation_sin_weight = nn.Parameter(torch.ones(radar_config.num_elevation_bins))
+            model.polar_to_cartesian.range_scale = nn.Parameter(torch.ones(radar_config.num_range_bins))
+            model.polar_to_cartesian.range_bias = nn.Parameter(torch.zeros(radar_config.num_range_bins))
+
+            pred_frames = apply_layers(model, radar_frames, radar_config)
+            # print('azimuth_scale', model.polar_to_cartesian.azimuth_scale)
+            # print('azimuth_bias', model.polar_to_cartesian.azimuth_bias)
+            # print('azimuth_cos_weight', model.polar_to_cartesian.azimuth_cos_weight)
+            # print('azimuth_sin_weight', model.polar_to_cartesian.azimuth_sin_weight)
 
             # radar_clouds = image_to_pcl(radar_frames, radar_config)
             # first_radar_cloud = radar_clouds[0].cpu().numpy()
@@ -159,8 +184,8 @@ def main():
             # print('first_radar_cloud', first_radar_cloud.min(), first_radar_cloud.max(), first_radar_cloud.mean())
             # print('batch', radar_clouds.min(), radar_clouds.max(), radar_clouds.mean())
             # visualize_polar_image(radar_frames[0], radar_config)
-            # show_radar_pcl(first_radar_cloud)
-            show_occupancy_pcl(first_predicted_cloud.numpy())
+            show_radar_pcl(first_predicted_cloud.numpy())
+            # show_occupancy_pcl(first_predicted_cloud.numpy())
 
             # print(first_predicted_cloud[0])
             # print(first_predicted_cloud[1])

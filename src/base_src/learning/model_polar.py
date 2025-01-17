@@ -41,10 +41,9 @@ class SphericalFourierTransform(nn.Module):
 
 
 class PolarToCartesian(nn.Module):
-    def __init__(self, radar_config, dropout=0.5):
+    def __init__(self, radar_config):
         super(PolarToCartesian, self).__init__()
         self.radar_config = radar_config
-        self.dropout = dropout
 
         self.azimuth_scale = nn.Parameter(torch.ones(radar_config.num_azimuth_bins))
         self.azimuth_bias = nn.Parameter(torch.zeros(radar_config.num_azimuth_bins))
@@ -53,8 +52,8 @@ class PolarToCartesian(nn.Module):
 
         self.elevation_scale = nn.Parameter(torch.ones(radar_config.num_elevation_bins))
         self.elevation_bias = nn.Parameter(torch.zeros(radar_config.num_elevation_bins))
-        self.elevation_cos_weight = nn.Parameter(torch.ones(radar_config.num_elevation_bins))
-        self.elevation_sin_weight = nn.Parameter(torch.ones(radar_config.num_elevation_bins))
+        # self.elevation_cos_weight = nn.Parameter(torch.ones(radar_config.num_elevation_bins))
+        # self.elevation_sin_weight = nn.Parameter(torch.ones(radar_config.num_elevation_bins))
 
         self.range_scale = nn.Parameter(torch.ones(radar_config.num_range_bins))
         self.range_bias = nn.Parameter(torch.zeros(radar_config.num_range_bins))
@@ -78,8 +77,10 @@ class PolarToCartesian(nn.Module):
 
         cos_azimuths = self.azimuth_cos_weight.view(1, -1, 1, 1) * torch.cos(azimuths_grid)
         sin_azimuths = self.azimuth_sin_weight.view(1, -1, 1, 1) * torch.sin(azimuths_grid)
-        cos_elevations = self.elevation_cos_weight.view(1, 1, 1, -1) * torch.cos(elevations_grid)
-        sin_elevations = self.elevation_sin_weight.view(1, 1, 1, -1) * torch.sin(elevations_grid)
+        # cos_elevations = self.elevation_cos_weight.view(1, 1, 1, -1) * torch.cos(elevations_grid)
+        # sin_elevations = self.elevation_sin_weight.view(1, 1, 1, -1) * torch.sin(elevations_grid)
+        cos_elevations = torch.cos(elevations_grid)
+        sin_elevations = torch.sin(elevations_grid)
 
         x = ranges_grid * cos_elevations * sin_azimuths
         y = ranges_grid * cos_elevations * cos_azimuths
@@ -353,7 +354,7 @@ class RadarOccupancyModel2(RadarOccupancyModel):
         num_points = self.radar_config.num_azimuth_bins * self.radar_config.num_range_bins * self.radar_config.num_elevation_bins
         self.down = TrainedDownsampling(num_points, retain_fraction=0.05)
         self.pointnet = PointNet2()
-        self.name = 'cart+adown+pointnet_v1.0'
+        self.name = 'cart+down+pointnet_v1.0'
 
     def forward(self, polar_frames):
         cartesian_points = self.polar_to_cartesian(polar_frames)  # [B, 151040, 4]
