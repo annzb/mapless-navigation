@@ -1,5 +1,8 @@
 from dataclasses import dataclass
-from typing import List, Optional
+from typing import List, Optional, Tuple
+
+import math
+import numpy as np
 
 
 @dataclass
@@ -10,6 +13,7 @@ class RadarConfig:
     num_elevation_bins: Optional[int]
     clipped_azimuth_bins: Optional[List[float]]
     clipped_elevation_bins: Optional[List[float]]
+    point_range: Optional[Tuple]
 
     # Initial heatmap parameters
     total_range_bins: int
@@ -110,10 +114,10 @@ class RadarConfig:
             doppler_bin_width=radar_config_dict["internal"]["dopplerBinWidth"],
 
             num_range_bins=None, num_azimuth_bins=None, num_elevation_bins=None,
-            clipped_azimuth_bins=None, clipped_elevation_bins=None
+            clipped_azimuth_bins=None, clipped_elevation_bins=None, point_range=None
         )
 
-    def set_radar_frame_params(self, num_azimuth_bins: int, num_elevation_bins: int, num_range_bins: int):
+    def set_radar_frame_params(self, num_azimuth_bins: int, num_elevation_bins: int, num_range_bins: int, grid_voxel_size=0.1):
         self.num_azimuth_bins = num_azimuth_bins
         self.num_elevation_bins = num_elevation_bins
         self.num_range_bins = num_range_bins
@@ -121,3 +125,8 @@ class RadarConfig:
         self.clipped_azimuth_bins = self.azimuth_bins[azimuth_bins_to_clip: self.total_azimuth_bins - azimuth_bins_to_clip]
         elevation_bins_to_clip = (self.total_elevation_bins - num_elevation_bins) // 2
         self.clipped_elevation_bins = self.elevation_bins[elevation_bins_to_clip: self.total_elevation_bins - elevation_bins_to_clip]
+
+        y_max = self.num_range_bins * self.range_bin_width
+        x_max = (y_max * np.tan(self.clipped_azimuth_bins[-1]) // grid_voxel_size) * grid_voxel_size
+        z_max = (y_max * np.tan(self.clipped_elevation_bins[-1]) // grid_voxel_size) * grid_voxel_size
+        self.point_range = ( -x_max, x_max, 0, y_max, -z_max, z_max)

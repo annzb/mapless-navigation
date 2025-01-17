@@ -15,11 +15,11 @@ def show_occupancy_pcl(cloud, prob_threshold=0):
     mask = probabilities >= prob_threshold
     filtered_points = cloud[:, :3][mask]
     filtered_probs = probabilities[mask]
-    fp_max, fp_min = filtered_probs.max(), filtered_probs.min()
-    normalized_probs = (filtered_probs - fp_min) / (fp_max - fp_min)
+    # fp_max, fp_min = filtered_probs.max(), filtered_probs.min()
+    # normalized_probs = (filtered_probs - fp_min) / (fp_max - fp_min)
 
     cmap = plt.get_cmap("plasma")
-    colors = cmap(normalized_probs)[:, :3]
+    colors = cmap(filtered_probs)[:, :3]
 
     pcd = o3d.geometry.PointCloud()
     pcd.points = o3d.utility.Vector3dVector(filtered_points)
@@ -106,24 +106,6 @@ def apply_layers(model, polar_frames, radar_config):
     # probabilities = model.apply_sigmoid(less_points)
 
 
-def visualize_polar_image(image, radar_config):
-    """
-    Visualize the polar image as a 2D intensity map.
-
-    Args:
-        image (torch.Tensor): Input radar image of shape [B, A, R, E] (Batch, Azimuth, Range, Elevation).
-        radar_config: Configuration containing azimuth and elevation bins.
-    """
-    aggregated_image = image.sum(dim=-1).cpu().numpy()  # [A, R]
-    plt.figure(figsize=(8, 6))
-    plt.imshow(aggregated_image, extent=[0, radar_config.num_range_bins, radar_config.num_azimuth_bins, 0], cmap='plasma', aspect='auto')
-    plt.colorbar(label="Intensity")
-    plt.xlabel("Range Bins")
-    plt.ylabel("Azimuth Bins")
-    plt.title("Polar Image")
-    plt.show()
-
-
 def main():
     OCCUPANCY_THRESHOLD = 0.6
     POINT_MATCH_RADIUS = 0.2
@@ -135,12 +117,12 @@ def main():
     model_path = "/home/arpg/projects/mapping-ros/src/mapless-navigation/best_model_jan16.pth"
 
     if os.path.isdir('/media/giantdrive'):
-        dataset_path = '/media/giantdrive/coloradar/dataset1.h5'
+        dataset_path = '/media/giantdrive/coloradar/dataset2.h5'
         device_name = 'cuda:1'
     else:
-        dataset_path = '/home/arpg/projects/coloradar_plus_processing_tools/coloradar_plus_processing_tools/dataset1.h5'
+        dataset_path = '/home/arpg/projects/coloradar_plus_processing_tools/dataset2.h5'
         device_name = 'cpu'
-    train_loader, val_loader, test_loader, radar_config = get_dataset(dataset_path, batch_size=BATCH_SIZE, partial=DATASET_PART)
+    train_loader, val_loader, test_loader, radar_config = get_dataset(dataset_path, batch_size=BATCH_SIZE,  partial=DATASET_PART, occupancy_threshold=OCCUPANCY_THRESHOLD)
 
     model = RadarOccupancyModel2(radar_config, occupancy_threshold=OCCUPANCY_THRESHOLD)
     device = torch.device(device_name if torch.cuda.is_available() else "cpu")

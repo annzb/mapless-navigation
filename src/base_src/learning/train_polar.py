@@ -8,6 +8,7 @@ import metrics as metric_defs
 from dataset import get_dataset
 from loss_spatial_prob import SoftMatchingLossScaled
 from model_polar import RadarOccupancyModel2
+from model_unet import Unet1C3DPolar
 from torch.optim.lr_scheduler import LambdaLR
 
 
@@ -125,32 +126,38 @@ def evaluate(model, test_loader, device, loss_fn, metrics=tuple()):
     print(f"Test Loss: {test_loss:.4f}")
 
 
+def get_model(radar_config, occupancy_threshold=0.5, grid=False):
+    return Unet1C3DPolar() if grid else RadarOccupancyModel2(radar_config, occupancy_threshold=occupancy_threshold)
+
+
 def init_lr(total_epochs, start_lr, end_lr):
     def lr_lambda(epoch):
         return 1.0 - (epoch / total_epochs) * ((start_lr - end_lr) / start_lr)
     return lr_lambda
 
 
-def main():
+def run(use_grid_data=False, octomap_voxel_size=0.25, model_save_name="best_model.pth"):
     OCCUPANCY_THRESHOLD = 0.6
     POINT_MATCH_RADIUS = 0.5
     BATCH_SIZE = 4
     N_EPOCHS = 100
     DATASET_PART = 1.0
-    LEARNING_RATE = 0.1
+    LEARNING_RATE = 0.05
+
     loss_spatial_weight = 0.5
     loss_probability_weight = 1.0
     loss_matching_temperature = 0.2
-    model_save_path = "best_model.pth"
+    model_save_path = model_save_name
 
     if os.path.isdir('/media/giantdrive'):
         dataset_path = '/media/giantdrive/coloradar/dataset2.h5'
-        device_name = 'cuda:1'
+        device_name = 'cuda:0' if use_grid_data else 'cuda:1'
     else:
-        dataset_path = '/home/arpg/projects/coloradar_plus_processing_tools/coloradar_plus_processing_tools/dataset2.h5'
+        dataset_path = '/home/arpg/projects/coloradar_plus_processing_tools/dataset2.h5'
         device_name = 'cuda'
-    train_loader, val_loader, test_loader, radar_config = get_dataset(dataset_path, batch_size=BATCH_SIZE,  partial=DATASET_PART, occupancy_threshold=OCCUPANCY_THRESHOLD)
-    model = RadarOccupancyModel2(radar_config, occupancy_threshold=OCCUPANCY_THRESHOLD)
+    train_loader, val_loader, test_loader, radar_config = get_dataset(dataset_path, batch_size=BATCH_SIZE,  partial=DATASET_PART, occupancy_threshold=OCCUPANCY_THRESHOLD, grid=use_grid_data, grid_voxel_size=octomap_voxel_size)
+    # model = RadarOccupancyModel2(radar_config, occupancy_threshold=OCCUPANCY_THRESHOLD)
+    model = get_model(radar_config, occupancy_threshold=OCCUPANCY_THRESHOLD, grid=use_grid_data)
     device = torch.device(device_name if torch.cuda.is_available() else "cpu")
     print('\ndevice', device)
     model.to(device)
@@ -192,4 +199,4 @@ def main():
 
 
 if __name__ == '__main__':
-    main()
+    run(use_grid_data=False, model_save_name="best_point_model.pth")

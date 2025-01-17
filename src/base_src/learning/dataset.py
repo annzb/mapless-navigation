@@ -1,5 +1,6 @@
 import h5py
 import json
+import math
 import numpy as np
 
 import torch
@@ -35,6 +36,41 @@ def read_h5_dataset(file_path):
     return data_dict, RadarConfig.from_dict(config.get('radar_config', {}))
 
 
+def clouds_to_grids(clouds, voxel_size, point_range):
+    """
+    Converts a point cloud to a voxel grid, aggregating intensities by their maximum value.
+
+    Args:
+        clouds (np.ndarray): Point cloud of shape [N_frames, N_points, 4] (X, Y, Z, intensity).
+        voxel_size (float): The size of each cubical voxel.
+        point_range (tuple): Tuple (xmin, xmax, ymin, ymax, zmin, zmax) specifying the range of the grid.
+
+    Returns:
+        np.ndarray: Voxel grid of shape [N_frames, X, Y, Z, 1].
+    """
+    N_frames = len(clouds)
+    xmin, xmax, ymin, ymax, zmin, zmax = point_range
+    grid_size = (
+        math.ceil((xmax - xmin) / voxel_size),
+        math.ceil((ymax - ymin) / voxel_size),
+        math.ceil((zmax - zmin) / voxel_size)
+    )
+    voxel_grid = np.full((N_frames, *grid_size, 1), fill_value=-np.inf, dtype=np.float32)
+    for frame_idx in range(N_frames):
+        frame_points = clouds[frame_idx]
+        coords = frame_points[:, :3]
+        intensity = frame_points[:, 3]
+        voxel_indices = np.floor((coords - np.array([xmin, ymin, zmin])) / voxel_size).astype(int)
+        valid_mask = np.all( (voxel_indices >= 0) & (voxel_indices < np.array(grid_size)), axis=1)
+        voxel_indices = voxel_indices[valid_mask]
+        intensity = intensity[valid_mask]
+        for idx, val in zip(voxel_indices, intensity):
+            x, y, z = idx
+            voxel_grid[frame_idx, x, y, z, 0] = max(voxel_grid[frame_idx, x, y, z, 0], val)
+    voxel_grid[voxel_grid == -np.inf] = 0
+    return voxel_grid
+
+
 def process_radar_frames(radar_frames, intensity_mean=None, intensity_std=None):
     print('intensity_mean, intensity_std', intensity_mean, intensity_std)
     if (intensity_mean is None) != (intensity_std is None):
@@ -53,10 +89,11 @@ def process_lidar_frames(lidar_frames):
 
 
 class RadarDataset(Dataset):
-    def __init__(self, radar_frames, lidar_frames, poses, is_3d=True, intensity_mean=None, intensity_std=None):
+    def __init__(self, radar_frames, lidar_frames, poses, *args, intensity_mean=None, intensity_std=None, name='dataset', **kwargs):
         self.X, self.intensity_mean, self.intensity_std = process_radar_frames(radar_frames, intensity_mean, intensity_std)
         self.Y = process_lidar_frames(lidar_frames)
         self.poses = poses
+        self.name = name.capitalize()
 
     def __len__(self):
         return len(self.X)
@@ -67,16 +104,39 @@ class RadarDataset(Dataset):
         pose = self.poses[index]
         return radar_frame, lidar_frame, pose
 
+    @staticmethod
+    def custom_collate_fn(batch):
+        radar_frames, lidar_frames, poses = zip(*batch)
+        radar_frames = torch.tensor(radar_frames)
+        lidar_frames = [torch.tensor(frame) for frame in lidar_frames]
+        poses = torch.tensor(poses)
+        return radar_frames, lidar_frames, poses
 
-def custom_collate_fn(batch):
-    radar_frames, lidar_frames, poses = zip(*batch)
-    radar_frames = torch.tensor(radar_frames)
-    lidar_frames = [torch.tensor(frame) for frame in lidar_frames]
-    poses = torch.tensor(poses)
-    return radar_frames, lidar_frames, poses
+    def print_log(self):
+        print(f'{self.name} input shape:', self.X.shape)
+        print(f'{self.name} output shape:', len(self.Y), 'frames,', len(self.Y[0][0]), 'dims.')
 
 
-def get_dataset(dataset_file_path, partial=1.0, batch_size=16, shuffle_runs=True, random_state=42, occupancy_threshold=0.0):
+class RadarDatasetGrid(RadarDataset):
+    def __init__(self, *args, radar_config, voxel_size=0.1, **kwargs):
+        super().__init__(*args, **kwargs)
+        # self.X = clouds_to_grids(self.X, voxel_size, radar_config.point_range)
+        self.Y = clouds_to_grids(self.Y, voxel_size, radar_config.point_range)
+
+    @staticmethod
+    def custom_collate_fn(batch):
+        radar_frames, lidar_frames, poses = zip(*batch)
+        radar_frames = torch.tensor(radar_frames)
+        lidar_frames = torch.tensor(lidar_frames)
+        poses = torch.tensor(poses)
+        return radar_frames, lidar_frames, poses
+
+    def print_log(self):
+        print(f'{self.name} input shape:', self.X.shape)
+        print(f'{self.name} output shape:', self.Y.shape)
+
+
+def get_dataset(dataset_file_path, partial=1.0, batch_size=16, shuffle_runs=True, random_state=42, occupancy_threshold=0.0, grid=False, grid_voxel_size=0.1):
     data_dict, radar_config = read_h5_dataset(dataset_file_path)
     radar_frames = data_dict['cascade_heatmaps']
     lidar_frames = data_dict['lidar_map_frames']
@@ -90,6 +150,7 @@ def get_dataset(dataset_file_path, partial=1.0, batch_size=16, shuffle_runs=True
         raise NotImplementedError("Non-shuffled runs are not implemented.")
     _, num_azimuth_bins, num_range_bins, num_elevation_bins = radar_frames.shape
     radar_config.set_radar_frame_params(num_azimuth_bins=num_azimuth_bins, num_range_bins=num_range_bins, num_elevation_bins=num_elevation_bins)
+    print('point range:', radar_config.point_range)
 
     # filter empty clouds
     filtered_indices = [i for i, frame in enumerate(lidar_frames) if len(frame) > 0 and any(frame[:, 3] >= occupancy_threshold)]
@@ -108,20 +169,18 @@ def get_dataset(dataset_file_path, partial=1.0, batch_size=16, shuffle_runs=True
     radar_train, radar_temp, lidar_train, lidar_temp, poses_train, poses_temp = train_test_split(radar_frames, lidar_frames, poses, test_size=0.5, random_state=random_state)
     radar_val, radar_test, lidar_val, lidar_test, poses_val, poses_test = train_test_split(radar_temp, lidar_temp, poses_temp, test_size=0.6, random_state=random_state)
 
-    train_dataset = RadarDataset(radar_train, lidar_train, poses_train)
-    val_dataset = RadarDataset(radar_val, lidar_val, poses_val, intensity_mean=train_dataset.intensity_mean, intensity_std=train_dataset.intensity_std)
-    test_dataset = RadarDataset(radar_test, lidar_test, poses_test, intensity_mean=train_dataset.intensity_mean, intensity_std=train_dataset.intensity_std)
+    dataset_class = RadarDatasetGrid if grid else RadarDataset
+    train_dataset = dataset_class(radar_train, lidar_train, poses_train, radar_config=radar_config, voxel_size=grid_voxel_size, name='train')
+    val_dataset = dataset_class(radar_val, lidar_val, poses_val, radar_config=radar_config, voxel_size=grid_voxel_size, intensity_mean=train_dataset.intensity_mean, intensity_std=train_dataset.intensity_std, name='valid')
+    test_dataset = dataset_class(radar_test, lidar_test, poses_test, radar_config=radar_config, voxel_size=grid_voxel_size, intensity_mean=train_dataset.intensity_mean, intensity_std=train_dataset.intensity_std, name='test')
 
-    print('Train input shape:', train_dataset.X.shape)
-    print('Train output shape:', len(train_dataset.Y), 'frames,', len(train_dataset.Y[0][0]), 'dims.')
-    print('Valid input shape:', val_dataset.X.shape)
-    print('Valid output shape:', len(val_dataset.Y), 'frames,', len(val_dataset.Y[0][0]), 'dims.')
-    print('Test input shape:', test_dataset.X.shape)
-    print('Test output shape:', len(test_dataset.Y), 'frames,', len(test_dataset.Y[0][0]), 'dims.')
+    train_dataset.print_log()
+    val_dataset.print_log()
+    test_dataset.print_log()
     print()
 
-    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, collate_fn=custom_collate_fn)
-    val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False, collate_fn=custom_collate_fn)
-    test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False, collate_fn=custom_collate_fn)
+    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, collate_fn=dataset_class.custom_collate_fn)
+    val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False, collate_fn=dataset_class.custom_collate_fn)
+    test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False, collate_fn=dataset_class.custom_collate_fn)
 
     return train_loader, val_loader, test_loader, radar_config
