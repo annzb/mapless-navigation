@@ -374,15 +374,17 @@ class Unet1C3DPolar(RadarOccupancyModel):
         polar_frames = polar_frames.unsqueeze(-1).permute(0, 4, 3, 2, 1)  # [B, 1, El, R, Az]
         cartesian_grids = self.polar_to_cartesian(polar_frames)           # [B, 1, 16, 28, 270]
         grids = self.add_padding(cartesian_grids, padding=(0, 4, 2))      # [B, 1, 16, 32, 272]
-        # cartesian_grids = cartesian_grids.permute(0, 4, 3, 2, 1)  # [B, 1, 16, 28, 270]
-        # grids = self.reshape(cartesian_grids)                             # [B, 1, 16, 32, 256]
-        s1, p1 = self.e1(grids)                                           # [B, 32, 16, 32, 256], [B, 32, 8, 16, 128]
-        s2, p2 = self.e2(p1)                                              # [B, 64, 8, 16, 128],  [B, 64, 4, 8, 64]
-        s3, p3 = self.e3(p2)                                              # [B, 128, 4, 8, 64],   [B, 128, 2, 4, 32]
-        b = self.bottleneck(p3)                                           # [B, 256, 2, 4, 32]
-        o1 = self.d1(b, s3)                                               # [B, 128, 4, 8, 64]
-        o2 = self.d2(o1, s2)                                              # [B, 64, 8, 16, 128]
-        o3 = self.d3(o2, s1)                                              # [B, 32, 16, 32, 256]
-        output = self.output(o3)                                          # [B, 1, 16, 32, 256]
+        # cartesian_grids = cartesian_grids.permute(0, 4, 3, 2, 1)
+        # grids = self.reshape(cartesian_grids)
+        s1, p1 = self.e1(grids)                                           # [B, 32, 16, 32, 272], [B, 32, 8, 16, 136]
+        s2, p2 = self.e2(p1)                                              # [B, 64, 8, 16, 136],  [B, 64, 4, 8, 68]
+        s3, p3 = self.e3(p2)                                              # [B, 128, 4, 8, 68],   [B, 128, 2, 4, 34]
+        b = self.bottleneck(p3)                                           # [B, 256, 2, 4, 34]
+        o1 = self.d1(b, s3)                                               # [B, 128, 4, 8, 68]
+        o2 = self.d2(o1, s2)                                              # [B, 64, 8, 16, 136]
+        o3 = self.d3(o2, s1)                                              # [B, 32, 16, 32, 272]
+        output = self.output(o3)                                          # [B, 1, 16, 32, 272]
+        # print('output with padding shape:', output.shape)
         output = self.remove_padding(output, padding=(0, 4, 2)).squeeze(1).permute(0, 3, 2, 1)  # [B, 270, 28, 16]
+        # print('output final shape:', output.shape)
         return output

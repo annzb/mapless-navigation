@@ -33,7 +33,13 @@ class Logger:
             logger.finish(**kwargs)
 
 
-def train(model, optimizer, loss_fn, train_loader, val_loader, device, num_epochs=10, save_path="best_model.pth", metrics=tuple(), scheduler=None, logger=Logger()):
+def filter_cloud(cloud, model, occupied_only=False):
+    if not occupied_only:
+        return cloud
+    return model.filter_probs(cloud)
+
+
+def train(model, optimizer, loss_fn, train_loader, val_loader, device, num_epochs=10, occupied_only=False, save_path="best_model.pth", metrics=tuple(), scheduler=None, logger=Logger()):
     best_val_loss = float('inf')
 
     for epoch in range(num_epochs):
@@ -53,8 +59,8 @@ def train(model, optimizer, loss_fn, train_loader, val_loader, device, num_epoch
 
             batch_loss = 0.0
             for pred_cloud, true_cloud in zip(pred_probabilities, lidar_frames):
-                pred_cloud_filtered = pred_cloud  # model.filter_probs(pred_cloud)
-                true_cloud_filtered = true_cloud  # model.filter_probs(true_cloud)
+                pred_cloud_filtered = filter_cloud(pred_cloud, model, occupied_only=occupied_only)
+                true_cloud_filtered = filter_cloud(true_cloud, model, occupied_only=occupied_only)
                 sample_loss = loss_fn(pred_cloud_filtered, true_cloud_filtered)
                 # print('sample_loss', sample_loss.item())
                 batch_loss = batch_loss + sample_loss
@@ -92,8 +98,8 @@ def train(model, optimizer, loss_fn, train_loader, val_loader, device, num_epoch
                 pred_probabilities = model(radar_frames)
 
                 for pred_cloud, true_cloud in zip(pred_probabilities, lidar_frames):
-                    pred_cloud_filtered = model.filter_probs(pred_cloud)
-                    true_cloud_filtered = model.filter_probs(true_cloud)
+                    pred_cloud_filtered = filter_cloud(pred_cloud, model, occupied_only=occupied_only)
+                    true_cloud_filtered = filter_cloud(true_cloud, model, occupied_only=occupied_only)
                     val_loss = val_loss + loss_fn(pred_cloud_filtered, true_cloud_filtered).item()
                     for metric_name, metric_data in val_scores.items():
                         val_scores[metric_name]['value'] += metric_data['func'](pred_cloud_filtered, true_cloud_filtered)
@@ -115,7 +121,7 @@ def train(model, optimizer, loss_fn, train_loader, val_loader, device, num_epoch
         # print(f"Train Loss: {train_loss:.4f}, Val Loss: {val_loss:.4f}, Best Val Loss: {best_val_loss:.4f}")
 
 
-def evaluate(model, test_loader, device, loss_fn, metrics=tuple(), logger=Logger()):
+def evaluate(model, test_loader, device, loss_fn, occupied_only=False, metrics=tuple(), logger=Logger()):
     model.eval()
     test_scores = {}
     for metric in metrics:
@@ -129,8 +135,8 @@ def evaluate(model, test_loader, device, loss_fn, metrics=tuple(), logger=Logger
             pred_probabilities = model(radar_frames)
 
             for pred_cloud, true_cloud in zip(pred_probabilities, lidar_frames):
-                pred_cloud_filtered = model.filter_probs(pred_cloud)
-                true_cloud_filtered = model.filter_probs(true_cloud)
+                pred_cloud_filtered = filter_cloud(pred_cloud, model, occupied_only=occupied_only)
+                true_cloud_filtered = filter_cloud(true_cloud, model, occupied_only=occupied_only)
                 test_loss = test_loss + loss_fn(pred_cloud_filtered, true_cloud_filtered).item()
                 for metric_name, metric_data in test_scores.items():
                     test_scores[metric_name]['value'] += metric_data['func'](pred_cloud_filtered, true_cloud_filtered)
@@ -163,6 +169,7 @@ def run(use_grid_data=False, octomap_voxel_size=0.25, model_save_name="best_mode
     BATCH_SIZE = 8
     N_EPOCHS = 100
     LEARNING_RATE = 0.01
+    LOSS_OVER_OCCUPIED_ONLY = False
 
     loss_spatial_weight = 1.0
     loss_probability_weight = 1.0
@@ -217,7 +224,7 @@ def run(use_grid_data=False, octomap_voxel_size=0.25, model_save_name="best_mode
             }
         }
     )
-    train(model, optimizer, loss_fn, train_loader, val_loader, device, num_epochs=N_EPOCHS, save_path=model_save_path, metrics=metrics, logger=logger) # , scheduler=scheduler)
+    train(model, optimizer, loss_fn, train_loader, val_loader, device, num_epochs=N_EPOCHS, save_path=model_save_path, metrics=metrics, logger=logger, occupied_only=LOSS_OVER_OCCUPIED_ONLY)
     model.load_state_dict(torch.load(model_save_path))
     evaluate(model, test_loader, device, loss_fn, metrics=metrics)
     logger.log({"best_model_path":  os.path.abspath(model_save_path)})
