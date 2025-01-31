@@ -7,7 +7,7 @@ torch.autograd.set_detect_anomaly(True)
 
 import metrics as metric_defs
 from dataset import get_dataset
-from loss_spatial_prob import SoftMatchingLossScaled
+from loss_spatial_prob import SoftMatchingLossScaled, ChamferBceLoss
 from model_polar import RadarOccupancyModel2
 from model_unet import Unet1C3DPolar
 from torch.optim.lr_scheduler import LambdaLR
@@ -53,8 +53,8 @@ def train(model, optimizer, loss_fn, train_loader, val_loader, device, num_epoch
 
             batch_loss = 0.0
             for pred_cloud, true_cloud in zip(pred_probabilities, lidar_frames):
-                pred_cloud_filtered = model.filter_probs(pred_cloud)
-                true_cloud_filtered = model.filter_probs(true_cloud)
+                pred_cloud_filtered = pred_cloud  # model.filter_probs(pred_cloud)
+                true_cloud_filtered = true_cloud  # model.filter_probs(true_cloud)
                 sample_loss = loss_fn(pred_cloud_filtered, true_cloud_filtered)
                 # print('sample_loss', sample_loss.item())
                 batch_loss = batch_loss + sample_loss
@@ -147,8 +147,8 @@ def evaluate(model, test_loader, device, loss_fn, metrics=tuple(), logger=Logger
     # print(f"Test Loss: {test_loss:.4f}")
 
 
-def get_model(radar_config, occupancy_threshold=0.5, grid=False):
-    return Unet1C3DPolar(radar_config) if grid else RadarOccupancyModel2(radar_config, occupancy_threshold=occupancy_threshold)
+def get_model(radar_config, device, occupancy_threshold=0.5, grid=False):
+    return Unet1C3DPolar(radar_config, device) if grid else RadarOccupancyModel2(radar_config, occupancy_threshold=occupancy_threshold)
 
 
 def init_lr(total_epochs, start_lr, end_lr):
@@ -160,13 +160,13 @@ def init_lr(total_epochs, start_lr, end_lr):
 def run(use_grid_data=False, octomap_voxel_size=0.25, model_save_name="best_model.pth"):
     OCCUPANCY_THRESHOLD = 0.6
     POINT_MATCH_RADIUS = 0.5
-    BATCH_SIZE = 4
+    BATCH_SIZE = 8
     N_EPOCHS = 100
     LEARNING_RATE = 0.01
 
-    loss_spatial_weight = 0.5
+    loss_spatial_weight = 1.0
     loss_probability_weight = 1.0
-    loss_matching_temperature = 0.2
+    # loss_matching_temperature = 0.2
     model_save_path = model_save_name
 
     if os.path.isdir('/media/giantdrive'):
@@ -182,8 +182,8 @@ def run(use_grid_data=False, octomap_voxel_size=0.25, model_save_name="best_mode
 
     train_loader, val_loader, test_loader, radar_config = get_dataset(dataset_path, batch_size=BATCH_SIZE,  partial=dataset_part, occupancy_threshold=OCCUPANCY_THRESHOLD, grid=use_grid_data, grid_voxel_size=octomap_voxel_size)
     # model = RadarOccupancyModel2(radar_config, occupancy_threshold=OCCUPANCY_THRESHOLD)
-    model = get_model(radar_config, occupancy_threshold=OCCUPANCY_THRESHOLD, grid=use_grid_data)
     device = torch.device(device_name if torch.cuda.is_available() else "cpu")
+    model = get_model(radar_config, device, occupancy_threshold=OCCUPANCY_THRESHOLD, grid=use_grid_data)
     print('\ndevice', device)
     model.to(device)
 
@@ -191,7 +191,8 @@ def run(use_grid_data=False, octomap_voxel_size=0.25, model_save_name="best_mode
     optimizer = torch.optim.Adam(model.parameters(), lr=LEARNING_RATE)
     # scheduler = LambdaLR(optimizer, lr_lambda=lr_lambda)
 
-    loss_fn = SoftMatchingLossScaled(alpha=loss_spatial_weight, beta=loss_probability_weight, matching_temperature=loss_matching_temperature, distance_threshold=POINT_MATCH_RADIUS)
+    # loss_fn = SoftMatchingLossScaled(alpha=loss_spatial_weight, beta=loss_probability_weight, matching_temperature=loss_matching_temperature, distance_threshold=POINT_MATCH_RADIUS)
+    loss_fn = ChamferBceLoss(spatial_weight=loss_spatial_weight, probability_weight=loss_probability_weight)
     metrics = (
         metric_defs.IoU(max_point_distance=POINT_MATCH_RADIUS, probability_threshold=OCCUPANCY_THRESHOLD),
         metric_defs.WeightedChamfer()
@@ -212,11 +213,11 @@ def run(use_grid_data=False, octomap_voxel_size=0.25, model_save_name="best_mode
                 "name": loss_fn.__class__.__name__,
                 "spatial_weight": loss_spatial_weight,
                 "probability_weight": loss_probability_weight,
-                "matching_temperature": loss_matching_temperature
+                # "matching_temperature": loss_matching_temperature
             }
         }
     )
-    train(model, optimizer, loss_fn, train_loader, val_loader, device, num_epochs=N_EPOCHS, save_path=model_save_path, metrics=metrics) # , scheduler=scheduler)
+    train(model, optimizer, loss_fn, train_loader, val_loader, device, num_epochs=N_EPOCHS, save_path=model_save_path, metrics=metrics, logger=logger) # , scheduler=scheduler)
     model.load_state_dict(torch.load(model_save_path))
     evaluate(model, test_loader, device, loss_fn, metrics=metrics)
     logger.log({"best_model_path":  os.path.abspath(model_save_path)})

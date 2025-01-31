@@ -343,7 +343,7 @@ class PointNet2(nn.Module):
         global_context = self.global_pool(l0_points).expand_as(l0_points)
         combined_features = torch.cat((l0_points, global_context), dim=1)
 
-        x = self.drop1(F.relu(self.bn1(self.conv1(combined_features))))
+        x = self.drop1(self.bn1(self.conv1(combined_features)))
         log_odds = self.conv2(x)  # [B, 1, N_points]
         log_odds = log_odds.permute(0, 2, 1)  # [B, N_points, 1]
         return torch.cat((points[..., :3], log_odds), dim=-1)
@@ -356,7 +356,7 @@ class RadarOccupancyModel2(RadarOccupancyModel):
         num_points = self.radar_config.num_azimuth_bins * self.radar_config.num_range_bins * self.radar_config.num_elevation_bins
         self.down = TrainedDownsampling(num_points, retain_fraction=0.05)
         self.pointnet = PointNet2()
-        self.name = 'cart+down+pointnet_v1.0'
+        self.name = 'cart+down+pointnet_v1.1'
 
     def forward(self, polar_frames):
         cartesian_points = self.polar_to_cartesian(polar_frames)  # [B, 151040, 4]
@@ -370,4 +370,5 @@ class RadarOccupancyModel2(RadarOccupancyModel):
         log_odds = self.pointnet(points, features)  # [B, 7552, 4]
         # print('log_odds', log_odds.shape)
         probabilities = self.apply_sigmoid(log_odds)
+        # print('probabilities', probabilities.shape)
         return probabilities

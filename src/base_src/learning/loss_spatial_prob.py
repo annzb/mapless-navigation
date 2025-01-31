@@ -241,6 +241,74 @@ class SpatialProbLoss(nn.Module):
         return loss
 
 
+class ChamferBceLoss(nn.Module):
+    def __init__(self, spatial_weight=1.0, probability_weight=1.0):
+        """
+        Combined Chamfer Distance and Binary Cross-Entropy loss for 3D point clouds with occupancy probabilities.
+
+        Args:
+            spatial_weight (float): Weighting factor for Chamfer Distance loss.
+            probability_weight (float): Weighting factor for BCE loss.
+        """
+        super().__init__()
+        self.spatial_weight = spatial_weight
+        self.probability_weight = probability_weight
+        self.bce_loss = nn.BCELoss()
+
+    def chamfer_distance(self, pred, true):
+        """
+        Computes the Chamfer Distance between two point clouds.
+
+        Args:
+            pred (Tensor): Predicted point cloud of shape (N, 3).
+            true (Tensor): Ground truth point cloud of shape (M, 3).
+
+        Returns:
+            Tensor: Chamfer Distance loss.
+        """
+        pred_xyz = pred[:, :3]
+        true_xyz = true[:, :3]
+        dist_matrix = torch.cdist(pred_xyz, true_xyz, p=2) ** 2
+        min_dist_pred_to_true = torch.min(dist_matrix, dim=1)[0]
+        min_dist_true_to_pred = torch.min(dist_matrix, dim=0)[0]
+        chamfer_loss = min_dist_pred_to_true.mean() + min_dist_true_to_pred.mean()
+        return chamfer_loss
+
+    def occupancy_bce_loss(self, pred, true):
+        """
+        Computes Binary Cross-Entropy (BCE) loss between occupancy probabilities of matched points.
+
+        Args:
+            pred (Tensor): Predicted point cloud (N, 4), last column is occupancy probability.
+            true (Tensor): Ground truth point cloud (M, 4), last column is occupancy probability.
+
+        Returns:
+            Tensor: BCE loss for occupancy values.
+        """
+        pred_probs = pred[:, 3].unsqueeze(1)
+        true_probs = true[:, 3].unsqueeze(1)
+        dist_matrix = torch.cdist(pred[:, :3], true[:, :3], p=2)
+        nearest_true_indices = torch.argmin(dist_matrix, dim=1)
+        matched_true_probs = true_probs[nearest_true_indices]
+        return self.bce_loss(pred_probs, matched_true_probs)
+
+    def forward(self, pred, true):
+        """
+        Computes the combined loss.
+
+        Args:
+            pred (Tensor): Predicted point cloud of shape (N, 4).
+            true (Tensor): Ground truth point cloud of shape (M, 4).
+
+        Returns:
+            Tensor: Weighted sum of Chamfer Distance and BCE loss.
+        """
+        chamfer_loss = self.chamfer_distance(pred, true)
+        bce_loss = self.occupancy_bce_loss(pred, true)
+        total_loss = self.spatial_weight * chamfer_loss + self.probability_weight * bce_loss
+        return total_loss
+
+
 def test_match_pointclouds():
     # Test 1: No true points
     true_xyz = torch.empty((0, 3))
