@@ -175,11 +175,10 @@ class PointNet(nn.Module):
 
 
 class RadarOccupancyModel(nn.Module):
-    def __init__(self, radar_config, occupancy_threshold=0.5, radar_point_downsample_rate=0.5, trans_embed_dim=128, trans_num_heads=4, trans_num_layers=2):
+    def __init__(self, radar_config):
         super(RadarOccupancyModel, self).__init__()
         self.num_radar_points = radar_config.num_azimuth_bins * radar_config.num_elevation_bins * radar_config.num_range_bins
         self.radar_config = radar_config
-        self.occupancy_threshold = occupancy_threshold
 
         embed_dim = radar_config.num_elevation_bins
         num_heads = embed_dim // 2
@@ -351,8 +350,7 @@ class PointNet2(nn.Module):
 
 class RadarOccupancyModel2(RadarOccupancyModel):
     def __init__(self, *args, **kwargs):
-        super(RadarOccupancyModel2, self).__init__(*args, **kwargs)
-        # self.adaptive_down = AdaptiveDownsampling(ratio=0.05)
+        super().__init__(*args, **kwargs)
         num_points = self.radar_config.num_azimuth_bins * self.radar_config.num_range_bins * self.radar_config.num_elevation_bins
         self.down = TrainedDownsampling(num_points, retain_fraction=0.05)
         self.pointnet = PointNet2()

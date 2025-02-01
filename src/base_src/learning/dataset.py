@@ -1,6 +1,5 @@
 import h5py
 import json
-import math
 import numpy as np
 
 import torch
@@ -111,6 +110,58 @@ def clouds_to_grids(clouds, radar_config):
     return voxel_grid
 
 
+# def validate_octomap_pointcloud(point_cloud, tolerance=1e-3):
+#     if point_cloud.shape[0] < 2:
+#         raise ValueError(f'Bad cloud shape {point_cloud.shape}')
+#     coords = point_cloud[:, :3]
+#     tree = cKDTree(coords)
+#     distances, _ = tree.query(coords, k=2)
+#     estimated_resolution = np.round(np.min(distances[:, 1]), 3)
+#     remainder = np.mod(coords, estimated_resolution / 2)
+#     aligned = np.all((remainder < tolerance) | (remainder > ((estimated_resolution / 2) - tolerance)))
+#     return aligned, estimated_resolution
+
+
+def validate_octomap_pointcloud(point_cloud, tolerance=1e-3):
+    if point_cloud.shape[0] < 2:
+        raise ValueError(f'Bad cloud shape {point_cloud.shape}')
+
+    # Extract only the spatial coordinates (X, Y, Z) from the point cloud.
+    coords = point_cloud[:, :3]
+
+    # Build a KD-tree for efficient nearest neighbor lookup.
+    tree = cKDTree(coords)
+    # Query for each point's two closest neighbors (the first is the point itself).
+    distances, indices = tree.query(coords, k=2)
+
+    # The estimated resolution is taken as the smallest non-zero distance among nearest neighbors.
+    estimated_resolution = np.round(np.min(distances[:, 1]), 3)
+
+    # Compute the deviation of each point's nearest neighbor distance from the estimated resolution.
+    deviations = np.abs(distances[:, 1] - estimated_resolution)
+    inconsistent_points = np.where(deviations > tolerance)[0]
+
+    if inconsistent_points.size > 0:
+        print(f"Found {inconsistent_points.size} points with inconsistent neighbor distances:")
+        for idx in inconsistent_points:
+            actual_distance = distances[idx, 1]
+            deviation = deviations[idx]
+            point_coords = coords[idx]
+            # Retrieve the neighbor's index and then its coordinates.
+            neighbor_idx = indices[idx, 1]
+            neighbor_coords = coords[neighbor_idx]
+            print(
+                f"Point {idx} at coordinates {point_coords} has neighbor {neighbor_idx} at coordinates {neighbor_coords} "
+                f"with distance = {actual_distance:.6f} (deviation = {deviation:.6f} from expected {estimated_resolution:.6f})."
+            )
+            input()
+        valid = False
+    else:
+        valid = True
+
+    return valid, estimated_resolution
+
+
 def process_radar_frames(radar_frames, intensity_mean=None, intensity_std=None):
     if (intensity_mean is None) != (intensity_std is None):
         raise ValueError("Both intensity_mean and intensity_std must be provided or neither.")
@@ -176,7 +227,7 @@ class RadarDatasetGrid(RadarDataset):
         # print(f'{self.name} output shape:', self.Y.shape)
 
 
-def get_dataset(dataset_file_path, partial=1.0, batch_size=16, shuffle_runs=True, random_state=42, occupancy_threshold=0.0, grid=False, grid_voxel_size=0.1):
+def get_dataset(dataset_file_path, dataset_type, partial=1.0, batch_size=16, shuffle_runs=True, random_state=42, grid_voxel_size=1.0):
     data_dict, radar_config = read_h5_dataset(dataset_file_path)
     radar_frames = data_dict['cascade_heatmaps']
     lidar_frames = data_dict['lidar_map_frames']
@@ -193,7 +244,7 @@ def get_dataset(dataset_file_path, partial=1.0, batch_size=16, shuffle_runs=True
     # print('point range:', radar_config.point_range)
 
     # filter empty clouds
-    filtered_indices = [i for i, frame in enumerate(lidar_frames) if len(frame) > 0 and any(frame[:, 3] >= occupancy_threshold)]
+    filtered_indices = [i for i, frame in enumerate(lidar_frames) if len(frame) > 0]  # and any(frame[:, 3] >= occupancy_threshold)]
     print(f'Filtered {len(radar_frames) - len(filtered_indices)} empty frames out of {len(radar_frames)}.')
     radar_frames = np.array(radar_frames[filtered_indices])
     lidar_frames = [lidar_frames[i] for i in filtered_indices]
@@ -206,21 +257,119 @@ def get_dataset(dataset_file_path, partial=1.0, batch_size=16, shuffle_runs=True
     poses = poses[:num_samples]
     print(num_samples, 'samples total.')
 
+    # for i, sample in enumerate(lidar_frames):
+    #     valid, resolution = validate_octomap_pointcloud(sample, tolerance=1e-2)
+    #     if valid:
+    #         if i == 0:
+    #             print('valid sample', i, 'resolution:', resolution)
+    #     else:
+    #         print('invalid sample', i, 'resolution:', resolution)
+
     radar_train, radar_temp, lidar_train, lidar_temp, poses_train, poses_temp = train_test_split(radar_frames, lidar_frames, poses, test_size=0.5, random_state=random_state)
     radar_val, radar_test, lidar_val, lidar_test, poses_val, poses_test = train_test_split(radar_temp, lidar_temp, poses_temp, test_size=0.6, random_state=random_state)
 
-    dataset_class = RadarDatasetGrid if grid else RadarDataset
-    train_dataset = dataset_class(radar_train, lidar_train, poses_train, radar_config=radar_config, voxel_size=grid_voxel_size, name='train')
-    val_dataset = dataset_class(radar_val, lidar_val, poses_val, radar_config=radar_config, voxel_size=grid_voxel_size, intensity_mean=train_dataset.intensity_mean, intensity_std=train_dataset.intensity_std, name='valid')
-    test_dataset = dataset_class(radar_test, lidar_test, poses_test, radar_config=radar_config, voxel_size=grid_voxel_size, intensity_mean=train_dataset.intensity_mean, intensity_std=train_dataset.intensity_std, name='test')
+    # dataset_class = RadarDatasetGrid if grid else RadarDataset
+    train_dataset = dataset_type(radar_train, lidar_train, poses_train, radar_config=radar_config, voxel_size=grid_voxel_size, name='train')
+    val_dataset = dataset_type(radar_val, lidar_val, poses_val, radar_config=radar_config, voxel_size=grid_voxel_size, intensity_mean=train_dataset.intensity_mean, intensity_std=train_dataset.intensity_std, name='valid')
+    test_dataset = dataset_type(radar_test, lidar_test, poses_test, radar_config=radar_config, voxel_size=grid_voxel_size, intensity_mean=train_dataset.intensity_mean, intensity_std=train_dataset.intensity_std, name='test')
 
     train_dataset.print_log()
     val_dataset.print_log()
     test_dataset.print_log()
     print()
 
-    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, collate_fn=dataset_class.custom_collate_fn)
-    val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False, collate_fn=dataset_class.custom_collate_fn)
-    test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False, collate_fn=dataset_class.custom_collate_fn)
+    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, collate_fn=dataset_type.custom_collate_fn)
+    val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False, collate_fn=dataset_type.custom_collate_fn)
+    test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False, collate_fn=dataset_type.custom_collate_fn)
 
     return train_loader, val_loader, test_loader, radar_config
+
+
+def get_aligned_indices(point_cloud, grid_resolution, grid_limits, tolerance=1e-2):
+    """
+    Return the indices of points in the point cloud that are aligned with the grid.
+
+    A point is considered aligned if, for each axis (x, y, z), its coordinate (after subtracting
+    the grid minimum for that axis) is an integer multiple of grid_resolution, within tolerance.
+    Only points within the grid limits are considered.
+
+    Parameters:
+        point_cloud (np.ndarray): An array of shape [N, 4] where the first three columns are X, Y, Z.
+        grid_resolution (float): The spacing between grid nodes.
+        grid_limits (tuple or list): A sequence of six numbers (x_min, x_max, y_min, y_max, z_min, z_max).
+        tolerance (float): Allowed numerical tolerance for checking alignment (default 1e-3).
+
+    Returns:
+        np.ndarray: A 1D array of indices of points that are aligned with the grid.
+    """
+    # Unpack the grid limits
+    x_min, x_max, y_min, y_max, z_min, z_max = grid_limits
+
+    # Extract spatial coordinates from the point cloud.
+    coords = point_cloud[:, :3]
+
+    # Ensure the points are within the grid limits.
+    within_limits = (
+        (coords[:, 0] >= x_min) & (coords[:, 0] <= x_max) &
+        (coords[:, 1] >= y_min) & (coords[:, 1] <= y_max) &
+        (coords[:, 2] >= z_min) & (coords[:, 2] <= z_max)
+    )
+
+    # Compute the offset from the grid minimum for each axis and normalize by the resolution.
+    diff = (coords - np.array([x_min, y_min, z_min])) / grid_resolution
+
+    # For each axis, the coordinate is aligned if the normalized offset is nearly an integer.
+    aligned_x = np.abs(diff[:, 0] - np.round(diff[:, 0])) < tolerance
+    aligned_y = np.abs(diff[:, 1] - np.round(diff[:, 1])) < tolerance
+    aligned_z = np.abs(diff[:, 2] - np.round(diff[:, 2])) < tolerance
+
+    # Combine the conditions.
+    aligned_mask = within_limits & aligned_x & aligned_y & aligned_z
+
+    # Return the indices of points that are aligned.
+    return np.nonzero(aligned_mask)[0]
+
+
+from scipy.spatial import cKDTree
+
+
+def validate_octomap_pointcloud(point_cloud, tolerance=1e-3):
+    if point_cloud.shape[0] < 2:
+        raise ValueError(f"Bad cloud shape {point_cloud.shape}")
+
+    # Use all columns for misaligned point output, but only use the first three for checking grid alignment.
+    coords = point_cloud[:, :3]
+
+    # Build a KD-tree for efficient nearest neighbor lookup.
+    tree = cKDTree(coords)
+    # Query each point's two closest neighbors (the first is the point itself).
+    distances, _ = tree.query(coords, k=2)
+
+    # Estimated resolution is taken as the smallest nonzero nearest neighbor distance.
+    estimated_resolution = np.round(np.min(distances[:, 1]), 3)
+
+    # Use the first point as the reference ("origin").
+    origin = coords[0]
+
+    misaligned_points_list, aligned_points_list = [], []
+
+    # Check each point's coordinates relative to the origin.
+    for idx, point in enumerate(coords):
+        diff = point - origin
+        # For this point, check each axis.
+        for axis in range(3):
+            # Compute the ratio of the difference to the resolution.
+            ratio = diff[axis] / estimated_resolution
+            # If the ratio isn't nearly an integer, mark the point as misaligned.
+            if abs(ratio - round(ratio)) > tolerance:
+                misaligned_points_list.append(point_cloud[idx])
+                # Once one axis fails, we don't need to check further axes for this point.
+                break
+            else:
+                aligned_points_list.append(point_cloud[idx])
+
+    # Convert the list to a NumPy array with shape [M, 4].
+    misaligned_points = np.array(misaligned_points_list) if misaligned_points_list else np.empty((0, 4))
+    aligned_points = np.array(aligned_points_list) if aligned_points_list else np.empty((0, 4))
+
+    return aligned_points, misaligned_points, estimated_resolution

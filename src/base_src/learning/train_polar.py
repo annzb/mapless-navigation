@@ -1,12 +1,15 @@
 import os.path
 from pprint import pprint
+from abc import ABC, abstractmethod
 
 import torch
 import wandb
 torch.autograd.set_detect_anomaly(True)
+import torch.nn as nn
 
+from base_classes import BaseLoss, BaseMetric, RadarOccupancyModel
 import metrics as metric_defs
-from dataset import get_dataset
+from dataset import get_dataset, RadarDatasetGrid, RadarDataset
 from loss_spatial_prob import SoftMatchingLossScaled, ChamferBceLoss
 from model_polar import RadarOccupancyModel2
 from model_unet import Unet1C3DPolar
@@ -33,10 +36,95 @@ class Logger:
             logger.finish(**kwargs)
 
 
-def filter_cloud(cloud, model, occupied_only=False):
-    if not occupied_only:
-        return cloud
-    return model.filter_probs(cloud)
+class ModelManager(ABC):
+
+    # DATA_MODES = {
+    #     'points': {
+    #         'model_class': RadarOccupancyModel2,
+    #         'loss_class': ChamferBceLoss,
+    #         'metric_classes': (metric_defs.IoU, metric_defs.WeightedChamfer)
+    #     },
+    #     'grids': {
+    #         'model_class': Unet1C3DPolar,
+    #         'loss_class': object,
+    #         'metric_classes': (metric_defs.IoU, )
+    #     }
+    # }
+
+    def __init__(
+            self, dataset_path, *args, # data_mode,
+            # static params
+            grid_voxel_size=1.0,
+            batch_size=4,
+            dataset_part=1.0,
+            shuffle_dataset_runs=True,
+            device_name='cpu',
+            logger=Logger(),
+            random_state=42,
+
+            # overridable params
+            # ...
+            # loss, metrics
+            occupancy_threshold=0.5, evaluate_over_occupied_points_only=False,
+            # metrics
+            max_point_distance=1.0,
+            # optimizer
+            learning_rate=0.01,
+            # train loop
+             n_epochs=10, save_model_name="best_model",
+
+            **kwargs
+
+    ):
+        # if data_mode not in self.DATA_MODES:
+        #     raise ValueError(f"data_mode must be one of {self.DATA_MODES.keys()}")
+        # self.data_mode = data_mode
+        self.occupancy_threshold = occupancy_threshold
+        self.occupied_only = evaluate_over_occupied_points_only
+        self.max_point_distance = max_point_distance
+        self.learning_rate = learning_rate
+        self.logger = logger
+        self._define_types()
+        self._init_device(device_name)
+
+        self.train_loader, self.val_loader, self.test_loader, self.radar_config = get_dataset(
+            dataset_file_path=dataset_path, dataset_type=self._dataset_type,
+            batch_size=batch_size, partial=dataset_part, shuffle_runs=shuffle_dataset_runs,
+            grid_voxel_size=grid_voxel_size, random_state=random_state
+        )
+        self.init_model()
+        self.loss_fn = self._loss_type(occupancy_threshold=self.occupancy_threshold, evaluate_over_occupied_points_only=self.occupied_only)
+        self.optimizer = self._optimizer_type(self.model.parameters(), learning_rate=self.learning_rate)
+        self.metrics = (m_t(max_point_distance=self.max_point_distance) for m_t in self._metric_types)
+
+        if evaluate_over_occupied_points_only:
+            self._filter_cloud = lambda cloud: cloud[cloud[:, 3] >= self.occupancy_threshold]
+        else:
+            self._filter_cloud = lambda cloud: cloud
+
+    @abstractmethod
+    def _define_types(self):
+        self._dataset_type = lambda *args, **kwargs: object
+        self._model_type = RadarOccupancyModel
+        self._optimizer_type = lambda *args, **kwargs: object
+        self._loss_type = BaseLoss
+        self._metric_types = (BaseMetric, )
+        raise NotImplementedError()
+
+    def _init_device(self, device_name):
+        self.device = torch.device(device_name)
+        print('Using device:', device_name)
+
+    def init_model(self, model_path=None):
+        model = self._model_type(self.radar_config)
+        model.to(self.device)
+        if model_path is not None:
+            model.load_state_dict(torch.load(model_path, map_location=self.device))
+            model.eval()
+        self.model = model
+
+    def _init_loss_function(self):
+        pass
 
 
 def train(model, optimizer, loss_fn, train_loader, val_loader, device, num_epochs=10, occupied_only=False, save_path="best_model.pth", metrics=tuple(), scheduler=None, logger=Logger()):
@@ -187,7 +275,7 @@ def run(use_grid_data=False, octomap_voxel_size=0.25, model_save_name="best_mode
         dataset_part = 0.05
         logger = Logger(print_log=True)
 
-    train_loader, val_loader, test_loader, radar_config = get_dataset(dataset_path, batch_size=BATCH_SIZE,  partial=dataset_part, occupancy_threshold=OCCUPANCY_THRESHOLD, grid=use_grid_data, grid_voxel_size=octomap_voxel_size)
+    train_loader, val_loader, test_loader, radar_config = get_dataset(dataset_path, dataset_type=RadarDatasetGrid if use_grid_data else RadarDataset, batch_size=BATCH_SIZE,  partial=dataset_part, grid_voxel_size=octomap_voxel_size)
     # model = RadarOccupancyModel2(radar_config, occupancy_threshold=OCCUPANCY_THRESHOLD)
     device = torch.device(device_name if torch.cuda.is_available() else "cpu")
     model = get_model(radar_config, device, occupancy_threshold=OCCUPANCY_THRESHOLD, grid=use_grid_data)
@@ -226,7 +314,7 @@ def run(use_grid_data=False, octomap_voxel_size=0.25, model_save_name="best_mode
     )
     train(model, optimizer, loss_fn, train_loader, val_loader, device, num_epochs=N_EPOCHS, save_path=model_save_path, metrics=metrics, logger=logger, occupied_only=LOSS_OVER_OCCUPIED_ONLY)
     model.load_state_dict(torch.load(model_save_path))
-    evaluate(model, test_loader, device, loss_fn, metrics=metrics)
+    evaluate(model, test_loader, device, loss_fn, metrics=metrics, logger=logger, occupied_only=LOSS_OVER_OCCUPIED_ONLY)
     logger.log({"best_model_path":  os.path.abspath(model_save_path)})
     logger.finish()
 

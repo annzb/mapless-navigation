@@ -1,10 +1,6 @@
 import torch
 
-
-class Metric:
-    def __init__(self, **kwargs):
-        for k, v in kwargs.items():
-            setattr(self, k, v)
+from base_classes import BaseMetric as Metric
 
 
 class IoU(Metric):
