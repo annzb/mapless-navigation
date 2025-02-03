@@ -1,13 +1,10 @@
 import torch
 
-from base_classes import BaseMetric as Metric
+from base_classes import PointcloudOccupancyMetric
 
 
-class IoU(Metric):
-    def __init__(self,  max_point_distance=0.1, probability_threshold=0.5):
-        super().__init__(max_point_distance=max_point_distance, probability_threshold=probability_threshold)
-
-    def __call__(self, predicted_points, ground_truth_points):
+class IoU(PointcloudOccupancyMetric):
+    def calc(self, predicted_points, ground_truth_points):
         """
         Computes the Intersection-over-Union (IoU) between two point clouds.
 
@@ -20,10 +17,8 @@ class IoU(Metric):
         Returns:
             float: IoU value between predicted and ground truth point clouds.
         """
-        pred_occupancy = (predicted_points[:, 3] >= self.probability_threshold).float()
-        gt_occupancy = (ground_truth_points[:, 3] >= self.probability_threshold).float()
-        pred_coords = predicted_points[pred_occupancy.bool(), :3]
-        gt_coords = ground_truth_points[gt_occupancy.bool(), :3]
+        pred_coords = predicted_points[predicted_points.bool(), :3]
+        gt_coords = ground_truth_points[ground_truth_points.bool(), :3]
         if pred_coords.size(0) == 0 or gt_coords.size(0) == 0:
             return 0.0
 
@@ -41,7 +36,7 @@ class IoU(Metric):
         return iou_score.item()
 
 
-class WeightedChamfer:
+class WeightedChamfer(PointcloudOccupancyMetric):
     def __call__(self, predicted_points, ground_truth_points):
         """
         Computes the weighted Chamfer distance between two point clouds.

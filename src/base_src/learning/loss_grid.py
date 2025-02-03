@@ -38,7 +38,7 @@ def sparse_tensor_loss(predicted_grid, groundtruth_cloud, grid_resolution, point
 
 class SparseBceLoss(nn.Module):
     def __init__(self, alpha=1.0, beta=1.0, matching_temperature=1, distance_threshold=1.0):
-        super(SoftMatchingLossScaled, self).__init__()
+        super().__init__()
         self.alpha = alpha
         self.beta = beta
         self.temperature = matching_temperature

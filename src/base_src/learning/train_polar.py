@@ -5,12 +5,12 @@ from abc import ABC, abstractmethod
 import torch
 import wandb
 torch.autograd.set_detect_anomaly(True)
-import torch.nn as nn
 
 from base_classes import BaseLoss, BaseMetric, RadarOccupancyModel
 import metrics as metric_defs
 from dataset import get_dataset, RadarDatasetGrid, RadarDataset
-from loss_spatial_prob import SoftMatchingLossScaled, ChamferBceLoss
+from loss_grid import SparseBceLoss as GridLoss
+from loss_points import ChamferBceLoss as PointsLoss
 from model_polar import RadarOccupancyModel2
 from model_unet import Unet1C3DPolar
 from torch.optim.lr_scheduler import LambdaLR
@@ -37,20 +37,6 @@ class Logger:
 
 
 class ModelManager(ABC):
-
-    # DATA_MODES = {
-    #     'points': {
-    #         'model_class': RadarOccupancyModel2,
-    #         'loss_class': ChamferBceLoss,
-    #         'metric_classes': (metric_defs.IoU, metric_defs.WeightedChamfer)
-    #     },
-    #     'grids': {
-    #         'model_class': Unet1C3DPolar,
-    #         'loss_class': object,
-    #         'metric_classes': (metric_defs.IoU, )
-    #     }
-    # }
-
     def __init__(
             self, dataset_path, *args, # data_mode,
             # static params
@@ -64,6 +50,8 @@ class ModelManager(ABC):
 
             # overridable params
             # ...
+            # loss
+            loss_spatial_weight=1.0, loss_probability_weight=1.0,
             # loss, metrics
             occupancy_threshold=0.5, evaluate_over_occupied_points_only=False,
             # metrics
@@ -71,19 +59,19 @@ class ModelManager(ABC):
             # optimizer
             learning_rate=0.01,
             # train loop
-             n_epochs=10, save_model_name="best_model",
+             n_epochs=10, save_model_name="model",
 
             **kwargs
 
     ):
-        # if data_mode not in self.DATA_MODES:
-        #     raise ValueError(f"data_mode must be one of {self.DATA_MODES.keys()}")
-        # self.data_mode = data_mode
         self.occupancy_threshold = occupancy_threshold
         self.occupied_only = evaluate_over_occupied_points_only
         self.max_point_distance = max_point_distance
+        self.spatial_weight = loss_spatial_weight
+        self.probability_weight = loss_probability_weight
         self.learning_rate = learning_rate
         self.logger = logger
+
         self._define_types()
         self._init_device(device_name)
 
@@ -93,14 +81,26 @@ class ModelManager(ABC):
             grid_voxel_size=grid_voxel_size, random_state=random_state
         )
         self.init_model()
-        self.loss_fn = self._loss_type(occupancy_threshold=self.occupancy_threshold, evaluate_over_occupied_points_only=self.occupied_only)
-        self.optimizer = self._optimizer_type(self.model.parameters(), learning_rate=self.learning_rate)
-        self.metrics = (m_t(max_point_distance=self.max_point_distance) for m_t in self._metric_types)
+        self.init_loss_function(
+            occupancy_threshold=self.occupancy_threshold,
+            occupied_only=self.occupied_only,
+            spatial_weight=self.spatial_weight,
+            probability_weight=self.probability_weight
+        )
+        self.init_metrics(
+            occupancy_threshold=self.occupancy_threshold,
+            occupied_only=self.occupied_only,
+            max_point_distance=self.max_point_distance
+        )
+        self.init_optimizer(learning_rate=self.learning_rate)
 
-        if evaluate_over_occupied_points_only:
+        if self.occupied_only:
             self._filter_cloud = lambda cloud: cloud[cloud[:, 3] >= self.occupancy_threshold]
         else:
             self._filter_cloud = lambda cloud: cloud
+
+        self.n_epochs = n_epochs
+        self.save_model_name = save_model_name
 
     @abstractmethod
     def _define_types(self):
@@ -123,8 +123,22 @@ class ModelManager(ABC):
             model.eval()
         self.model = model
 
-    def _init_loss_function(self):
-        pass
+    def init_loss_function(self, **kwargs):
+        self.loss_fn = self._loss_type(**kwargs)
+
+    def init_optimizer(self, learning_rate=None, **kwargs):
+        self.optimizer = self._optimizer_type(self.model.parameters(), learning_rate=learning_rate)
+
+    def init_metrics(self, **kwargs):
+        self.metrics = (m_t(**kwargs) for m_t in self._metric_types)
+
+    def reset_params(self, **kwargs):
+        for k, v in kwargs.items():
+            if v is not None:
+                setattr(self, k, v)
+        self.init_loss_function(**kwargs)
+        self.init_metrics(**kwargs)
+        self.init_optimizer(**kwargs)
 
 
 def train(model, optimizer, loss_fn, train_loader, val_loader, device, num_epochs=10, occupied_only=False, save_path="best_model.pth", metrics=tuple(), scheduler=None, logger=Logger()):
