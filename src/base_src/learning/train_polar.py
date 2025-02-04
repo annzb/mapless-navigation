@@ -2,6 +2,7 @@ import os.path
 from pprint import pprint
 from abc import ABC, abstractmethod
 
+import numpy as np
 import torch
 import wandb
 torch.autograd.set_detect_anomaly(True)
@@ -11,7 +12,7 @@ import metrics as metric_defs
 from dataset import get_dataset, RadarDatasetGrid, RadarDataset
 from loss_grid import SparseBceLoss as GridLoss
 from loss_points import ChamferBceLoss as PointsLoss
-from model_polar import RadarOccupancyModel2
+from model_polar import PointnetOccupancyModel as PointsModel
 from model_unet import Unet1C3DPolar
 from torch.optim.lr_scheduler import LambdaLR
 
@@ -28,8 +29,9 @@ class Logger:
     def log(self, stuff):
         if self.print_log:
             pprint(stuff)
-        for logger in self.loggers:
-            logger.log(stuff)
+        if isinstance(stuff, dict):
+            for logger in self.loggers:
+                logger.log(stuff)
 
     def finish(self, **kwargs):
         for logger in self.loggers:
@@ -37,6 +39,9 @@ class Logger:
 
 
 class ModelManager(ABC):
+
+    _modes = 'train', 'val', 'test'
+
     def __init__(
             self, dataset_path, *args, # data_mode,
             # static params
@@ -102,6 +107,26 @@ class ModelManager(ABC):
         self.n_epochs = n_epochs
         self.save_model_name = save_model_name
 
+        self.logger.init(
+            project="radar-occupancy",
+            config={
+                "dataset": os.path.basename(dataset_path),
+                "model": self.model.name,
+                "learning_rate": self.learning_rate,
+                "epochs": self.n_epochs,
+                "dataset_part": dataset_part,
+                "batch_size": batch_size,
+                "occupancy_threshold": self.occupancy_threshold,
+                "point_match_radius": self.max_point_distance,
+                "loss": {
+                    "name": self.loss_fn.__class__.__name__,
+                    "spatial_weight": loss_spatial_weight,
+                    "probability_weight": loss_probability_weight
+                }
+            }
+        )
+        self._saved_models = set()
+
     @abstractmethod
     def _define_types(self):
         self._dataset_type = lambda *args, **kwargs: object
@@ -130,139 +155,217 @@ class ModelManager(ABC):
         self.optimizer = self._optimizer_type(self.model.parameters(), learning_rate=learning_rate)
 
     def init_metrics(self, **kwargs):
-        self.metrics = (m_t(**kwargs) for m_t in self._metric_types)
+        self.metrics = {}
+        for mode in self._modes:
+            self.metrics[mode] = (m_t(name=mode, **kwargs) for m_t in self._metric_types)
+
+    def report_metrics(self, mode=None):
+        if mode and mode not in self._modes:
+            raise ValueError(f'Invalid mode: {mode}, expected one of {self._modes}')
+        metrics = self.metrics[mode] if mode else np.concatenate(list(self.metrics.values()), axis=0)
+        report = {}
+        for metric in metrics:
+            report[metric.name] = metric.total_score
+            if mode != 'test':
+                report[f'best_{metric.name}'] = metric.best_score
+        return report
+
+    def apply_metrics(self, y_true, y_pred, mode=None):
+        if mode and mode not in self._modes:
+            raise ValueError(f'Invalid mode: {mode}, expected one of {self._modes}')
+        metrics = self.metrics[mode] if mode else np.concatenate(list(self.metrics.values()), axis=0)
+        for metric in metrics:
+            metric(y_true, y_pred)
+
+    def scale_metrics(self, n_samples, mode=None):
+        if mode and mode not in self._modes:
+            raise ValueError(f'Invalid mode: {mode}, expected one of {self._modes}')
+        metrics = self.metrics[mode] if mode else np.concatenate(list(self.metrics.values()), axis=0)
+        for metric in metrics:
+            metric.scale_score(n_samples)
+
+    def reset_metrics_epoch(self, mode=None):
+        if mode and mode not in self._modes:
+            raise ValueError(f'Invalid mode: {mode}, expected one of {self._modes}')
+        metrics = self.metrics[mode] if mode else np.concatenate(list(self.metrics.values()), axis=0)
+        for metric in metrics:
+            metric.reset_epoch()
+
+    def reset_metrics(self, mode=None):
+        if mode and mode not in self._modes:
+            raise ValueError(f'Invalid mode: {mode}, expected one of {self._modes}')
+        metrics = self.metrics[mode] if mode else np.concatenate(list(self.metrics.values()), axis=0)
+        for metric in metrics:
+            metric.reset()
 
     def reset_params(self, **kwargs):
         for k, v in kwargs.items():
             if v is not None:
                 setattr(self, k, v)
-        self.init_loss_function(**kwargs)
-        self.init_metrics(**kwargs)
-        self.init_optimizer(**kwargs)
+        self.init_loss_function(
+            occupancy_threshold=self.occupancy_threshold,
+            occupied_only=self.occupied_only,
+            spatial_weight=self.spatial_weight,
+            probability_weight=self.probability_weight
+        )
+        self.init_metrics(
+            occupancy_threshold=self.occupancy_threshold,
+            occupied_only=self.occupied_only,
+            max_point_distance=self.max_point_distance
+        )
+        self.init_optimizer(learning_rate=self.learning_rate)
 
+    def _train_epoch(self):
+        mode = 'train'
+        data_loader = self.train_loader
+        epoch_loss = 0.0
+        self.model.train()
+        self.reset_metrics_epoch(mode=mode)
 
-def train(model, optimizer, loss_fn, train_loader, val_loader, device, num_epochs=10, occupied_only=False, save_path="best_model.pth", metrics=tuple(), scheduler=None, logger=Logger()):
-    best_val_loss = float('inf')
-
-    for epoch in range(num_epochs):
-        print(f"Epoch {epoch + 1}/{num_epochs}")
-
-        model.train()
-        train_scores = {}
-        for metric in metrics:
-            name = f"train{metric.__class__.__name__}"
-            train_scores[name] = {'value': 0.0, 'func': metric}
-        train_loss = 0.0
-
-        for radar_frames, lidar_frames, poses in train_loader:
-            radar_frames = radar_frames.to(device)
-            lidar_frames = [lidar_cloud.to(device) for lidar_cloud in lidar_frames]
-            pred_probabilities = model(radar_frames)
+        for radar_frames, lidar_frames, poses in data_loader:
+            radar_frames = radar_frames.to(self.device)
+            pred_probabilities = self.model(radar_frames)
 
             batch_loss = 0.0
             for pred_cloud, true_cloud in zip(pred_probabilities, lidar_frames):
-                pred_cloud_filtered = filter_cloud(pred_cloud, model, occupied_only=occupied_only)
-                true_cloud_filtered = filter_cloud(true_cloud, model, occupied_only=occupied_only)
-                sample_loss = loss_fn(pred_cloud_filtered, true_cloud_filtered)
-                # print('sample_loss', sample_loss.item())
+                true_cloud.to(self.device)
+                pred_cloud_filtered = self._filter_cloud(pred_cloud)
+                true_cloud_filtered = self._filter_cloud(true_cloud)
+                sample_loss = self.loss_fn(pred_cloud_filtered, true_cloud_filtered)
                 batch_loss = batch_loss + sample_loss
-                for metric_name, metric_data in train_scores.items():
-                    # print('sample', metric_name, metric_data['func'](pred_cloud_filtered, true_cloud_filtered))
-                    train_scores[metric_name]['value'] += metric_data['func'](pred_cloud_filtered, true_cloud_filtered)
+                self.apply_metrics(true_cloud_filtered, pred_cloud_filtered, mode=mode)
 
-            train_loss += batch_loss.item()
+            epoch_loss += batch_loss.item()
             batch_loss = batch_loss / len(radar_frames)
-            # print('batch_loss', batch_loss)
 
-            optimizer.zero_grad()
+            self.optimizer.zero_grad()
             batch_loss.backward()
-            optimizer.step()
-            if scheduler is not None:
-                scheduler.step()
+            self.optimizer.step()
 
-        train_loss /= len(train_loader)
-        for metric_name, metric_data in train_scores.items():
-            train_scores[metric_name]['value'] /= len(train_loader)
-            # print('train', metric_name, train_scores[metric_name]['value'])
+        epoch_loss /= len(data_loader)
+        self.scale_metrics(n_samples=len(data_loader), mode=mode)
+        return epoch_loss
 
-        # validation
-        model.eval()
-        val_scores = {}
-        for metric in metrics:
-            name = f"valid{metric.__class__.__name__}"
-            val_scores[name] = {'value': 0.0, 'func': metric}
-        val_loss = 0.0
+    def _validate_epoch(self):
+        mode = 'val'
+        data_loader = self.val_loader
+        epoch_loss = 0.0
+        self.model.eval()
+        self.reset_metrics_epoch(mode=mode)
 
         with torch.no_grad():
-            for radar_frames, lidar_frames, poses in val_loader:
-                radar_frames = radar_frames.to(device)
-                lidar_frames = [lidar_cloud.to(device) for lidar_cloud in lidar_frames]
-                pred_probabilities = model(radar_frames)
+            for radar_frames, lidar_frames, poses in data_loader:
+                radar_frames = radar_frames.to(self.device)
+                pred_probabilities = self.model(radar_frames)
 
+                batch_loss = 0.0
                 for pred_cloud, true_cloud in zip(pred_probabilities, lidar_frames):
-                    pred_cloud_filtered = filter_cloud(pred_cloud, model, occupied_only=occupied_only)
-                    true_cloud_filtered = filter_cloud(true_cloud, model, occupied_only=occupied_only)
-                    val_loss = val_loss + loss_fn(pred_cloud_filtered, true_cloud_filtered).item()
-                    for metric_name, metric_data in val_scores.items():
-                        val_scores[metric_name]['value'] += metric_data['func'](pred_cloud_filtered, true_cloud_filtered)
+                    true_cloud.to(self.device)
+                    pred_cloud_filtered = self._filter_cloud(pred_cloud)
+                    true_cloud_filtered = self._filter_cloud(true_cloud)
+                    sample_loss = self.loss_fn(pred_cloud_filtered, true_cloud_filtered)
+                    batch_loss = batch_loss + sample_loss
+                    self.apply_metrics(true_cloud_filtered, pred_cloud_filtered, mode=mode)
+                epoch_loss += batch_loss.item()
 
-        val_loss /= len(val_loader)
-        for metric_name, metric_data in val_scores.items():
-            val_scores[metric_name]['value'] /= len(val_loader)
+            epoch_loss /= len(data_loader)
+            self.scale_metrics(n_samples=len(data_loader), mode=mode)
 
-        # save model
-        if val_loss < best_val_loss:
-            best_val_loss = val_loss
-            torch.save(model.state_dict(), save_path)
+        return epoch_loss
 
-        log = {"epoch": epoch, "train_loss": train_loss, "valid_loss": val_loss, "best_valid_loss": best_val_loss}
-        for scores in (train_scores, val_scores):
-            for metric_name, metric_data in scores.items():
-                log[metric_name] = metric_data['value']
-        logger.log(log)
-        # print(f"Train Loss: {train_loss:.4f}, Val Loss: {val_loss:.4f}, Best Val Loss: {best_val_loss:.4f}")
+    def _save_model(self, path):
+        torch.save(self.model.state_dict(), path)
+        self._saved_models.add(path)
+        self.logger.log(f'Saved model to {path}')
+
+    def train(self, n_epochs=None, save_model_name=None):
+        n_epochs = n_epochs or self.n_epochs
+        save_model_name = save_model_name or self.save_model_name
+        best_train_loss, best_val_loss = float('inf')
+        self.reset_metrics(mode='train')
+        self.reset_metrics(mode='val')
+
+        for epoch in range(n_epochs):
+            self.logger.log(f"Epoch {epoch + 1}/{n_epochs}")
+            train_epoch_loss = self._train_epoch()
+            val_epoch_loss = self._validate_epoch()
+
+            if train_epoch_loss < best_train_loss:
+                best_train_loss = train_epoch_loss
+                self._save_model(save_model_name.replace('.pth', '_train_loss.pth'))
+            if val_epoch_loss < best_val_loss:
+                best_val_loss = val_epoch_loss
+                self._save_model(save_model_name.replace('.pth', '_val_loss.pth'))
+            for mode in 'train', 'val':
+                for metric in self.metrics[mode]:
+                    if metric.total_score > metric.best_score:
+                        self._save_model(save_model_name.replace('.pth', f'_{metric.name}.pth'))
+
+            log = {
+                "epoch": epoch,
+                "train_loss": train_epoch_loss, "best_train_loss": best_train_loss,
+                "valid_loss": val_epoch_loss, "best_valid_loss": best_val_loss
+            }
+            log.update(self.report_metrics(mode='train'))
+            log.update(self.report_metrics(mode='val'))
+            self.logger.log(log)
+
+    def _evaluate_current_model(self):
+        mode = 'test'
+        data_loader = self.test_loader
+        test_loss = 0.0
+        self.model.eval()
+        self.reset_metrics(mode=mode)
+
+        with torch.no_grad():
+            for radar_frames, lidar_frames, poses in data_loader:
+                radar_frames = radar_frames.to(self.device)
+                pred_probabilities = self.model(radar_frames)
+
+                batch_loss = 0.0
+                for pred_cloud, true_cloud in zip(pred_probabilities, lidar_frames):
+                    true_cloud.to(self.device)
+                    pred_cloud_filtered = self._filter_cloud(pred_cloud)
+                    true_cloud_filtered = self._filter_cloud(true_cloud)
+                    sample_loss = self.loss_fn(pred_cloud_filtered, true_cloud_filtered)
+                    batch_loss = batch_loss + sample_loss
+                    self.apply_metrics(true_cloud_filtered, pred_cloud_filtered, mode=mode)
+                test_loss += batch_loss.item()
+
+            test_loss /= len(data_loader)
+            self.scale_metrics(n_samples=len(data_loader), mode=mode)
+
+        return test_loss
 
 
-def evaluate(model, test_loader, device, loss_fn, occupied_only=False, metrics=tuple(), logger=Logger()):
-    model.eval()
-    test_scores = {}
-    for metric in metrics:
-        name = f"test{metric.__class__.__name__}"
-        test_scores[name] = {'value': 0.0, 'func': metric}
-    test_loss = 0.0
-    with torch.no_grad():
-        for radar_frames, lidar_frames, poses in test_loader:
-            radar_frames = radar_frames.to(device)
-            lidar_frames = [lidar_cloud.to(device) for lidar_cloud in lidar_frames]
-            pred_probabilities = model(radar_frames)
+    def evaluate(self):
+        for model_path in self._saved_models:
+            self.init_model(model_path)
+            model_test_loss = self._evaluate_current_model()
 
-            for pred_cloud, true_cloud in zip(pred_probabilities, lidar_frames):
-                pred_cloud_filtered = filter_cloud(pred_cloud, model, occupied_only=occupied_only)
-                true_cloud_filtered = filter_cloud(true_cloud, model, occupied_only=occupied_only)
-                test_loss = test_loss + loss_fn(pred_cloud_filtered, true_cloud_filtered).item()
-                for metric_name, metric_data in test_scores.items():
-                    test_scores[metric_name]['value'] += metric_data['func'](pred_cloud_filtered, true_cloud_filtered)
-
-    test_loss /= len(test_loader)
-    for metric_name, metric_data in test_scores.items():
-        test_scores[metric_name]['value'] /= len(test_loader)
-    # test_iou /= len(test_loader)
-    # test_chamfer /= len(test_loader)
-    log = {"test_loss": test_loss}
-    for metric_name, metric_data in test_scores.items():
-        log[metric_name] = metric_data['value']
-    logger.log(log)
-    # print(f"Test Loss: {test_loss:.4f}")
+            log = {"model_path": model_path, "test_loss": model_test_loss}
+            log.update(self.report_metrics(mode='test'))
+            self.logger.log(log)
 
 
-def get_model(radar_config, device, occupancy_threshold=0.5, grid=False):
-    return Unet1C3DPolar(radar_config, device) if grid else RadarOccupancyModel2(radar_config, occupancy_threshold=occupancy_threshold)
+class PointModelManager(ModelManager):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
 
 
-def init_lr(total_epochs, start_lr, end_lr):
-    def lr_lambda(epoch):
-        return 1.0 - (epoch / total_epochs) * ((start_lr - end_lr) / start_lr)
-    return lr_lambda
+    def _define_types(self):
+        self._dataset_type = RadarDataset
+        self._model_type = PointsModel
+        self._optimizer_type = torch.optim.Adam
+        self._loss_type = PointsLoss
+        self._metric_types = (metric_defs.IoU, metric_defs.WeightedChamfer)
+
+
+
+# def init_lr(total_epochs, start_lr, end_lr):
+#     def lr_lambda(epoch):
+#         return 1.0 - (epoch / total_epochs) * ((start_lr - end_lr) / start_lr)
+#     return lr_lambda
 
 
 def run(use_grid_data=False, octomap_voxel_size=0.25, model_save_name="best_model.pth"):
@@ -289,48 +392,10 @@ def run(use_grid_data=False, octomap_voxel_size=0.25, model_save_name="best_mode
         dataset_part = 0.05
         logger = Logger(print_log=True)
 
-    train_loader, val_loader, test_loader, radar_config = get_dataset(dataset_path, dataset_type=RadarDatasetGrid if use_grid_data else RadarDataset, batch_size=BATCH_SIZE,  partial=dataset_part, grid_voxel_size=octomap_voxel_size)
-    # model = RadarOccupancyModel2(radar_config, occupancy_threshold=OCCUPANCY_THRESHOLD)
-    device = torch.device(device_name if torch.cuda.is_available() else "cpu")
-    model = get_model(radar_config, device, occupancy_threshold=OCCUPANCY_THRESHOLD, grid=use_grid_data)
-    print('\ndevice', device)
-    model.to(device)
-
-    # lr_lambda = init_lr(N_EPOCHS, LEARNING_RATE, LEARNING_RATE / 10)
-    optimizer = torch.optim.Adam(model.parameters(), lr=LEARNING_RATE)
-    # scheduler = LambdaLR(optimizer, lr_lambda=lr_lambda)
-
-    # loss_fn = SoftMatchingLossScaled(alpha=loss_spatial_weight, beta=loss_probability_weight, matching_temperature=loss_matching_temperature, distance_threshold=POINT_MATCH_RADIUS)
-    loss_fn = ChamferBceLoss(spatial_weight=loss_spatial_weight, probability_weight=loss_probability_weight)
-    metrics = (
-        metric_defs.IoU(max_point_distance=POINT_MATCH_RADIUS, probability_threshold=OCCUPANCY_THRESHOLD),
-        metric_defs.WeightedChamfer()
-    )
-
-    logger.init(
-        project="radar-occupancy",
-        config={
-            "dataset": os.path.basename(dataset_path),
-            "model": model.name,
-            "learning_rate": LEARNING_RATE,
-            "epochs": N_EPOCHS,
-            "dataset_part": dataset_part,
-            "batch_size": BATCH_SIZE,
-            "occupancy_threshold": OCCUPANCY_THRESHOLD,
-            "point_match_radius": POINT_MATCH_RADIUS,
-            "loss": {
-                "name": loss_fn.__class__.__name__,
-                "spatial_weight": loss_spatial_weight,
-                "probability_weight": loss_probability_weight,
-                # "matching_temperature": loss_matching_temperature
-            }
-        }
-    )
-    train(model, optimizer, loss_fn, train_loader, val_loader, device, num_epochs=N_EPOCHS, save_path=model_save_path, metrics=metrics, logger=logger, occupied_only=LOSS_OVER_OCCUPIED_ONLY)
-    model.load_state_dict(torch.load(model_save_path))
-    evaluate(model, test_loader, device, loss_fn, metrics=metrics, logger=logger, occupied_only=LOSS_OVER_OCCUPIED_ONLY)
-    logger.log({"best_model_path":  os.path.abspath(model_save_path)})
-    logger.finish()
+    mm = PointModelManager(dataset_path=dataset_path, device_name=device_name, logger=logger)
+    mm.train()
+    mm.evaluate()
+    mm.logger.finish()
 
 
 if __name__ == '__main__':

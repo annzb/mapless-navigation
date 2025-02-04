@@ -20,8 +20,33 @@ class BaseCriteria:
 
 
 class BaseMetric(BaseCriteria):
+    def __init__(self, name='', **kwargs):
+        super().__init__(**kwargs)
+        self.total_score = 0.0
+        self.best_score = 0.0
+        self.name = (f'{name}_' if name else '') + self.__class__.__name__.lower()
+        self._scaled = False
+
+    def reset_epoch(self):
+        if self.total_score > self.best_score:
+            self.best_score = self.total_score
+        self.total_score = 0.0
+        self._scaled = False
+
+    def reset(self):
+        self.reset_epoch()
+        self.best_score = 0.0
+
+    def scale_score(self, n_samples):
+        if self._scaled:
+            raise RuntimeError(f'Metric {self.name} already scaled')
+        self.total_score /= n_samples
+        self._scaled = True
+
     def __call__(self, y_pred, y_true):
-        return self.forward(y_pred, y_true)
+        score = self.forward(y_pred, y_true)
+        self.total_score += score
+        return score
 
 
 class BaseLoss(BaseCriteria, nn.Module):
@@ -73,6 +98,7 @@ class RadarOccupancyModel(nn.Module):
     def __init__(self, radar_config, *args, **kwargs):
         super().__init__()
         self.radar_config = radar_config
+        self.name = 'radar_occupancy_model'
 
     def apply_sigmoid(self, pcl_batch):
         coords = pcl_batch[..., :3]
