@@ -9,7 +9,7 @@ from model_polar import PolarToCartesian
 from model_unet import Unet1C3DPolar, CloudsToGrids
 from loss_spatial_prob import SoftMatchingLossScaled
 import metrics as metric_defs
-from train_polar import get_model
+from train_points import get_model
 from visualize_heatmap_clouds import show_radar_pcl
 
 

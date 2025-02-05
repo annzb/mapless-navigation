@@ -17,17 +17,15 @@ class IoU(PointcloudOccupancyMetric):
         Returns:
             float: IoU value between predicted and ground truth point clouds.
         """
-        pred_coords = predicted_points[predicted_points.bool(), :3]
-        gt_coords = ground_truth_points[ground_truth_points.bool(), :3]
-        if pred_coords.size(0) == 0 or gt_coords.size(0) == 0:
-            return 0.0
+        pred_coords = predicted_points[:, :3]
+        gt_coords = ground_truth_points[:, :3]
 
         # Count intersections based on closeness
         pairwise_distances = torch.cdist(pred_coords.unsqueeze(0), gt_coords.unsqueeze(0), p=2).squeeze(0)
         intersection = (
-                               (pairwise_distances.min(dim=1).values <= self.max_point_distance).sum() +
-                               (pairwise_distances.min(dim=0).values <= self.max_point_distance).sum()
-                       ) // 2
+                (pairwise_distances.min(dim=1).values <= self.max_point_distance).sum() +
+                (pairwise_distances.min(dim=0).values <= self.max_point_distance).sum()
+        ) // 2
         union = len(pred_coords) + len(gt_coords) - intersection
 
         if union == 0:
@@ -48,12 +46,11 @@ class WeightedChamfer(PointcloudOccupancyMetric):
         Returns:
             float: Weighted Chamfer distance.
         """
-        pred_coords = predicted_points[:, :3]  # Shape [N, 3]
-        pred_probs = predicted_points[:, 3]  # Use the predicted points' probabilities
-        gt_coords = ground_truth_points[:, :3]  # Shape [M, 3]
-        gt_probs = ground_truth_points[:, 3]  # Use the ground truth points' probabilities
+        pred_coords = predicted_points[:, :3]
+        pred_probs = predicted_points[:, 3]
+        gt_coords = ground_truth_points[:, :3]
+        gt_probs = ground_truth_points[:, 3]
 
-        # Compute pairwise distances
         pairwise_distances = torch.cdist(pred_coords.unsqueeze(0), gt_coords.unsqueeze(0), p=2).squeeze(0)
 
         # Forward Chamfer Distance (Predicted -> Ground Truth)

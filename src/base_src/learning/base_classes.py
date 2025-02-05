@@ -6,6 +6,7 @@ import torch.nn as nn
 
 class BaseCriteria:
     def __init__(self, **kwargs):
+        super().__init__()
         self.default_value = 0.0
         for k, v in kwargs.items():
             setattr(self, k, v)
@@ -52,10 +53,7 @@ class BaseMetric(BaseCriteria):
 class BaseLoss(BaseCriteria, nn.Module):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        self.default_value = float('inf')
-
-    def forward(self, y_pred, y_true):
-        return torch.tensor(super().forward(y_pred, y_true), requires_grad=True)
+        self.default_value = torch.tensor(float('inf'), device=self.device, requires_grad=True)
 
 
 class OccupancyCriteria(BaseCriteria):
@@ -96,7 +94,7 @@ class GridOccupancyLoss(BaseLoss, GridOccupancyCriteria): pass
 
 class RadarOccupancyModel(nn.Module):
     def __init__(self, radar_config, *args, **kwargs):
-        super().__init__()
+        super().__init__(*args, **kwargs)
         self.radar_config = radar_config
         self.name = 'radar_occupancy_model'
 

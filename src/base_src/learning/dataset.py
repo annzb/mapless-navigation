@@ -227,7 +227,11 @@ class RadarDatasetGrid(RadarDataset):
         # print(f'{self.name} output shape:', self.Y.shape)
 
 
-def get_dataset(dataset_file_path, dataset_type, partial=1.0, batch_size=16, shuffle_runs=True, random_state=42, grid_voxel_size=1.0):
+def get_dataset(
+        dataset_file_path, dataset_type,
+        partial=1.0, batch_size=16, shuffle_runs=True, random_state=42, grid_voxel_size=1.0,
+        occupied_only=False, occupancy_threshold=0.5
+):
     data_dict, radar_config = read_h5_dataset(dataset_file_path)
     radar_frames = data_dict['cascade_heatmaps']
     lidar_frames = data_dict['lidar_map_frames']
@@ -244,7 +248,7 @@ def get_dataset(dataset_file_path, dataset_type, partial=1.0, batch_size=16, shu
     # print('point range:', radar_config.point_range)
 
     # filter empty clouds
-    filtered_indices = [i for i, frame in enumerate(lidar_frames) if len(frame) > 0]  # and any(frame[:, 3] >= occupancy_threshold)]
+    filtered_indices = [i for i, frame in enumerate(lidar_frames) if len(frame) > 0 and (any(frame[:, 3] >= occupancy_threshold) if occupied_only else True)]  # TODO: fix for grid
     print(f'Filtered {len(radar_frames) - len(filtered_indices)} empty frames out of {len(radar_frames)}.')
     radar_frames = np.array(radar_frames[filtered_indices])
     lidar_frames = [lidar_frames[i] for i in filtered_indices]
