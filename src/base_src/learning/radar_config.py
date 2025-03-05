@@ -69,7 +69,7 @@ class RadarConfig:
     @classmethod
     def from_dict(cls, radar_config_dict: dict) -> "RadarConfig":
         return cls(
-            total_range_bins=radar_config_dict["heatmap"]["numPosRangeBins"],
+            total_range_bins=radar_config_dict["heatmap"]["numRangeBins"],
             total_elevation_bins=radar_config_dict["heatmap"]["numElevationBins"],
             total_azimuth_bins=radar_config_dict["heatmap"]["numAzimuthBins"],
             range_bin_width=radar_config_dict["heatmap"]["rangeBinWidth"],

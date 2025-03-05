@@ -234,7 +234,7 @@ def get_dataset(
 ):
     data_dict, radar_config = read_h5_dataset(dataset_file_path)
     radar_frames = data_dict['cascade_heatmaps']
-    lidar_frames = data_dict['lidar_map_frames']
+    lidar_frames = data_dict['lidar_map_samples']
     poses = data_dict['cascade_poses']
 
     if shuffle_runs:
@@ -245,8 +245,9 @@ def get_dataset(
         raise NotImplementedError("Non-shuffled runs are not implemented.")
     _, num_azimuth_bins, num_range_bins, num_elevation_bins = radar_frames.shape
     radar_config.set_radar_frame_params(num_azimuth_bins=num_azimuth_bins, num_range_bins=num_range_bins, num_elevation_bins=num_elevation_bins, grid_voxel_size=grid_voxel_size)
-    # print('point range:', radar_config.point_range)
-
+    print('point range:', radar_config.point_range)
+    print('len(radar_frames)', len(radar_frames))
+    print('len(lidar_frames)', len(lidar_frames))
     # filter empty clouds
     filtered_indices = [i for i, frame in enumerate(lidar_frames) if len(frame) > 0 and (any(frame[:, 3] >= occupancy_threshold) if occupied_only else True)]  # TODO: fix for grid
     print(f'Filtered {len(radar_frames) - len(filtered_indices)} empty frames out of {len(radar_frames)}.')
