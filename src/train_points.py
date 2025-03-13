@@ -13,7 +13,6 @@ class PointModelManager(ModelManager):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
-
     def _define_types(self):
         self._dataset_type = RadarDataset
         self._model_type = PointModel
@@ -31,7 +30,7 @@ def run():
     LOSS_PROBABILITY_WEIGHT = 1.0
     OCCUPANCY_THRESHOLD = 0.6
     EVAL_OVER_OCCUPIED_POINTS_ONLY = True
-    POINT_MATCH_RADIUS = 0.5
+    POINT_MATCH_RADIUS = 0.25
     LEARNING_RATE = 0.01
     N_EPOCHS = 1
 
@@ -42,7 +41,7 @@ def run():
         device_name=local_params['device_name'], logger=local_params['logger'], random_state=RANDOM_SEEED, save_model_name=SAVE_MODEL_PREFIX,
         occupancy_threshold=OCCUPANCY_THRESHOLD, evaluate_over_occupied_points_only=EVAL_OVER_OCCUPIED_POINTS_ONLY,
         loss_spatial_weight=LOSS_SPATIAL_WEIGHT, loss_probability_weight=LOSS_PROBABILITY_WEIGHT, max_point_distance=POINT_MATCH_RADIUS,
-        learning_rate=LEARNING_RATE, n_epochs=N_EPOCHS
+        learning_rate=LEARNING_RATE, n_epochs=local_params['n_epochs']
     )
     mm.train()
     mm.evaluate()

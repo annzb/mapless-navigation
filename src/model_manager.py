@@ -191,6 +191,48 @@ class ModelManager(ABC):
         )
         self.init_optimizer(learning_rate=self.learning_rate)
 
+    # def _train_epoch(self):
+    #     mode = 'train'
+    #     data_loader = self.train_loader
+    #     epoch_loss = 0.0
+    #     self.model.train()
+    #     self.reset_metrics_epoch(mode=mode)
+    #
+    #     for radar_frames, lidar_frames, poses in data_loader:
+    #         radar_frames = radar_frames.to(self.device)
+    #         pred_probabilities = self.model(radar_frames)
+    #
+    #         batch_loss = 0.0
+    #         for pred_cloud, true_cloud in zip(pred_probabilities, lidar_frames):
+    #             true_cloud = true_cloud.to(self.device)
+    #             print("pred_cloud stats:", pred_cloud.min().item(), pred_cloud.max().item(), pred_cloud.mean().item())
+    #             print("true_cloud stats:", true_cloud.min().item(), true_cloud.max().item(), true_cloud.mean().item())
+    #             if torch.isnan(pred_cloud).any() or torch.isinf(pred_cloud).any():
+    #                 raise RuntimeError("pred_cloud contains NaN or Inf before loss computation!")
+    #             if torch.isnan(true_cloud).any() or torch.isinf(true_cloud).any():
+    #                 raise RuntimeError("true_cloud contains NaN or Inf before loss computation!")
+    #
+    #             sample_loss = self.loss_fn(pred_cloud, true_cloud)
+    #             print('sample_loss', sample_loss)
+    #             batch_loss = batch_loss + sample_loss
+    #             self.apply_metrics(pred_cloud, true_cloud, mode=mode)
+    #
+    #         epoch_loss += batch_loss.item()
+    #         batch_loss = batch_loss / len(radar_frames)
+    #         torch.cuda.synchronize()
+    #         self.optimizer.zero_grad(set_to_none=True)
+    #         batch_loss.backward()
+    #         self.optimizer.step()
+    #         for name, param in self.model.named_parameters():
+    #             if param.grad is None:
+    #                 print(f"Warning: {name} has no gradient!")
+    #             elif torch.isnan(param.grad).any():
+    #                 raise RuntimeError(f"NaN detected in gradient of {name}!")
+    #
+    #     epoch_loss /= len(data_loader)
+    #     self.scale_metrics(n_samples=len(data_loader), mode=mode)
+    #     return epoch_loss
+
     def _train_epoch(self):
         mode = 'train'
         data_loader = self.train_loader
@@ -200,23 +242,23 @@ class ModelManager(ABC):
 
         for radar_frames, lidar_frames, poses in data_loader:
             radar_frames = radar_frames.to(self.device)
-            pred_probabilities = self.model(radar_frames)
+            lidar_frames = lidar_frames.to(self.device)
+            pred_frames = self.model(radar_frames)
+            print("pred_cloud stats:", pred_frames.shape, pred_frames.min().item(), pred_frames.max().item(), pred_frames.mean().item())
 
-            batch_loss = 0.0
-            for pred_cloud, true_cloud in zip(pred_probabilities, lidar_frames):
-                true_cloud.to(self.device)
-                pred_cloud_filtered = pred_cloud # self._filter_cloud(pred_cloud)
-                true_cloud_filtered = true_cloud # self._filter_cloud(true_cloud)
-                sample_loss = self.loss_fn(pred_cloud_filtered, true_cloud_filtered)
-                batch_loss = batch_loss + sample_loss
-                self.apply_metrics(pred_cloud_filtered, true_cloud_filtered, mode=mode)
-
+            batch_loss = self.loss_fn(pred_frames, lidar_frames)
+            self.apply_metrics(pred_frames, lidar_frames, mode=mode)
             epoch_loss += batch_loss.item()
             batch_loss = batch_loss / len(radar_frames)
-
-            self.optimizer.zero_grad()
+            torch.cuda.synchronize()
+            self.optimizer.zero_grad(set_to_none=True)
             batch_loss.backward()
             self.optimizer.step()
+            for name, param in self.model.named_parameters():
+                if param.grad is None:
+                    print(f"Warning: {name} has no gradient!")
+                elif torch.isnan(param.grad).any():
+                    raise RuntimeError(f"NaN detected in gradient of {name}!")
 
         epoch_loss /= len(data_loader)
         self.scale_metrics(n_samples=len(data_loader), mode=mode)

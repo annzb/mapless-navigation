@@ -4,6 +4,7 @@ import numpy as np
 
 import torch
 from torch.utils.data import Dataset, DataLoader
+from torch.nn.utils.rnn import pad_sequence
 from sklearn.model_selection import train_test_split
 
 from utils.radar_config import RadarConfig
@@ -71,10 +72,11 @@ class RadarDataset(Dataset):
     @staticmethod
     def custom_collate_fn(batch):
         radar_frames, lidar_frames, poses = zip(*batch)
-        radar_frames = torch.tensor(radar_frames)
-        lidar_frames = [torch.tensor(frame) for frame in lidar_frames]
-        poses = torch.tensor(poses)
-        return radar_frames, lidar_frames, poses
+        radar_frames = torch.stack([torch.tensor(frame) for frame in radar_frames])  # [B, ...]
+        poses = torch.stack([torch.tensor(pose) for pose in poses])  # [B, ...]
+        lidar_tensors = [torch.tensor(frame) for frame in lidar_frames]
+        lidar_frames_padded = pad_sequence(lidar_tensors, batch_first=True, padding_value=float('nan'))  # [B, max_N, 4]
+        return radar_frames, lidar_frames_padded, poses
 
     def print_log(self):
         print(f'{self.name} input shape:', self.X.shape)
@@ -116,10 +118,10 @@ def get_dataset(
         poses = np.concatenate(list(poses.values()), axis=0)
     else:
         raise NotImplementedError("Non-shuffled runs are not implemented.")
-    print('radar_frames.shape', radar_frames.shape)
+    # print('radar_frames.shape', radar_frames.shape)
     _, num_elevation_bins, num_azimuth_bins, num_range_bins = radar_frames.shape
     radar_config.set_radar_frame_params(num_azimuth_bins=num_azimuth_bins, num_range_bins=num_range_bins, num_elevation_bins=num_elevation_bins, grid_voxel_size=grid_voxel_size)
-    print('point range:', radar_config.point_range)
+    # print('point range:', radar_config.point_range)
 
     # filter empty clouds
     filtered_indices = [i for i, frame in enumerate(lidar_frames) if len(frame) > 0 and (any(frame[:, 3] >= occupancy_threshold) if occupied_only else True)]  # TODO: fix for grid
