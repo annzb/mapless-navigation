@@ -8,7 +8,7 @@ torch.autograd.set_detect_anomaly(True)
 
 from metrics import BaseLoss, BaseMetric
 from models import RadarOccupancyModel
-from dataset import get_dataset
+from utils.dataset import get_dataset
 from utils import Logger
 
 
@@ -121,7 +121,7 @@ class ModelManager(ABC):
         model.to(self.device)
         if model_path is not None:
             model.load_state_dict(torch.load(model_path, map_location=self.device))
-            model.eval()
+        model.eval()
         self.model = model
 
     def init_loss_function(self, **kwargs):
@@ -191,47 +191,23 @@ class ModelManager(ABC):
         )
         self.init_optimizer(learning_rate=self.learning_rate)
 
-    # def _train_epoch(self):
-    #     mode = 'train'
-    #     data_loader = self.train_loader
-    #     epoch_loss = 0.0
-    #     self.model.train()
-    #     self.reset_metrics_epoch(mode=mode)
-    #
-    #     for radar_frames, lidar_frames, poses in data_loader:
-    #         radar_frames = radar_frames.to(self.device)
-    #         pred_probabilities = self.model(radar_frames)
-    #
-    #         batch_loss = 0.0
-    #         for pred_cloud, true_cloud in zip(pred_probabilities, lidar_frames):
-    #             true_cloud = true_cloud.to(self.device)
-    #             print("pred_cloud stats:", pred_cloud.min().item(), pred_cloud.max().item(), pred_cloud.mean().item())
-    #             print("true_cloud stats:", true_cloud.min().item(), true_cloud.max().item(), true_cloud.mean().item())
-    #             if torch.isnan(pred_cloud).any() or torch.isinf(pred_cloud).any():
-    #                 raise RuntimeError("pred_cloud contains NaN or Inf before loss computation!")
-    #             if torch.isnan(true_cloud).any() or torch.isinf(true_cloud).any():
-    #                 raise RuntimeError("true_cloud contains NaN or Inf before loss computation!")
-    #
-    #             sample_loss = self.loss_fn(pred_cloud, true_cloud)
-    #             print('sample_loss', sample_loss)
-    #             batch_loss = batch_loss + sample_loss
-    #             self.apply_metrics(pred_cloud, true_cloud, mode=mode)
-    #
-    #         epoch_loss += batch_loss.item()
-    #         batch_loss = batch_loss / len(radar_frames)
-    #         torch.cuda.synchronize()
-    #         self.optimizer.zero_grad(set_to_none=True)
-    #         batch_loss.backward()
-    #         self.optimizer.step()
-    #         for name, param in self.model.named_parameters():
-    #             if param.grad is None:
-    #                 print(f"Warning: {name} has no gradient!")
-    #             elif torch.isnan(param.grad).any():
-    #                 raise RuntimeError(f"NaN detected in gradient of {name}!")
-    #
-    #     epoch_loss /= len(data_loader)
-    #     self.scale_metrics(n_samples=len(data_loader), mode=mode)
-    #     return epoch_loss
+    def _evaluate_current_model(self, mode, data_loader):
+        eval_loss = 0.0
+        self.model.eval()
+
+        with torch.no_grad():
+            for radar_frames, lidar_frames, poses in data_loader:
+                radar_frames = radar_frames.to(self.device)
+                lidar_frames = lidar_frames.to(self.device)
+                pred_frames = self.model(radar_frames)
+                batch_loss = self.loss_fn(pred_frames, lidar_frames)
+                self.apply_metrics(pred_frames, lidar_frames, mode=mode)
+                eval_loss += batch_loss.item()
+
+            eval_loss /= len(data_loader)
+            self.scale_metrics(n_samples=len(data_loader), mode=mode)
+
+        return eval_loss
 
     def _train_epoch(self):
         mode = 'train'
@@ -241,10 +217,14 @@ class ModelManager(ABC):
         self.reset_metrics_epoch(mode=mode)
 
         for radar_frames, lidar_frames, poses in data_loader:
+            print('batch')
             radar_frames = radar_frames.to(self.device)
+            print("requires_grad radar_frames:", radar_frames.requires_grad)
+            lidar_frames, frame_indices = lidar_frames
             lidar_frames = lidar_frames.to(self.device)
+            print("requires_grad lidar_frames:", lidar_frames.requires_grad)
             pred_frames = self.model(radar_frames)
-            print("pred_cloud stats:", pred_frames.shape, pred_frames.min().item(), pred_frames.max().item(), pred_frames.mean().item())
+            print("requires_grad pred:", pred_frames.requires_grad)
 
             batch_loss = self.loss_fn(pred_frames, lidar_frames)
             self.apply_metrics(pred_frames, lidar_frames, mode=mode)
@@ -252,6 +232,8 @@ class ModelManager(ABC):
             batch_loss = batch_loss / len(radar_frames)
             torch.cuda.synchronize()
             self.optimizer.zero_grad(set_to_none=True)
+            if torch.isnan(batch_loss).any() or torch.isinf(batch_loss).any():
+                raise RuntimeError("Detected NaN or Inf in batch_loss before backward!")
             batch_loss.backward()
             self.optimizer.step()
             for name, param in self.model.named_parameters():
@@ -262,31 +244,6 @@ class ModelManager(ABC):
 
         epoch_loss /= len(data_loader)
         self.scale_metrics(n_samples=len(data_loader), mode=mode)
-        return epoch_loss
-
-    def _validate_epoch(self):
-        mode = 'val'
-        data_loader = self.val_loader
-        epoch_loss = 0.0
-        self.model.eval()
-        self.reset_metrics_epoch(mode=mode)
-
-        with torch.no_grad():
-            for radar_frames, lidar_frames, poses in data_loader:
-                radar_frames = radar_frames.to(self.device)
-                pred_probabilities = self.model(radar_frames)
-
-                for pred_cloud, true_cloud in zip(pred_probabilities, lidar_frames):
-                    true_cloud.to(self.device)
-                    pred_cloud_filtered = pred_cloud
-                    true_cloud_filtered = true_cloud
-                    sample_loss = self.loss_fn(pred_cloud_filtered, true_cloud_filtered)
-                    epoch_loss = epoch_loss + sample_loss.item()
-                    self.apply_metrics(pred_cloud_filtered, true_cloud_filtered, mode=mode)
-
-            epoch_loss /= len(data_loader)
-            self.scale_metrics(n_samples=len(data_loader), mode=mode)
-
         return epoch_loss
 
     def _save_model(self, path):
@@ -304,7 +261,8 @@ class ModelManager(ABC):
         for epoch in range(n_epochs):
             self.logger.log(f"Epoch {epoch + 1}/{n_epochs}")
             train_epoch_loss = self._train_epoch()
-            val_epoch_loss = self._validate_epoch()
+            self.reset_metrics_epoch(mode='val')
+            val_epoch_loss = self._evaluate_current_model(mode = 'val', data_loader=self.val_loader)
             print('train_epoch_loss, val_epoch_loss', train_epoch_loss, val_epoch_loss)
 
             if train_epoch_loss < best_train_loss:
@@ -328,40 +286,15 @@ class ModelManager(ABC):
             log.update(self.report_metrics(mode='val'))
             self.logger.log(log)
 
-    def _evaluate_current_model(self):
-        mode = 'test'
-        data_loader = self.test_loader
-        test_loss = 0.0
-        self.model.eval()
-        self.reset_metrics(mode=mode)
-
-        with torch.no_grad():
-            for radar_frames, lidar_frames, poses in data_loader:
-                radar_frames = radar_frames.to(self.device)
-                pred_probabilities = self.model(radar_frames)
-
-                batch_loss = 0.0
-                for pred_cloud, true_cloud in zip(pred_probabilities, lidar_frames):
-                    true_cloud.to(self.device)
-                    pred_cloud_filtered = pred_cloud  # self._filter_cloud(pred_cloud)
-                    true_cloud_filtered = true_cloud  # self._filter_cloud(true_cloud)
-                    sample_loss = self.loss_fn(pred_cloud_filtered, true_cloud_filtered)
-                    batch_loss = batch_loss + sample_loss
-                    self.apply_metrics(pred_cloud_filtered, true_cloud_filtered, mode=mode)
-                test_loss += batch_loss.item()
-
-            test_loss /= len(data_loader)
-            self.scale_metrics(n_samples=len(data_loader), mode=mode)
-
-        return test_loss
-
 
     def evaluate(self):
+        mode = 'test'
         for model_path in self._saved_models:
             self.logger.log(f'Evaluating model {os.path.basename(model_path)}')
             self.init_model(model_path)
-            model_test_loss = self._evaluate_current_model()
+            self.reset_metrics(mode=mode)
+            model_test_loss = self._evaluate_current_model(mode=mode, data_loader=self.test_loader)
 
             log = {"model_path": model_path, "test_loss": model_test_loss}
-            log.update(self.report_metrics(mode='test'))
+            log.update(self.report_metrics(mode=mode))
             self.logger.log(log)

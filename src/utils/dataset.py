@@ -4,7 +4,7 @@ import numpy as np
 
 import torch
 from torch.utils.data import Dataset, DataLoader
-from torch.nn.utils.rnn import pad_sequence
+from torch.utils.data._utils.collate import default_collate
 from sklearn.model_selection import train_test_split
 
 from utils.radar_config import RadarConfig
@@ -72,11 +72,24 @@ class RadarDataset(Dataset):
     @staticmethod
     def custom_collate_fn(batch):
         radar_frames, lidar_frames, poses = zip(*batch)
-        radar_frames = torch.stack([torch.tensor(frame) for frame in radar_frames])  # [B, ...]
-        poses = torch.stack([torch.tensor(pose) for pose in poses])  # [B, ...]
-        lidar_tensors = [torch.tensor(frame) for frame in lidar_frames]
-        lidar_frames_padded = pad_sequence(lidar_tensors, batch_first=True, padding_value=float('nan'))  # [B, max_N, 4]
-        return radar_frames, lidar_frames_padded, poses
+        radar_frames = default_collate(radar_frames)
+        poses = default_collate(poses)
+        all_lidar_points = []
+        batch_indices = []
+        for i, frame in enumerate(lidar_frames):
+            all_lidar_points.append(torch.tensor(frame, dtype=torch.float32))
+            batch_indices.append(torch.full((len(frame),), i, dtype=torch.long))
+        lidar_frames_tensor = torch.cat(all_lidar_points, dim=0)
+        batch_indices_tensor = torch.cat(batch_indices, dim=0)
+        return radar_frames, (lidar_frames_tensor, batch_indices_tensor), poses
+
+    # def custom_collate_fn(batch):
+    #     radar_frames, lidar_frames, poses = zip(*batch)
+    #     radar_frames = torch.stack([torch.tensor(frame) for frame in radar_frames])  # [B, ...]
+    #     poses = torch.stack([torch.tensor(pose) for pose in poses])  # [B, ...]
+    #     lidar_tensors = [torch.tensor(frame) for frame in lidar_frames]
+    #     lidar_frames_padded = pad_sequence(lidar_tensors, batch_first=True, padding_value=float('nan'))
+    #     return radar_frames, lidar_frames_padded, poses
 
     def print_log(self):
         print(f'{self.name} input shape:', self.X.shape)

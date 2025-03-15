@@ -31,18 +31,26 @@ class ChamferBceLoss(PointcloudOccupancyLoss):
         """
         chamfer_losses = []
         for pred, true in zip(pred_list, true_list):
-            pred_xyz = pred[:, :3]  # [N, 3]
-            true_xyz = true[:, :3]  # [Mi, 3]
-
-            dist_matrix = torch.cdist(pred_xyz, true_xyz, p=2) ** 2  # [N, Mi]
-
-            min_dist_pred_to_true = torch.min(dist_matrix, dim=1)[0]  # [N]
-            min_dist_true_to_pred = torch.min(dist_matrix, dim=0)[0]  # [Mi]
-
+            pred_xyz = pred[:, :3]
+            true_xyz = true[:, :3]
+            dist_matrix = torch.cdist(pred_xyz, true_xyz, p=2) ** 2
+            if torch.isnan(dist_matrix).any():
+                print("NaN detected in dist_matrix before softmax!")
+                print(dist_matrix)
+                raise RuntimeError("NaN in dist_matrix!")
+            if torch.isinf(dist_matrix).any():
+                print("Infinity detected in dist_matrix before softmax!")
+                print(dist_matrix)
+                raise RuntimeError("Infinity in dist_matrix!")
+            if (dist_matrix.abs() > 1e6).any():
+                print("Very large values detected in dist_matrix before softmax!")
+                print(dist_matrix)
+            min_dist_pred_to_true = torch.min(dist_matrix, dim=1)[0]
+            min_dist_true_to_pred = torch.min(dist_matrix, dim=0)[0]
             chamfer_loss = min_dist_pred_to_true.mean() + min_dist_true_to_pred.mean()
             chamfer_losses.append(chamfer_loss)
-
-        return torch.stack(chamfer_losses).mean()  # Average over batch
+        loss = torch.stack(chamfer_losses).mean()
+        return loss
 
     def occupancy_bce_loss(self, pred, true_list):
         """
@@ -56,33 +64,18 @@ class ChamferBceLoss(PointcloudOccupancyLoss):
             Tensor: BCE loss (scalar).
         """
         bce_losses = []
-        epsilon = 1e-6  # Small value to prevent division errors
         temperature = 5.0  # Adjust softmax temperature
-
         for pred, true in zip(pred, true_list):
-            pred_probs = pred[:, 3].unsqueeze(-1)  # [N, 1]
-            true_probs = true[:, 3].unsqueeze(-1)  # [Mi, 1]
-            dist_matrix = torch.cdist(pred[:, :3], true[:, :3], p=2)  # [N, Mi]
-
-            # Debugging: Print statistics of dist_matrix
-            print(
-                f"dist_matrix stats: min={dist_matrix.min().item()}, max={dist_matrix.max().item()}, mean={dist_matrix.mean().item()}")
-
-            # Ensure dist_matrix is numerically stable
-            dist_matrix = torch.clamp(dist_matrix, min=1e-3, max=10.0)  # Avoid extreme values
-
-            # Apply softmax with temperature scaling
-            weights = torch.softmax(-dist_matrix / temperature, dim=1)  # Normalize distances before applying softmax
-
-            # Check for NaNs before computing loss
+            pred_probs = pred[:, 3].unsqueeze(-1)
+            true_probs = true[:, 3].unsqueeze(-1)
+            dist_matrix = torch.cdist(pred[:, :3], true[:, :3], p=2)
+            dist_matrix = torch.clamp(dist_matrix, min=1e-3, max=10.0)
+            weights = torch.softmax(-dist_matrix / temperature, dim=1)
             if torch.isnan(weights).any():
                 raise RuntimeError("NaNs detected in weights after softmax!")
-
             matched_true_probs = torch.bmm(weights.unsqueeze(0), true_probs.unsqueeze(0)).squeeze(0).squeeze(-1)
-
             bce_losses.append(self.bce_loss(pred_probs.squeeze(-1), matched_true_probs))
-
-        return torch.stack(bce_losses).mean()  # Average over batch
+        return torch.stack(bce_losses).mean()
 
     def calc(self, pred, true):
         """
