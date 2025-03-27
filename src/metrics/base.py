@@ -3,6 +3,8 @@ from abc import abstractmethod
 import torch
 import torch.nn as nn
 
+from metrics.data_buffer import OccupancyDataBuffer, PointOccupancyDataBuffer
+
 
 class BaseCriteria:
     def __init__(self, **kwargs):
@@ -11,13 +13,16 @@ class BaseCriteria:
         for k, v in kwargs.items():
             setattr(self, k, v)
 
-    def calc(self, y_pred, y_true):
+    def _validate_input(self, y_pred, y_true, *args, **kwargs):
+        return len(y_pred) != 0 and len(y_true) != 0
+
+    def _calc(self, y_pred, y_true, *args, **kwargs):
         return self.default_value
 
-    def forward(self, y_pred, y_true):
-        if len(y_pred) == 0 or len(y_true) == 0:
+    def forward(self, y_pred, y_true, *args, **kwargs):
+        if self._validate_input(y_pred, y_true, *args, **kwargs):
             return self.default_value
-        return self.calc(y_pred, y_true)
+        return self._calc(y_pred, y_true, *args, **kwargs)
 
 
 class BaseMetric(BaseCriteria):
@@ -44,8 +49,8 @@ class BaseMetric(BaseCriteria):
         self.total_score /= n_samples
         self._scaled = True
 
-    def __call__(self, y_pred, y_true):
-        score = self.forward(y_pred, y_true)
+    def __call__(self, y_pred, y_true, *args, **kwargs):
+        score = self.forward(y_pred, y_true, *args, **kwargs)
         self.total_score += score
         return score
 
@@ -57,52 +62,37 @@ class BaseLoss(BaseCriteria, nn.Module):
 
 
 class OccupancyCriteria(BaseCriteria):
-    def __init__(self, occupancy_threshold=0.5, occupied_only=False, **kwargs):
+    def __init__(self, data_buffer=None, **kwargs):
         super().__init__(**kwargs)
-        self.occupancy_threshold = occupancy_threshold
-        self.occupied_only = occupied_only
+        self._data_buffer = data_buffer
+        if data_buffer is None or not isinstance(data_buffer, OccupancyDataBuffer):
+            raise TypeError('data_buffer must be an instance of OccupancyDataBuffer')
 
-    @abstractmethod
-    def filter_occupied(self, y_pred, y_true):
-        raise NotImplementedError
-
-    def forward(self, y_pred, y_true):
-        if self.occupied_only:
-            y_pred, y_true = self.filter_occupied(y_pred, y_true)
-        return super().forward(y_pred, y_true)
+    def _calc(self, y_pred, y_true, *args, **kwargs):
+        value = super()._calc(y_pred, y_true, *args, **kwargs)
+        if self._data_buffer.occupied_data() is None:
+            raise ValueError('Occupancy data not available')
+        return value
 
 
 class PointcloudOccupancyCriteria(OccupancyCriteria):
-    def mask_nans(self, y_pred, y_true):
-        mask = ~torch.isnan(y_true).any(dim=-1)  # [B, M]
-        y_true_filtered = [t[m] for t, m in zip(y_true, mask)]
-        return y_pred, y_true_filtered
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        if not isinstance(self._data_buffer, PointOccupancyDataBuffer):
+            raise TypeError('data_buffer must be an instance of PointOccupancyDataBuffer')
 
-    def filter_occupied(self, y_pred, y_true):
-        """
-        Filters occupied points where occupancy probability is >= `occupancy_threshold`.
-
-        Args:
-            y_pred (Tensor): Predicted point cloud of shape (B, N, 4).
-            y_true (list of Tensors): List of ground truth point clouds [(M1, 4), (M2, 4), ...]
-
-        Returns:
-            Tuple: Filtered `y_pred` (list of tensors) and `y_true` (filtered list).
-        """
-        y_pred_filtered = [yp[yp[:, -1] >= self.occupancy_threshold] for yp in y_pred]
-        y_true_filtered = [yt[yt[:, -1] >= self.occupancy_threshold] for yt in y_true]
-        return y_pred_filtered, y_true_filtered
-
-    def forward(self, y_pred, y_true):
-        y_pred, y_true = self.mask_nans(y_pred, y_true)
-        return super().forward(y_pred, y_true)
+    def _calc(self, y_pred, y_true, *args, **kwargs):
+        value = super()._calc(y_pred, y_true, *args, **kwargs)
+        if self._data_buffer.mapped_clouds() is None:
+            raise ValueError('Mapped clouds not available')
+        return value
 
 
-class GridOccupancyCriteria(OccupancyCriteria):
-    def filter_occupied(self, y_pred, y_true):
-        y_pred = y_pred[y_pred[:, :, -1] >= self.occupancy_threshold]
-        y_true = y_true[y_true[:, :, -1] >= self.occupancy_threshold]
-        return y_pred, y_true
+class GridOccupancyCriteria(OccupancyCriteria): pass
+    # def filter_occupied(self, y_pred, y_true, *args, **kwargs):
+    #     y_pred = y_pred[y_pred[:, :, -1] >= self.occupancy_threshold]
+    #     y_true = y_true[y_true[:, :, -1] >= self.occupancy_threshold]
+    #     return y_pred, y_true
 
 
 class PointcloudOccupancyMetric(BaseMetric, PointcloudOccupancyCriteria): pass

@@ -6,10 +6,10 @@ import torch
 
 torch.autograd.set_detect_anomaly(True)
 
-from metrics import BaseLoss, BaseMetric
+from metrics import BaseLoss, BaseMetric, PointcloudMapping
 from models import RadarOccupancyModel
-from utils.dataset import get_dataset
 from utils import Logger
+from utils.dataset import get_dataset
 
 
 class ModelManager(ABC):
@@ -61,6 +61,7 @@ class ModelManager(ABC):
             occupied_only=self.occupied_only, occupancy_threshold=self.occupancy_threshold
         )
         self.init_model()
+        self.init_point_mapper()
         self.init_loss_function(
             occupancy_threshold=self.occupancy_threshold,
             occupied_only=self.occupied_only,
@@ -96,6 +97,7 @@ class ModelManager(ABC):
                 "point_match_radius": self.max_point_distance,
                 "loss": {
                     "name": self.loss_fn.__class__.__name__,
+                    "point_mapping_method": self.point_mapper.__class__.__name__,
                     "spatial_weight": loss_spatial_weight,
                     "probability_weight": loss_probability_weight
                 }
@@ -108,6 +110,7 @@ class ModelManager(ABC):
         self._dataset_type = lambda *args, **kwargs: object
         self._model_type = RadarOccupancyModel
         self._optimizer_type = lambda *args, **kwargs: object
+        self._point_mapper_type = lambda *args, **kwargs: object
         self._loss_type = BaseLoss
         self._metric_types = (BaseMetric, )
         raise NotImplementedError()
@@ -124,8 +127,14 @@ class ModelManager(ABC):
         model.eval()
         self.model = model
 
+    def init_point_mapper(self, **kwargs):
+        if issubclass(self._point_mapper_type, PointcloudMapping):
+            self.point_mapper = self._point_mapper_type(**kwargs)
+        else:
+            self.point_mapper = None
+
     def init_loss_function(self, **kwargs):
-        self.loss_fn = self._loss_type(**kwargs)
+        self.loss_fn = self._loss_type(point_mapper=self.point_mapper, **kwargs)
 
     def init_optimizer(self, learning_rate=None, **kwargs):
         self.optimizer = self._optimizer_type(self.model.parameters(), lr=learning_rate)
@@ -133,7 +142,7 @@ class ModelManager(ABC):
     def init_metrics(self, **kwargs):
         self.metrics = {}
         for mode in self._modes:
-            self.metrics[mode] = tuple(m_t(name=mode, **kwargs) for m_t in self._metric_types)
+            self.metrics[mode] = tuple(m_t(name=mode, point_mapper=self.point_mapper, **kwargs) for m_t in self._metric_types)
 
     def report_metrics(self, mode=None):
         if mode and mode not in self._modes:
@@ -146,12 +155,12 @@ class ModelManager(ABC):
                 report[f'best_{metric.name}'] = metric.best_score
         return report
 
-    def apply_metrics(self, y_true, y_pred, mode=None):
+    def apply_metrics(self, y_pred, y_true, mode=None):
         if mode and mode not in self._modes:
             raise ValueError(f'Invalid mode: {mode}, expected one of {self._modes}')
         metrics = self.metrics[mode] if mode else np.concatenate(list(self.metrics.values()), axis=0)
         for metric in metrics:
-            metric(y_true, y_pred)
+            metric(y_pred, y_true)
 
     def scale_metrics(self, n_samples, mode=None):
         if mode and mode not in self._modes:
@@ -196,12 +205,13 @@ class ModelManager(ABC):
         self.model.eval()
 
         with torch.no_grad():
-            for radar_frames, lidar_frames, poses in data_loader:
+            for radar_frames, (lidar_frames, lidar_frame_indices), poses in data_loader:
                 radar_frames = radar_frames.to(self.device)
                 lidar_frames = lidar_frames.to(self.device)
+                lidar_frame_indices = lidar_frame_indices.to(self.device)
                 pred_frames = self.model(radar_frames)
-                batch_loss = self.loss_fn(pred_frames, lidar_frames)
-                self.apply_metrics(pred_frames, lidar_frames, mode=mode)
+                batch_loss = self.loss_fn(pred_frames, (lidar_frames, lidar_frame_indices))
+                self.apply_metrics(pred_frames, (lidar_frames, lidar_frame_indices), mode=mode)
                 eval_loss += batch_loss.item()
 
             eval_loss /= len(data_loader)
@@ -216,21 +226,18 @@ class ModelManager(ABC):
         self.model.train()
         self.reset_metrics_epoch(mode=mode)
 
-        for radar_frames, lidar_frames, poses in data_loader:
-            print('batch')
+        for radar_frames, (lidar_frames, lidar_frame_indices), poses in data_loader:
             radar_frames = radar_frames.to(self.device)
-            print("requires_grad radar_frames:", radar_frames.requires_grad)
-            lidar_frames, frame_indices = lidar_frames
             lidar_frames = lidar_frames.to(self.device)
-            print("requires_grad lidar_frames:", lidar_frames.requires_grad)
-            pred_frames = self.model(radar_frames)
-            print("requires_grad pred:", pred_frames.requires_grad)
+            lidar_frame_indices = lidar_frame_indices.to(self.device)
+            pred_frames, pred_indices = self.model(radar_frames)
 
-            batch_loss = self.loss_fn(pred_frames, lidar_frames)
-            self.apply_metrics(pred_frames, lidar_frames, mode=mode)
+            batch_loss = self.loss_fn((pred_frames, pred_indices), (lidar_frames, lidar_frame_indices))
+            self.apply_metrics((pred_frames, pred_indices), (lidar_frames, lidar_frame_indices), mode=mode)
             epoch_loss += batch_loss.item()
             batch_loss = batch_loss / len(radar_frames)
             torch.cuda.synchronize()
+
             self.optimizer.zero_grad(set_to_none=True)
             if torch.isnan(batch_loss).any() or torch.isinf(batch_loss).any():
                 raise RuntimeError("Detected NaN or Inf in batch_loss before backward!")
@@ -241,6 +248,7 @@ class ModelManager(ABC):
                     print(f"Warning: {name} has no gradient!")
                 elif torch.isnan(param.grad).any():
                     raise RuntimeError(f"NaN detected in gradient of {name}!")
+            self.point_mapper.reset()
 
         epoch_loss /= len(data_loader)
         self.scale_metrics(n_samples=len(data_loader), mode=mode)

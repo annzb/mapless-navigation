@@ -83,14 +83,6 @@ class RadarDataset(Dataset):
         batch_indices_tensor = torch.cat(batch_indices, dim=0)
         return radar_frames, (lidar_frames_tensor, batch_indices_tensor), poses
 
-    # def custom_collate_fn(batch):
-    #     radar_frames, lidar_frames, poses = zip(*batch)
-    #     radar_frames = torch.stack([torch.tensor(frame) for frame in radar_frames])  # [B, ...]
-    #     poses = torch.stack([torch.tensor(pose) for pose in poses])  # [B, ...]
-    #     lidar_tensors = [torch.tensor(frame) for frame in lidar_frames]
-    #     lidar_frames_padded = pad_sequence(lidar_tensors, batch_first=True, padding_value=float('nan'))
-    #     return radar_frames, lidar_frames_padded, poses
-
     def print_log(self):
         print(f'{self.name} input shape:', self.X.shape)
         print(f'{self.name} output shape:', len(self.Y), 'frames,', len(self.Y[0][0]), 'dims.')

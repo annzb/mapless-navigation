@@ -3,7 +3,7 @@ torch.autograd.set_detect_anomaly(True)
 
 import metrics as metric_defs
 from utils.dataset import RadarDataset
-from metrics import ChamferBceLoss as PointsLoss
+from metrics import ChamferBceLoss as PointLoss, ChamferMapping as PointMapping
 from models import PointOccupancyModel as PointModel
 from model_manager import ModelManager
 from utils import get_local_params
@@ -17,7 +17,8 @@ class PointModelManager(ModelManager):
         self._dataset_type = RadarDataset
         self._model_type = PointModel
         self._optimizer_type = torch.optim.Adam
-        self._loss_type = PointsLoss
+        self._point_mapper_type = PointMapping
+        self._loss_type = PointLoss
         self._metric_types = (metric_defs.IoU, metric_defs.WeightedChamfer)
 
 
