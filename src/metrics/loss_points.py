@@ -4,53 +4,47 @@ import torch.nn as nn
 from metrics.base import PointcloudOccupancyLoss
 
 
-class ChamferBceLoss(PointcloudOccupancyLoss):
+class SpatialBceLoss(PointcloudOccupancyLoss):
     def __init__(self, spatial_weight=1.0, probability_weight=1.0, **kwargs):
         super().__init__(**kwargs)
         self.spatial_weight = spatial_weight
         self.probability_weight = probability_weight
         self.bce_loss = nn.BCELoss()
 
-    def _calc_unmatched_loss(self, y_pred_values, y_true_values, y_pred_matched_indices, y_true_matched_indices):
+    def _calc_unmatched_loss(self, y_pred_values, y_true_values, y_pred_mapped_mask, y_true_mapped_mask):
         """
-        For points in the original clouds that were not matched, computes a penalty based on the nearest neighbor distance.
-        Args:
-            orig_pred (torch.Tensor): Original y_pred values, shape (P, 4).
-            orig_true (torch.Tensor): Original y_true values, shape (Q, 4).
-            mapping_pred_indices (torch.Tensor): Indices in orig_pred that were matched.
-            mapping_true_indices (torch.Tensor): Indices in orig_true that were matched.
-        Returns:
-            A scalar penalty value.
+        Computes a penalty for unmatched occupied points using nearest neighbor distances.
+        Handles empty inputs safely.
         """
-        device, pred_size = y_pred_values.device, y_pred_values.size(0)
-        all_pred_idx = torch.arange(pred_size, device=device)
-        all_true_idx = torch.arange(pred_size, device=device)
-        mask_pred = torch.zeros(pred_size, dtype=torch.bool, device=device)
-        mask_pred[y_pred_matched_indices] = True
-        mask_true = torch.zeros(y_true_values.size(0), dtype=torch.bool, device=device)
-        mask_true[y_true_matched_indices] = True
-        unmatched_pred = all_pred_idx[~mask_pred]
-        unmatched_true = all_true_idx[~mask_true]
-        loss_pred = torch.tensor(0.0, device=device)
-        if unmatched_pred.numel() > 0:
+        device = y_pred_values.device
+        if y_pred_values.numel() == 0 and y_true_values.numel() == 0:
+            return torch.tensor(0.0, device=device, requires_grad=True)
+
+        unmatched_pred = torch.nonzero(~y_pred_mapped_mask, as_tuple=False).squeeze(1) if y_pred_mapped_mask.numel() > 0 else torch.empty(0, dtype=torch.long, device=device)
+        unmatched_true = torch.nonzero(~y_true_mapped_mask, as_tuple=False).squeeze(1) if y_true_mapped_mask.numel() > 0 else torch.empty(0, dtype=torch.long, device=device)
+        loss_pred = loss_true = 0.0
+
+        if unmatched_pred.numel() > 0 and y_true_values.numel() > 0:
             dists_pred = torch.cdist(y_pred_values[unmatched_pred][:, :3], y_true_values[:, :3], p=2) ** 2
-            min_dists_pred, _ = dists_pred.min(dim=1)
-            loss_pred = min_dists_pred.mean()
-        loss_true = torch.tensor(0.0, device=device)
-        if unmatched_true.numel() > 0:
+            loss_pred = dists_pred.min(dim=1)[0].mean()
+
+        if unmatched_true.numel() > 0 and y_pred_values.numel() > 0:
             dists_true = torch.cdist(y_true_values[unmatched_true][:, :3], y_pred_values[:, :3], p=2) ** 2
-            min_dists_true, _ = dists_true.min(dim=1)
-            loss_true = min_dists_true.mean()
+            loss_true = dists_true.min(dim=1)[0].mean()
+
+        loss_pred = loss_pred if isinstance(loss_pred, torch.Tensor) else torch.tensor(0.0, device=device, requires_grad=True)
+        loss_true = loss_true if isinstance(loss_true, torch.Tensor) else torch.tensor(0.0, device=device, requires_grad=True)
         return (loss_pred + loss_true) / 2.0
 
     def _calc_chamfer_loss(self, y_pred_values_mapped, y_true_values_mapped, batch_indices_mapped):
         """
-        Computes the chamfer loss for already matched point clouds.
-        Assumes that mapped_y_pred and mapped_y_true are tensors of shape (K, 4)
-        and mapped_batch (of shape (K,)) indicates the batch each pair belongs to.
+        Computes Chamfer loss between matched points. Returns 0 if there are no matched points.
         """
+        if y_pred_values_mapped.numel() == 0 or y_true_values_mapped.numel() == 0:
+            return torch.tensor(0.0, device=y_pred_values_mapped.device, requires_grad=True)
+
         sq_dists = torch.sum((y_pred_values_mapped[:, :3] - y_true_values_mapped[:, :3]) ** 2, dim=1)
-        batch_size = int(torch.max(batch_indices_mapped).item() + 1)
+        batch_size = int(torch.max(batch_indices_mapped).item() + 1) if batch_indices_mapped.numel() > 0 else 1
         batch_loss = torch.zeros(batch_size, device=y_pred_values_mapped.device)
         batch_loss = batch_loss.index_add(0, batch_indices_mapped, sq_dists)
         count = torch.zeros(batch_size, device=y_pred_values_mapped.device)
@@ -60,23 +54,30 @@ class ChamferBceLoss(PointcloudOccupancyLoss):
 
     def _calc_occupancy_bce_loss(self, y_pred_values_mapped, y_true_values_mapped):
         """
-        Computes the occupancy BCE loss on matched point clouds.
-        Assumes that mapped_y_pred and mapped_y_true are tensors of shape (K, 4) where column 3 holds occupancy probabilities.
+        Computes BCE loss on occupancy. Returns 0 if there are no matched points.
         """
+        if y_pred_values_mapped.numel() == 0 or y_true_values_mapped.numel() == 0:
+            return torch.tensor(0.0, device=y_pred_values_mapped.device, requires_grad=True)
         return self.bce_loss(y_pred_values_mapped[:, 3], y_true_values_mapped[:, 3])
 
-    def _calc(self, y_pred, y_true, **kwargs):
+    def _calc(self, y_pred, y_true, data_buffer=None, *args, **kwargs):
         """
         Calculates the overall loss. First, we map the clouds using match_chamfer (via map_clouds) so that each matched pair comes from the same batch.
         Then we compute the chamfer loss and occupancy BCE loss on the mapped clouds, and an unmatched loss on the original clouds.
         All operations are tensor-based and differentiable.
         Validation checks are performed to ensure that each loss term is differentiable.
         """
-        y_pred_mapped, y_true_mapped, mapped_indices, y_pred_matched_indices, y_true_matched_indices = self._point_mapper.get_mapped_clouds()
+        if data_buffer.occupied_only():
+            y_pred, y_true = data_buffer.occupied_data()
+            y_pred_values_mapped, y_true_values_mapped, batch_indices_mapped = data_buffer.occupied_mapped_clouds()
+            y_pred_mapped_mask, y_true_mapped_mask = data_buffer.occupied_mapped_masks()
+        else:
+            y_pred_values_mapped, y_true_values_mapped, batch_indices_mapped = data_buffer.mapped_clouds()
+            y_pred_mapped_mask, y_true_mapped_mask = data_buffer.mapped_masks()
 
-        chamfer_loss = self._calc_chamfer_loss(y_pred_mapped, y_true_mapped, mapped_indices)
-        bce_loss = self._calc_occupancy_bce_loss(y_pred_mapped, y_true_mapped)
-        unmatched_loss = self._calc_unmatched_loss(y_pred[0], y_true[0], y_pred_matched_indices, y_true_matched_indices)
+        chamfer_loss = self._calc_chamfer_loss(y_pred_values_mapped, y_true_values_mapped, batch_indices_mapped)
+        bce_loss = self._calc_occupancy_bce_loss(y_pred_values_mapped, y_true_values_mapped)
+        unmatched_loss = self._calc_unmatched_loss(y_pred[0], y_true[0], y_pred_mapped_mask, y_true_mapped_mask)
         if not chamfer_loss.requires_grad:
             raise RuntimeError("chamfer_loss does not require gradients!")
         if not bce_loss.requires_grad:
