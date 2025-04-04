@@ -54,14 +54,15 @@ class ModelManager(ABC):
         self._define_types()
         self._init_device(device_name)
 
+        self.init_data_buffer(occupancy_threshold=self.occupancy_threshold)
         self.train_loader, self.val_loader, self.test_loader, self.radar_config = get_dataset(
             dataset_file_path=dataset_path, dataset_type=self._dataset_type,
             batch_size=batch_size, partial=dataset_part, shuffle_runs=shuffle_dataset_runs,
             grid_voxel_size=grid_voxel_size, random_state=random_state,
-            occupied_only=self.occupied_only, occupancy_threshold=self.occupancy_threshold
+            occupied_only=self.occupied_only, occupancy_threshold=self.occupancy_threshold,
+            data_buffer=self.data_buffer, device=self.device
         )
         self.init_model()
-        self.init_data_buffer(occupied_only=self.occupied_only, occupancy_threshold=self.occupancy_threshold)
         self.init_loss_function(
             occupancy_threshold=self.occupancy_threshold,
             occupied_only=self.occupied_only,
@@ -209,7 +210,7 @@ class ModelManager(ABC):
                 lidar_frame_indices = lidar_frame_indices.to(self.device)
                 pred_frames, pred_indices = self.model(radar_frames)
 
-                self.data_buffer(y_pred=(pred_frames, pred_indices), y_true=(lidar_frames, lidar_frame_indices))
+                self.data_buffer.create_masks(y=(pred_frames, pred_indices), y_other=(lidar_frames, lidar_frame_indices))
                 batch_loss = self.loss_fn(y_pred=(pred_frames, pred_indices), y_true=(lidar_frames, lidar_frame_indices), data_buffer=self.data_buffer)
                 self.apply_metrics(y_pred=(pred_frames, pred_indices), y_true=(lidar_frames, lidar_frame_indices), data_buffer=self.data_buffer, mode=mode)
 
@@ -233,7 +234,7 @@ class ModelManager(ABC):
             lidar_frame_indices = lidar_frame_indices.to(self.device)
             pred_frames, pred_indices = self.model(radar_frames)
 
-            self.data_buffer(y_pred=(pred_frames, pred_indices), y_true=(lidar_frames, lidar_frame_indices))
+            self.data_buffer.create_masks(y=(pred_frames, pred_indices), y_other=(lidar_frames, lidar_frame_indices))
             batch_loss = self.loss_fn(y_pred=(pred_frames, pred_indices), y_true=(lidar_frames, lidar_frame_indices), data_buffer=self.data_buffer)
             self.apply_metrics(y_pred=(pred_frames, pred_indices), y_true=(lidar_frames, lidar_frame_indices), data_buffer=self.data_buffer, mode=mode)
 

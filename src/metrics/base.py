@@ -1,17 +1,18 @@
-from abc import abstractmethod
-
 import torch
 import torch.nn as nn
 
-from metrics.data_buffer import OccupancyDataBuffer, PointOccupancyDataBuffer
+from metrics.data_buffer import OccupancyDataBuffer, MappedPointOccupancyDataBuffer
 
 
 class BaseCriteria:
-    def __init__(self, **kwargs):
+    def __init__(self, batch_size=0, **kwargs):
         super().__init__()
         self.default_value = 0.0
         for k, v in kwargs.items():
             setattr(self, k, v)
+        if batch_size < 1:
+            raise ValueError("batch_size must be positive")
+        self._batch_size = batch_size
 
     def _validate_input(self, y_pred, y_true, *args, **kwargs):
         return len(y_pred) != 0 and len(y_true) != 0, 'Empty inputs.'
@@ -71,23 +72,23 @@ class OccupancyCriteria(BaseCriteria):
             if data_buffer is None or not isinstance(data_buffer, OccupancyDataBuffer):
                 valid, error = False, f'Data buffer not available. Expected instance of {OccupancyDataBuffer.__name__}, got {type(data_buffer).__name__}'
         if valid:
-            if data_buffer.occupied_only() and (data_buffer.occupied_data() is None or data_buffer.occupied_masks() is None):
+            if data_buffer.occupied_masks() is None:
                 valid, error = False, 'Occupancy data not available in data buffer.'
         return valid, error
 
 
 class PointcloudOccupancyCriteria(OccupancyCriteria):
-    def _validate_input(self, y_pred, y_true, data_buffer=None, *args, **kwargs):
-        valid, error = super()._validate_input(y_pred, y_true, data_buffer=data_buffer, *args, **kwargs)
+    def _validate_input(self, y_pred, y_true, data_buffer=None, occupied_only=False, *args, **kwargs):
+        valid, error = super()._validate_input(y_pred, y_true, data_buffer=data_buffer, occupied_only=occupied_only, *args, **kwargs)
         if valid:
-            if data_buffer is None or not isinstance(data_buffer, PointOccupancyDataBuffer):
-                valid, error = False, f'Data buffer not available. Expected instance of {PointOccupancyDataBuffer.__name__}, got {type(data_buffer).__name__}'
+            if data_buffer is None or not isinstance(data_buffer, MappedPointOccupancyDataBuffer):
+                valid, error = False, f'Data buffer not available. Expected instance of {MappedPointOccupancyDataBuffer.__name__}, got {type(data_buffer).__name__}'
         if valid:
-            if data_buffer.mapped_clouds() is None or data_buffer.mapped_masks() is None:
-                valid, error = False, 'Mapped clouds not available in data buffer.'
+            if data_buffer.mapped_mask() is None:
+                valid, error = False, 'Mapped masks not available in data buffer.'
         if valid:
-            if data_buffer.occupied_mapped_clouds() is None or data_buffer.occupied_mapped_masks() is None:
-                valid, error = False, 'Occupied mapped clouds not available in data buffer.'
+            if data_buffer.occupied_mapped_mask() is None:
+                valid, error = False, 'Occupied mapped masks not available in data buffer.'
         return valid, error
 
 

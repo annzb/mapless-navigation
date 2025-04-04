@@ -47,17 +47,46 @@ def process_radar_frames(radar_frames, intensity_mean=None, intensity_std=None):
     return radar_frames, intensity_mean, intensity_std
 
 
-def process_lidar_frames(lidar_frames):
+def process_lidar_frames(lidar_frames, device, data_buffer=None):
+    max_dist = 0.0
+
     for i in range(len(lidar_frames)):
+        # Convert log-odds to probabilities
         lidar_frames[i][..., 3] = 1 / (1 + np.exp(-lidar_frames[i][..., 3]))
-    return lidar_frames
+
+        if data_buffer is not None:
+            frame = torch.tensor(lidar_frames[i], dtype=torch.float32, device=device)
+            indices = torch.full((len(frame),), 0, dtype=torch.long, device=device)
+            y = (frame, indices)
+            data_buffer.create_masks(y, y_other=y)
+            y_pred_mapped, y_true_mapped, _ = data_buffer.get_mapped_data(y, y_other=y)
+            if y_pred_mapped.numel() == 0:
+                continue
+            dists = torch.norm(y_pred_mapped[:, :3] - y_true_mapped[:, :3], dim=1)
+            max_dist = max(max_dist, dists.max().item())
+
+    print('max_dist', max_dist)
+    return lidar_frames, max_dist
+
 
 
 class RadarDataset(Dataset):
-    def __init__(self, radar_frames, lidar_frames, poses, *args, intensity_mean=None, intensity_std=None, name='dataset', **kwargs):
+    def __init__(
+            self, radar_frames, lidar_frames, poses, *args,
+            intensity_mean=None, intensity_std=None,
+            max_matched_point_dist=None, data_buffer=None,
+            name='dataset', device=None, **kwargs
+    ):
+        if max_matched_point_dist is None and (data_buffer is None or device is None):
+            raise ValueError(f"Need data_buffer and device to calculate max_matched_point_dist.")
+
         self.X, self.intensity_mean, self.intensity_std = process_radar_frames(radar_frames, intensity_mean, intensity_std)
-        self.Y = process_lidar_frames(lidar_frames)
+        self.Y, max_dist = process_lidar_frames(lidar_frames, device, data_buffer=data_buffer)
         self.poses = poses
+
+        if max_matched_point_dist is None:
+            max_matched_point_dist = max_dist
+        self.max_matched_point_dist = max_matched_point_dist
         self.name = name.capitalize()
 
     def __len__(self):
@@ -110,7 +139,7 @@ class RadarDatasetGrid(RadarDataset):
 def get_dataset(
         dataset_file_path, dataset_type,
         partial=1.0, batch_size=16, shuffle_runs=True, random_state=42, grid_voxel_size=1.0,
-        occupied_only=False, occupancy_threshold=0.5
+        occupied_only=False, occupancy_threshold=0.5, data_buffer=None, device=None
 ):
     data_dict, radar_config = read_h5_dataset(dataset_file_path)
     radar_frames = data_dict['cascade_heatmaps']
@@ -154,9 +183,9 @@ def get_dataset(
     radar_val, radar_test, lidar_val, lidar_test, poses_val, poses_test = train_test_split(radar_temp, lidar_temp, poses_temp, test_size=0.6, random_state=random_state)
 
     # dataset_class = RadarDatasetGrid if grid else RadarDataset
-    train_dataset = dataset_type(radar_train, lidar_train, poses_train, radar_config=radar_config, voxel_size=grid_voxel_size, name='train')
-    val_dataset = dataset_type(radar_val, lidar_val, poses_val, radar_config=radar_config, voxel_size=grid_voxel_size, intensity_mean=train_dataset.intensity_mean, intensity_std=train_dataset.intensity_std, name='valid')
-    test_dataset = dataset_type(radar_test, lidar_test, poses_test, radar_config=radar_config, voxel_size=grid_voxel_size, intensity_mean=train_dataset.intensity_mean, intensity_std=train_dataset.intensity_std, name='test')
+    train_dataset = dataset_type(radar_train, lidar_train, poses_train, data_buffer=data_buffer, device=device, radar_config=radar_config, voxel_size=grid_voxel_size, name='train')
+    val_dataset = dataset_type(radar_val, lidar_val, poses_val, data_buffer=data_buffer, device=device, radar_config=radar_config, voxel_size=grid_voxel_size, intensity_mean=train_dataset.intensity_mean, intensity_std=train_dataset.intensity_std, name='valid')
+    test_dataset = dataset_type(radar_test, lidar_test, poses_test, data_buffer=data_buffer, device=device, radar_config=radar_config, voxel_size=grid_voxel_size, intensity_mean=train_dataset.intensity_mean, intensity_std=train_dataset.intensity_std, name='test')
 
     train_dataset.print_log()
     val_dataset.print_log()
