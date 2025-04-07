@@ -40,7 +40,8 @@ def run():
     LOSS_PROBABILITY_WEIGHT = 1.0
     OCCUPANCY_THRESHOLD = 0.6
     EVAL_OVER_OCCUPIED_POINTS_ONLY = True
-    POINT_MATCH_RADIUS = 0.25
+    # POINT_MATCH_RADIUS = 0.25
+    NO_MATCH_DISTANCE_PENALTY=100
     LEARNING_RATE = 0.01
 
     local_params = get_local_params()
@@ -49,7 +50,7 @@ def run():
         dataset_path=local_params['dataset_path'], dataset_part=local_params['dataset_part'], batch_size=local_params['batch_size'], shuffle_dataset_runs=SHUFFLE_RUNS,
         device_name=local_params['device_name'], logger=local_params['logger'], random_state=RANDOM_SEEED, save_model_name=SAVE_MODEL_PREFIX,
         occupancy_threshold=OCCUPANCY_THRESHOLD, evaluate_over_occupied_points_only=EVAL_OVER_OCCUPIED_POINTS_ONLY,
-        loss_spatial_weight=LOSS_SPATIAL_WEIGHT, loss_probability_weight=LOSS_PROBABILITY_WEIGHT, max_point_distance=POINT_MATCH_RADIUS,
+        loss_spatial_penalty=NO_MATCH_DISTANCE_PENALTY, loss_spatial_weight=LOSS_SPATIAL_WEIGHT, loss_probability_weight=LOSS_PROBABILITY_WEIGHT,
         learning_rate=LEARNING_RATE, n_epochs=local_params['n_epochs']
     )
     mm.train()

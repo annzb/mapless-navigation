@@ -72,7 +72,7 @@ class OccupancyCriteria(BaseCriteria):
             if data_buffer is None or not isinstance(data_buffer, OccupancyDataBuffer):
                 valid, error = False, f'Data buffer not available. Expected instance of {OccupancyDataBuffer.__name__}, got {type(data_buffer).__name__}'
         if valid:
-            if data_buffer.occupied_masks() is None:
+            if data_buffer.occupied_mask() is None:
                 valid, error = False, 'Occupancy data not available in data buffer.'
         return valid, error
 

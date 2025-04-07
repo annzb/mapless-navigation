@@ -54,16 +54,16 @@ def process_lidar_frames(lidar_frames, device, data_buffer=None):
         # Convert log-odds to probabilities
         lidar_frames[i][..., 3] = 1 / (1 + np.exp(-lidar_frames[i][..., 3]))
 
-        if data_buffer is not None:
-            frame = torch.tensor(lidar_frames[i], dtype=torch.float32, device=device)
-            indices = torch.full((len(frame),), 0, dtype=torch.long, device=device)
-            y = (frame, indices)
-            data_buffer.create_masks(y, y_other=y)
-            y_pred_mapped, y_true_mapped, _ = data_buffer.get_mapped_data(y, y_other=y)
-            if y_pred_mapped.numel() == 0:
-                continue
-            dists = torch.norm(y_pred_mapped[:, :3] - y_true_mapped[:, :3], dim=1)
-            max_dist = max(max_dist, dists.max().item())
+        # if data_buffer is not None:
+        #     frame = torch.tensor(lidar_frames[i], dtype=torch.float32, device=device)
+        #     indices = torch.full((len(frame),), 0, dtype=torch.long, device=device)
+        #     y = (frame, indices)
+        #     data_buffer.create_masks(y, y_other=y)
+        #     y_pred_mapped, y_true_mapped, _ = data_buffer.get_mapped_data(y, y_other=y)
+        #     if y_pred_mapped.numel() == 0:
+        #         continue
+        #     dists = torch.norm(y_pred_mapped[:, :3] - y_true_mapped[:, :3], dim=1)
+        #     max_dist = max(max_dist, dists.max().item())
 
     print('max_dist', max_dist)
     return lidar_frames, max_dist

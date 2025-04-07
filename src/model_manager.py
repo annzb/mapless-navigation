@@ -30,7 +30,7 @@ class ModelManager(ABC):
             # overridable params
             # ...
             # loss
-            loss_spatial_weight=1.0, loss_probability_weight=1.0,
+            loss_spatial_penalty=1, loss_spatial_weight=1.0, loss_probability_weight=1.0,
             # loss, metrics
             occupancy_threshold=0.5, evaluate_over_occupied_points_only=False,
             # metrics
@@ -46,6 +46,7 @@ class ModelManager(ABC):
         self.occupancy_threshold = occupancy_threshold
         self.occupied_only = evaluate_over_occupied_points_only
         self.max_point_distance = max_point_distance
+        self.spatial_penalty = loss_spatial_penalty
         self.spatial_weight = loss_spatial_weight
         self.probability_weight = loss_probability_weight
         self.learning_rate = learning_rate
@@ -64,13 +65,16 @@ class ModelManager(ABC):
         )
         self.init_model()
         self.init_loss_function(
+            batch_size=batch_size,
             occupancy_threshold=self.occupancy_threshold,
             occupied_only=self.occupied_only,
+            unmatched_point_spatial_penalty=loss_spatial_penalty,
             spatial_weight=self.spatial_weight,
             probability_weight=self.probability_weight,
             device=self.device
         )
         self.init_metrics(
+            batch_size=batch_size,
             occupancy_threshold=self.occupancy_threshold,
             occupied_only=self.occupied_only,
             max_point_distance=self.max_point_distance

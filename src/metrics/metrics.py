@@ -6,8 +6,8 @@ from metrics.base import PointcloudOccupancyMetric
 
 class IoU(PointcloudOccupancyMetric):
     def _calc(self, y_pred, y_true, data_buffer=None, *args, **kwargs):
-        y_pred_occupied_mask, y_true_occupied_mask = data_buffer.occupied_masks()
-        y_pred_occupied_mapped_mask, y_true_occupied_mapped_mask = data_buffer.occupied_mapped_masks()
+        y_pred_occupied_mask, y_true_occupied_mask = data_buffer.occupied_mask()
+        y_pred_occupied_mapped_mask, y_true_occupied_mapped_mask = data_buffer.occupied_mapped_mask()
 
         intersection = (y_pred_occupied_mapped_mask & y_true_occupied_mapped_mask).sum().float()
         union = y_pred_occupied_mask.sum().float() + y_true_occupied_mask.sum().float() - intersection
@@ -17,7 +17,7 @@ class IoU(PointcloudOccupancyMetric):
 
 class Precision(PointcloudOccupancyMetric):
     def _calc(self, y_pred, y_true, data_buffer=None, *args, **kwargs):
-        pred_mask, true_mask = data_buffer.occupied_masks()
+        pred_mask, true_mask = data_buffer.occupied_mask()
         tp = (pred_mask & true_mask).sum().float()
         fp = (pred_mask & ~true_mask).sum().float()
         return tp / (tp + fp + 1e-8)
@@ -25,7 +25,7 @@ class Precision(PointcloudOccupancyMetric):
 
 class Recall(PointcloudOccupancyMetric):
     def _calc(self, y_pred, y_true, data_buffer=None, *args, **kwargs):
-        pred_mask, true_mask = data_buffer.occupied_masks()
+        pred_mask, true_mask = data_buffer.occupied_mask()
         tp = (pred_mask & true_mask).sum().float()
         fn = (~pred_mask & true_mask).sum().float()
         return tp / (tp + fn + 1e-8)
@@ -46,9 +46,9 @@ class F1(PointcloudOccupancyMetric):
 class ChamferDistance(PointcloudOccupancyMetric):
     def _calc(self, y_pred, y_true, data_buffer=None, *args, **kwargs):
         if data_buffer.occupied_only():
-            y_pred_values, y_true_values, _ = data_buffer.occupied_mapped_clouds()
+            y_pred_values, y_true_values, _ = data_buffer.get_occupied_mapped_data(y_pred, y_true)
         else:
-            y_pred_values, y_true_values, _ = data_buffer.mapped_clouds()
+            y_pred_values, y_true_values, _ = data_buffer.get_mapped_data(y_pred, y_true)
 
         if y_pred_values.numel() == 0 or y_true_values.numel() == 0:
             return torch.tensor(0.0, device=y_pred_values.device)
@@ -59,9 +59,9 @@ class ChamferDistance(PointcloudOccupancyMetric):
 class OccupancyMSE(PointcloudOccupancyMetric):
     def _calc(self, y_pred, y_true, data_buffer=None, *args, **kwargs):
         if data_buffer.occupied_only():
-            y_pred_values, y_true_values, _ = data_buffer.occupied_mapped_clouds()
+            y_pred_values, y_true_values, _ = data_buffer.get_occupied_mapped_data(y_pred, y_true)
         else:
-            y_pred_values, y_true_values, _ = data_buffer.mapped_clouds()
+            y_pred_values, y_true_values, _ = data_buffer.get_mapped_data(y_pred, y_true)
 
         if y_pred_values.numel() == 0 or y_true_values.numel() == 0:
             return torch.tensor(0.0, device=y_pred_values.device)
@@ -71,9 +71,9 @@ class OccupancyMSE(PointcloudOccupancyMetric):
 class AUROC(PointcloudOccupancyMetric):
     def _calc(self, y_pred, y_true, data_buffer=None, *args, **kwargs):
         if data_buffer.occupied_only():
-            y_pred_values, y_true_values, _ = data_buffer.occupied_mapped_clouds()
+            y_pred_values, y_true_values, _ = data_buffer.get_occupied_mapped_data(y_pred, y_true)
         else:
-            y_pred_values, y_true_values, _ = data_buffer.mapped_clouds()
+            y_pred_values, y_true_values, _ = data_buffer.get_mapped_data(y_pred, y_true)
 
         if y_pred_values.numel() == 0 or y_true_values.numel() == 0:
             return torch.tensor(1.0)
@@ -89,9 +89,9 @@ class AUROC(PointcloudOccupancyMetric):
 class AUPRC(PointcloudOccupancyMetric):
     def _calc(self, y_pred, y_true, data_buffer=None, *args, **kwargs):
         if data_buffer.occupied_only():
-            y_pred_values, y_true_values, _ = data_buffer.occupied_mapped_clouds()
+            y_pred_values, y_true_values, _ = data_buffer.get_occupied_mapped_data(y_pred, y_true)
         else:
-            y_pred_values, y_true_values, _ = data_buffer.mapped_clouds()
+            y_pred_values, y_true_values, _ = data_buffer.get_mapped_data(y_pred, y_true)
 
         if y_pred_values.numel() == 0 or y_true_values.numel() == 0:
             return torch.tensor(1.0)

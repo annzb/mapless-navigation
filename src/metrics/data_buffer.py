@@ -27,7 +27,7 @@ class OccupancyDataBuffer(ABC):
         raise NotImplementedError()
 
     def create_masks(self, y, **kwargs):
-        self._occupied_mask = self.filter_occupied(y)
+        self._occupied_mask = self.filter_occupied(y, **kwargs)
 
     @abstractmethod
     def get_occupied_data(self, y, **kwargs):
