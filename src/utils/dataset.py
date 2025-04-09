@@ -48,8 +48,6 @@ def process_radar_frames(radar_frames, intensity_mean=None, intensity_std=None):
 
 
 def process_lidar_frames(lidar_frames, device, data_buffer=None):
-    max_dist = 0.0
-
     for i in range(len(lidar_frames)):
         # Convert log-odds to probabilities
         lidar_frames[i][..., 3] = 1 / (1 + np.exp(-lidar_frames[i][..., 3]))
@@ -64,29 +62,18 @@ def process_lidar_frames(lidar_frames, device, data_buffer=None):
         #         continue
         #     dists = torch.norm(y_pred_mapped[:, :3] - y_true_mapped[:, :3], dim=1)
         #     max_dist = max(max_dist, dists.max().item())
-
-    print('max_dist', max_dist)
-    return lidar_frames, max_dist
-
+    return lidar_frames
 
 
 class RadarDataset(Dataset):
     def __init__(
             self, radar_frames, lidar_frames, poses, *args,
-            intensity_mean=None, intensity_std=None,
-            max_matched_point_dist=None, data_buffer=None,
+            intensity_mean=None, intensity_std=None, data_buffer=None,
             name='dataset', device=None, **kwargs
     ):
-        if max_matched_point_dist is None and (data_buffer is None or device is None):
-            raise ValueError(f"Need data_buffer and device to calculate max_matched_point_dist.")
-
         self.X, self.intensity_mean, self.intensity_std = process_radar_frames(radar_frames, intensity_mean, intensity_std)
-        self.Y, max_dist = process_lidar_frames(lidar_frames, device, data_buffer=data_buffer)
+        self.Y = process_lidar_frames(lidar_frames, device, data_buffer=data_buffer)
         self.poses = poses
-
-        if max_matched_point_dist is None:
-            max_matched_point_dist = max_dist
-        self.max_matched_point_dist = max_matched_point_dist
         self.name = name.capitalize()
 
     def __len__(self):
