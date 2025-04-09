@@ -4,6 +4,25 @@ import torch.nn as nn
 from metrics.base import PointcloudOccupancyLoss
 
 
+class MsePointLoss(PointcloudOccupancyLoss):
+    def _calc(self, y_pred, y_true, data_buffer=None, *args, **kwargs):
+        y_pred_values, y_pred_batch_indices = y_pred
+        y_true_values, y_true_batch_indices = y_true
+
+        losses = []
+        for b in range(self._batch_size):
+            pred_batch_mask = (y_pred_batch_indices == b)
+            true_batch_mask = (y_true_batch_indices == b)
+            pred_probs = y_pred_values[:, 3]
+            true_probs = y_true_values[:, 3]
+            pred_avg = (pred_probs * pred_batch_mask.float()).sum() / (pred_batch_mask.sum() + 1e-8)
+            true_avg = (true_probs * true_batch_mask.float()).sum() / (true_batch_mask.sum() + 1e-8)
+            loss = (pred_avg - true_avg) ** 2
+            losses.append(loss)
+
+        return torch.stack(losses).mean()
+
+
 class SpatialBceLoss(PointcloudOccupancyLoss):
     def __init__(self, unmatched_point_spatial_penalty, spatial_weight=1.0, probability_weight=1.0, **kwargs):
         super().__init__(**kwargs)
@@ -15,9 +34,6 @@ class SpatialBceLoss(PointcloudOccupancyLoss):
     def _calc_spatial_loss(self, y_pred, y_true, data_buffer):
         device = y_pred[0].device
         (y_pred_values, y_pred_batch_indices), (y_true_values, y_true_batch_indices) = y_pred, y_true
-
-        if not y_pred_values.requires_grad:
-            raise RuntimeError("Predicted values do not require gradients!")
 
         losses = []
         if self.occupied_only:
@@ -38,9 +54,6 @@ class SpatialBceLoss(PointcloudOccupancyLoss):
             pred_b = pred_matched[matched_b]
             true_b = true_matched[matched_b]
 
-            if pred_b.numel() > 0 and not pred_b.requires_grad:
-                raise RuntimeError("Matched predicted values do not require gradients!")
-
             matched_loss = torch.tensor(0.0, device=device, requires_grad=True)
             if pred_b.size(0) > 0 and true_b.size(0) > 0:
                 dists = torch.cdist(pred_b[:, :3], true_b[:, :3], p=2) ** 2
@@ -51,10 +64,6 @@ class SpatialBceLoss(PointcloudOccupancyLoss):
             num_unmatched = (unmatched_true_batch_indices == b).sum()
             unmatched_loss = num_unmatched * self.spatial_penalty
             total = matched_loss + unmatched_loss
-
-            if not total.requires_grad:
-                raise RuntimeError("Spatial loss term does not require gradients!")
-
             losses.append(total)
 
         return torch.stack(losses).mean()
@@ -62,10 +71,6 @@ class SpatialBceLoss(PointcloudOccupancyLoss):
     def _calc_occupancy_bce_loss(self, y_pred, y_true, data_buffer):
         device = y_pred[0].device
         (y_pred_values, y_pred_batch_indices), (y_true_values, y_true_batch_indices) = y_pred, y_true
-
-        if not y_pred_values.requires_grad:
-            raise RuntimeError("Predicted values do not require gradients!")
-
         losses = []
 
         if self.occupied_only:

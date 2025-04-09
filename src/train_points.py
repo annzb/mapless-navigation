@@ -3,7 +3,7 @@ torch.autograd.set_detect_anomaly(True)
 
 from metrics import metrics as metric_defs
 from utils.dataset import RadarDataset
-from metrics import SpatialBceLoss as PointLoss, ChamferPointDataBuffer as PointDataBuffer
+from metrics import MsePointLoss as PointLoss, MappedPointOccupancyDataBuffer as PointDataBuffer
 from models import PointOccupancyModel as PointModel
 from model_manager import ModelManager
 from utils import get_local_params
@@ -20,14 +20,15 @@ class PointModelManager(ModelManager):
         self._data_buffer_type = PointDataBuffer
         self._loss_type = PointLoss
         self._metric_types = (
-            metric_defs.IoU,
-            metric_defs.ChamferDistance,
-            metric_defs.Precision,
-            metric_defs.Recall,
-            metric_defs.F1,
-            metric_defs.OccupancyMSE,
-            metric_defs.AUROC,
-            metric_defs.AUPRC
+            metric_defs.OccupancyRatio,
+        #     metric_defs.IoU,
+        #     metric_defs.ChamferDistance,
+        #     metric_defs.Precision,
+        #     metric_defs.Recall,
+        #     metric_defs.F1,
+        #     metric_defs.OccupancyMSE,
+        #     metric_defs.AUROC,
+        #     metric_defs.AUPRC
         )
 
 

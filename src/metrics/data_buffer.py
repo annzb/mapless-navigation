@@ -29,9 +29,9 @@ class OccupancyDataBuffer(ABC):
     def create_masks(self, y, **kwargs):
         self._occupied_mask = self.filter_occupied(y, **kwargs)
 
-    @abstractmethod
-    def get_occupied_data(self, y, **kwargs):
-        raise NotImplementedError()
+    # @abstractmethod
+    # def get_occupied_data(self, y, **kwargs):
+    #     raise NotImplementedError()
 
 
 class PointOccupancyDataBuffer(OccupancyDataBuffer):
@@ -40,15 +40,15 @@ class PointOccupancyDataBuffer(OccupancyDataBuffer):
         mask = cloud_values[:, -1] >= self._occupancy_threshold
         return mask
 
-    def get_occupied_data(self, y, **kwargs):
-        """
-        :returns: a tuple (y_values_occupied, y_indices_occupied), or points and their in-batch sample indices.
-        Sizes: ((N_points_occ, 4), N_points_occ), N_points_occ <= N_points.
-        """
-        if self._occupied_mask is None:
-            raise ValueError('Occupied mask not created.')
-        y_values, y_batch_indices = y
-        return y_values[self._occupied_mask], y_batch_indices[self._occupied_mask]
+    # def get_occupied_data(self, y, **kwargs):
+    #     """
+    #     :returns: a tuple (y_values_occupied, y_indices_occupied), or points and their in-batch sample indices.
+    #     Sizes: ((N_points_occ, 4), N_points_occ), N_points_occ <= N_points.
+    #     """
+    #     if self._occupied_mask is None:
+    #         raise ValueError('Occupied mask not created.')
+    #     y_values, y_batch_indices = y
+    #     return y_values[self._occupied_mask], y_batch_indices[self._occupied_mask]
 
 
 class MappedPointOccupancyDataBuffer(PointOccupancyDataBuffer):
@@ -68,86 +68,86 @@ class MappedPointOccupancyDataBuffer(PointOccupancyDataBuffer):
         mask_other = y_values_other[:, -1] >= self._occupancy_threshold
         return mask, mask_other
 
-    def get_occupied_data(self, y, y_other=None, **kwargs) -> tuple:
-        if y_other is None:
-            raise ValueError('y_other not provided.')
-        if self._occupied_mask is None:
-            raise ValueError('Occupied masks not created.')
-        (y_values, y_batch_indices), (y_values_other, y_batch_indices_other) = y, y_other
-        occupied_mask, occupied_mask_other = self._occupied_mask
-        return (y_values[occupied_mask], y_batch_indices[occupied_mask]), (y_values_other[occupied_mask_other], y_batch_indices_other[occupied_mask_other])
+    # def get_occupied_data(self, y, y_other=None, **kwargs) -> tuple:
+    #     if y_other is None:
+    #         raise ValueError('y_other not provided.')
+    #     if self._occupied_mask is None:
+    #         raise ValueError('Occupied masks not created.')
+    #     (y_values, y_batch_indices), (y_values_other, y_batch_indices_other) = y, y_other
+    #     occupied_mask, occupied_mask_other = self._occupied_mask
+    #     return (y_values[occupied_mask], y_batch_indices[occupied_mask]), (y_values_other[occupied_mask_other], y_batch_indices_other[occupied_mask_other])
 
-    def mapped_mask(self):
-        return self._mapped_mask
+    # def mapped_mask(self):
+    #     return self._mapped_mask
+    #
+    # def occupied_mapped_mask(self):
+    #     return self._occupied_mapped_mask
+    #
+    # def mapping(self):
+    #     return self._mapping
+    #
+    # def occupied_mapping(self):
+    #     return self._occupied_mapping
 
-    def occupied_mapped_mask(self):
-        return self._occupied_mapped_mask
-
-    def mapping(self):
-        return self._mapping
-
-    def occupied_mapping(self):
-        return self._occupied_mapping
-
-    def create_masks(self, y, y_other=None, **kwargs):
-        super().create_masks(y, y_other=y_other, **kwargs)
-        (y_values, y_batch_indices), (y_values_other, y_batch_indices_other) = y, y_other
-
-        assert y_values.shape[0] == y_batch_indices.shape[0], "y_values and y_batch_indices size mismatch"
-        assert y_values_other.shape[0] == y_batch_indices_other.shape[0], "y_values_other and y_batch_indices_other size mismatch"
-
-        mapping = self.match_points(y_values, y_batch_indices, y_values_other, y_batch_indices_other)
-        assert mapping.dim() == 2 and mapping.size(1) == 2, "Mapping shape should be [N_matches, 2]"
-        assert mapping[:, 0].max() < y_values.shape[0], "Invalid indices in mapping[:,0]"
-        assert mapping[:, 1].max() < y_values_other.shape[0], "Invalid indices in mapping[:,1]"
-        self._mapping = mapping
-
-        mapped_mask = torch.zeros(y_values.shape[0], dtype=torch.bool, device=y_values.device)
-        mapped_mask_other = torch.zeros(y_values_other.shape[0], dtype=torch.bool, device=y_values_other.device)
-        mapped_mask[mapping[:, 0]] = True
-        mapped_mask_other[mapping[:, 1]] = True
-        self._mapped_mask = (mapped_mask, mapped_mask_other)
-
-        assert mapped_mask.sum() == mapped_mask_other.sum(), f"Mismatch in number of matched points: {mapped_mask.sum()} vs {mapped_mask_other.sum()}"
-
-        if self._occupied_mask is not None:
-            occupied_mask, occupied_mask_other = self._occupied_mask
-            pred_occ = occupied_mask[mapping[:, 0]]
-            true_occ = occupied_mask_other[mapping[:, 1]]
-            both_occupied = pred_occ & true_occ
-            occupied_mapping = mapping[both_occupied]
-            self._occupied_mapping = occupied_mapping
-
-            occupied_mapped_mask = torch.zeros_like(occupied_mask)
-            occupied_mapped_mask_other = torch.zeros_like(occupied_mask_other)
-            occupied_mapped_mask[occupied_mapping[:, 0]] = True
-            occupied_mapped_mask_other[occupied_mapping[:, 1]] = True
-            self._occupied_mapped_mask = (occupied_mapped_mask, occupied_mapped_mask_other)
-            assert occupied_mapped_mask.sum() == occupied_mapped_mask_other.sum(), f"Occupied matched masks mismatch: {occupied_mapped_mask.sum()} vs {occupied_mapped_mask_other.sum()}"
-
-    def get_mapped_data(self, y, y_other=None, **kwargs) -> tuple:
-        if y_other is None:
-            raise ValueError('y_other not provided.')
-        if self._mapping is None:
-            raise ValueError('Mapping not created.')
-        (y_values, y_batch_indices), (y_values_other, _) = y, y_other
-        return (
-            y_values[self._mapping[:, 0]],
-            y_values_other[self._mapping[:, 1]],
-            y_batch_indices[self._mapping[:, 0]]
-        )
-
-    def get_occupied_mapped_data(self, y, y_other=None, **kwargs) -> tuple:
-        if y_other is None:
-            raise ValueError('y_other not provided.')
-        if self._occupied_mapping is None:
-            raise ValueError('Occupied mapping not created.')
-        (y_values, y_batch_indices), (y_values_other, _) = y, y_other
-        return (
-            y_values[self._occupied_mapping[:, 0]],
-            y_values_other[self._occupied_mapping[:, 1]],
-            y_batch_indices[self._occupied_mapping[:, 0]]
-        )
+    # def create_masks(self, y, y_other=None, **kwargs):
+    #     super().create_masks(y, y_other=y_other, **kwargs)
+    #     (y_values, y_batch_indices), (y_values_other, y_batch_indices_other) = y, y_other
+    #
+    #     assert y_values.shape[0] == y_batch_indices.shape[0], "y_values and y_batch_indices size mismatch"
+    #     assert y_values_other.shape[0] == y_batch_indices_other.shape[0], "y_values_other and y_batch_indices_other size mismatch"
+    #
+    #     mapping = self.match_points(y_values, y_batch_indices, y_values_other, y_batch_indices_other)
+    #     assert mapping.dim() == 2 and mapping.size(1) == 2, "Mapping shape should be [N_matches, 2]"
+    #     assert mapping[:, 0].max() < y_values.shape[0], "Invalid indices in mapping[:,0]"
+    #     assert mapping[:, 1].max() < y_values_other.shape[0], "Invalid indices in mapping[:,1]"
+    #     self._mapping = mapping
+    #
+    #     mapped_mask = torch.zeros(y_values.shape[0], dtype=torch.bool, device=y_values.device)
+    #     mapped_mask_other = torch.zeros(y_values_other.shape[0], dtype=torch.bool, device=y_values_other.device)
+    #     mapped_mask[mapping[:, 0]] = True
+    #     mapped_mask_other[mapping[:, 1]] = True
+    #     self._mapped_mask = (mapped_mask, mapped_mask_other)
+    #
+    #     assert mapped_mask.sum() == mapped_mask_other.sum(), f"Mismatch in number of matched points: {mapped_mask.sum()} vs {mapped_mask_other.sum()}"
+    #
+    #     if self._occupied_mask is not None:
+    #         occupied_mask, occupied_mask_other = self._occupied_mask
+    #         pred_occ = occupied_mask[mapping[:, 0]]
+    #         true_occ = occupied_mask_other[mapping[:, 1]]
+    #         both_occupied = pred_occ & true_occ
+    #         occupied_mapping = mapping[both_occupied]
+    #         self._occupied_mapping = occupied_mapping
+    #
+    #         occupied_mapped_mask = torch.zeros_like(occupied_mask)
+    #         occupied_mapped_mask_other = torch.zeros_like(occupied_mask_other)
+    #         occupied_mapped_mask[occupied_mapping[:, 0]] = True
+    #         occupied_mapped_mask_other[occupied_mapping[:, 1]] = True
+    #         self._occupied_mapped_mask = (occupied_mapped_mask, occupied_mapped_mask_other)
+    #         assert occupied_mapped_mask.sum() == occupied_mapped_mask_other.sum(), f"Occupied matched masks mismatch: {occupied_mapped_mask.sum()} vs {occupied_mapped_mask_other.sum()}"
+    #
+    # def get_mapped_data(self, y, y_other=None, **kwargs) -> tuple:
+    #     if y_other is None:
+    #         raise ValueError('y_other not provided.')
+    #     if self._mapping is None:
+    #         raise ValueError('Mapping not created.')
+    #     (y_values, y_batch_indices), (y_values_other, _) = y, y_other
+    #     return (
+    #         y_values[self._mapping[:, 0]],
+    #         y_values_other[self._mapping[:, 1]],
+    #         y_batch_indices[self._mapping[:, 0]]
+    #     )
+    #
+    # def get_occupied_mapped_data(self, y, y_other=None, **kwargs) -> tuple:
+    #     if y_other is None:
+    #         raise ValueError('y_other not provided.')
+    #     if self._occupied_mapping is None:
+    #         raise ValueError('Occupied mapping not created.')
+    #     (y_values, y_batch_indices), (y_values_other, _) = y, y_other
+    #     return (
+    #         y_values[self._occupied_mapping[:, 0]],
+    #         y_values_other[self._occupied_mapping[:, 1]],
+    #         y_batch_indices[self._occupied_mapping[:, 0]]
+    #     )
 
 
 class ChamferPointDataBuffer(MappedPointOccupancyDataBuffer):

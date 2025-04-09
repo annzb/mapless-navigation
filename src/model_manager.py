@@ -249,13 +249,14 @@ class ModelManager(ABC):
             self.optimizer.zero_grad(set_to_none=True)
             if torch.isnan(batch_loss).any() or torch.isinf(batch_loss).any():
                 raise RuntimeError("Detected NaN or Inf in batch_loss before backward!")
-            for name, param in self.model.named_parameters():
-                if param.requires_grad:
-                    try:
-                        grads = torch.autograd.grad(batch_loss, param, retain_graph=True, allow_unused=True)
-                        print(f"{name}: grad computed? {grads[0] is not None}")
-                    except Exception as e:
-                        print(f"{name}: Error computing grad: {e}")
+            # for name, param in self.model.named_parameters():
+            #     if param.requires_grad:
+            #         try:
+            #             grads = torch.autograd.grad(batch_loss, param, retain_graph=True, allow_unused=True)
+            #             if grads[0] is not None
+            #             print(f"{name}: grad computed? {grads[0] is not None}")
+            #         except Exception as e:
+            #             print(f"{name}: Error computing grad: {e}")
             batch_loss.backward()
             self.optimizer.step()
             for name, param in self.model.named_parameters():

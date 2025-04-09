@@ -4,6 +4,15 @@ from sklearn.metrics import average_precision_score, roc_auc_score
 from metrics.base import PointcloudOccupancyMetric
 
 
+class OccupancyRatio(PointcloudOccupancyMetric):
+    def _calc(self, y_pred, y_true, data_buffer=None, *args, **kwargs):
+        pred_occupied_mask, true_occupied_mask = data_buffer.occupied_mask()
+        pred_ratio = pred_occupied_mask.float().mean()
+        true_ratio = true_occupied_mask.float().mean()
+        score = 1.0 - torch.abs(pred_ratio - true_ratio)
+        return score
+
+
 class IoU(PointcloudOccupancyMetric):
     def _calc(self, y_pred, y_true, data_buffer=None, *args, **kwargs):
         pred_occ_mask, true_occ_mask = data_buffer.occupied_mask()

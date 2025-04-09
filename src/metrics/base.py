@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 
-from metrics.data_buffer import OccupancyDataBuffer, MappedPointOccupancyDataBuffer
+from metrics.data_buffer import OccupancyDataBuffer, PointOccupancyDataBuffer
 
 
 class BaseCriteria:
@@ -81,14 +81,14 @@ class PointcloudOccupancyCriteria(OccupancyCriteria):
     def _validate_input(self, y_pred, y_true, data_buffer=None, occupied_only=False, *args, **kwargs):
         valid, error = super()._validate_input(y_pred, y_true, data_buffer=data_buffer, occupied_only=occupied_only, *args, **kwargs)
         if valid:
-            if data_buffer is None or not isinstance(data_buffer, MappedPointOccupancyDataBuffer):
-                valid, error = False, f'Data buffer not available. Expected instance of {MappedPointOccupancyDataBuffer.__name__}, got {type(data_buffer).__name__}'
-        if valid:
-            if data_buffer.mapped_mask() is None:
-                valid, error = False, 'Mapped masks not available in data buffer.'
-        if valid:
-            if data_buffer.occupied_mapped_mask() is None:
-                valid, error = False, 'Occupied mapped masks not available in data buffer.'
+            if data_buffer is None or not isinstance(data_buffer, PointOccupancyDataBuffer):
+                valid, error = False, f'Data buffer not available. Expected instance of {PointOccupancyDataBuffer.__name__}, got {type(data_buffer).__name__}'
+        # if valid:
+        #     if data_buffer.mapped_mask() is None:
+        #         valid, error = False, 'Mapped masks not available in data buffer.'
+        # if valid:
+        #     if data_buffer.occupied_mapped_mask() is None:
+        #         valid, error = False, 'Occupied mapped masks not available in data buffer.'
         return valid, error
 
 

@@ -4,6 +4,6 @@ from metrics.base import (
     PointcloudOccupancyMetric, PointcloudOccupancyLoss,
     GridOccupancyMetric, GridOccupancyLoss
 )
-from metrics.data_buffer import OccupancyDataBuffer, MappedPointOccupancyDataBuffer, ChamferPointDataBuffer, SinkhornPointDataBuffer
-from metrics.loss_points import SpatialBceLoss
+from metrics.data_buffer import OccupancyDataBuffer, PointOccupancyDataBuffer, MappedPointOccupancyDataBuffer, ChamferPointDataBuffer, SinkhornPointDataBuffer
+from metrics.loss_points import MsePointLoss, SpatialBceLoss
 from metrics.loss_grid import SparseBceLoss
