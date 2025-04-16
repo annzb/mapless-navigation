@@ -1,5 +1,6 @@
 import os.path
 from abc import ABC, abstractmethod
+from datetime import datetime
 
 import numpy as np
 import torch
@@ -38,10 +39,11 @@ class ModelManager(ABC):
             # optimizer
             learning_rate=0.01,
             # train loop
-             n_epochs=10, save_model_name="model",
-
+            n_epochs=10,
+            
+            model_save_directory='.',
+            session_name=None,
             **kwargs
-
     ):
         self.occupancy_threshold = occupancy_threshold
         self.occupied_only = evaluate_over_occupied_points_only
@@ -87,8 +89,13 @@ class ModelManager(ABC):
             self._filter_cloud = lambda cloud: cloud
 
         self.n_epochs = n_epochs
-        self.save_model_name = save_model_name
 
+        self.session_name = datetime.now().strftime("%d%B%y").lower()  # current date as DDmonthYY
+        if session_name:
+            session_name = f'{self.session_name}_{session_name}'
+        self.model_save_directory = os.path.join(model_save_directory, session_name)
+        os.makedirs(self.model_save_directory, exist_ok=True)
+        
         self.logger.init(
             project="radar-occupancy",
             config={
@@ -269,10 +276,13 @@ class ModelManager(ABC):
         self.scale_metrics(n_samples=len(data_loader), mode=mode)
         return epoch_loss
 
-    def _save_model(self, path):
-        torch.save(self.model.state_dict(), path)
-        self._saved_models.add(path)
-        self.logger.log(f'Saved model to {path}')
+    def _save_model(self, filename):
+        if not filename.endswith('.pth'):
+            filename += '.pth'
+        save_path = os.path.join(self.model_save_directory, filename)
+        torch.save(self.model.state_dict(), save_path)
+        self._saved_models.add(save_path)
+        self.logger.log(f'Saved model as {save_path}')
 
     def train(self, n_epochs=None, save_model_name=None):
         n_epochs = n_epochs or self.n_epochs
@@ -288,17 +298,16 @@ class ModelManager(ABC):
 
             if train_epoch_loss < best_train_loss:
                 best_train_loss = train_epoch_loss
-                self._save_model(save_model_name.replace('.pth', f'_train_loss_epoch{epoch}.pth'))
+                self._save_model('best_train_loss')
 
             if val_epoch_loss < best_val_loss:
                 best_val_loss = val_epoch_loss
-                self._save_model(save_model_name.replace('.pth', f'_val_loss_epoch{epoch}.pth'))
+                self._save_model('best_val_loss')
 
             for mode in 'train', 'val':
                 for metric in self.metrics[mode]:
-                    # print(metric.name, metric.total_score, metric.best_score)
                     if metric.total_score >= metric.best_score:
-                        self._save_model(save_model_name.replace('.pth', f'_{metric.name}_epoch{epoch}.pth'))
+                        self._save_model(f'best_{metric.name}')
 
             log = {
                 "epoch": epoch,

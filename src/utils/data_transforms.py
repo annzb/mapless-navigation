@@ -1,6 +1,75 @@
 import numpy as np
+import torch
 
 from utils.radar_config import RadarConfig
+
+
+def polar_to_cartesian_grid(heatmap, radar_config, device=None):
+    if isinstance(heatmap, np.ndarray):
+        heatmap = torch.from_numpy(heatmap)
+    if device is not None:
+        heatmap = heatmap.to(device)
+
+    if heatmap.dim() == 3:
+        heatmap = heatmap.unsqueeze(0)  # (1, El, R, Az)
+        batched = False
+    elif heatmap.dim() == 4:
+        batched = True
+    else:
+        raise ValueError("Heatmap must be of shape (El, R, Az) or (B, El, R, Az)")
+    B, El, R, Az = heatmap.shape
+    if El != radar_config.num_elevation_bins or R != radar_config.num_range_bins or Az != radar_config.num_azimuth_bins:
+        raise ValueError("Heatmap shape does not match radar config's clipped bin dimensions.")
+
+    el_bins = torch.tensor(radar_config.clipped_elevation_bins, dtype=torch.float32, device=heatmap.device)
+    az_bins = torch.tensor(radar_config.clipped_azimuth_bins, dtype=torch.float32, device=heatmap.device)
+    r_bins = torch.linspace(0, (R - 1) * radar_config.range_bin_width, R, device=heatmap.device)
+    el_grid, r_grid, az_grid = torch.meshgrid(el_bins, r_bins, az_bins, indexing="ij")  # (El, R, Az)
+
+    x = r_grid * torch.cos(el_grid) * torch.sin(az_grid)
+    y = r_grid * torch.cos(el_grid) * torch.cos(az_grid)
+    z = r_grid * torch.sin(el_grid)
+    coords = torch.stack([x, y, z], dim=-1).reshape(-1, 3)  # shape: (N_vox, 3)
+
+    # Voxel grid config
+    voxel_size = radar_config.grid_resolution
+    min_x, max_x, min_y, max_y, min_z, max_z = radar_config.point_range
+    grid_size_xyz = radar_config.grid_size  # (X, Y, Z)
+    grid_size_zyx = (grid_size_xyz[2], grid_size_xyz[1], grid_size_xyz[0])  # (Z, Y, X)
+
+    # Convert real coords to voxel indices
+    voxel_origin = torch.tensor([min_x, min_y, min_z], dtype=torch.float32, device=coords.device)
+    voxel_indices = ((coords - voxel_origin) / voxel_size).long()  # (N_vox, 3)
+
+    # Keep only valid indices
+    valid_mask = (
+        (voxel_indices[:, 0] >= 0) & (voxel_indices[:, 0] < grid_size_xyz[0]) &
+        (voxel_indices[:, 1] >= 0) & (voxel_indices[:, 1] < grid_size_xyz[1]) &
+        (voxel_indices[:, 2] >= 0) & (voxel_indices[:, 2] < grid_size_xyz[2])
+    )
+    voxel_indices = voxel_indices[valid_mask]
+    voxel_indices_zyx = voxel_indices[:, [2, 1, 0]]  # convert (X,Y,Z) → (Z,Y,X)
+
+    # Compute flat indices for efficient accumulation
+    flat_indices = (
+        voxel_indices_zyx[:, 0] * (grid_size_zyx[1] * grid_size_zyx[2]) +
+        voxel_indices_zyx[:, 1] * grid_size_zyx[2] +
+        voxel_indices_zyx[:, 2]
+    )
+    # Prepare output grid
+    output = torch.zeros((B, *grid_size_zyx), dtype=heatmap.dtype, device=heatmap.device)
+
+    # Flatten and index valid polar heatmap values
+    heatmap_flat = heatmap.reshape(B, -1)[:, valid_mask]  # (B, valid_voxels)
+
+    # Aggregate intensity values into cartesian grid
+    for b in range(B):
+        output[b].reshape(-1).index_add_(0, flat_indices, heatmap_flat[b])
+    return output if batched else output[0]
+
+
+def heatmap_to_pointcloud(heatmap, radar_config, device=None):
+    pass
 
 
 def clouds_to_grids(clouds, radar_config):

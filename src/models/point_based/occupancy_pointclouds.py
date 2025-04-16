@@ -13,7 +13,7 @@ class PointOccupancyModel(RadarOccupancyModel):
         self.pointnet = PointNet()
         self.name = 'cart+down+pointnet_v1.1'
 
-    def forward(self, polar_frames):
+    def forward(self, polar_frames, debug=False):
         cartesian_points = self.polar_to_cartesian(polar_frames)                       # [B, 153600, 4]
         downsampled_points = self.down(cartesian_points)                               # [B, 7680, 4]
         points = downsampled_points[..., :3]                                           # [B, 7680, 3]
@@ -22,4 +22,7 @@ class PointOccupancyModel(RadarOccupancyModel):
 
         predicted_batch_flat, predicted_batch_indices = self.merge_batches(log_odds)   # [B * 7680, 4], [B * 7680]
         predicted_probabilities = self.apply_sigmoid(predicted_batch_flat)             # [B * 7680, 4
-        return predicted_probabilities, predicted_batch_indices
+
+        if not debug:
+            return predicted_probabilities, predicted_batch_indices
+        return cartesian_points, downsampled_points, log_odds, predicted_batch_flat, predicted_batch_indices, predicted_probabilities
