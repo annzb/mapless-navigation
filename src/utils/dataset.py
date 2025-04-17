@@ -74,39 +74,35 @@ def process_lidar_frames(lidar_frames, data_buffer=None):
 
 
 def prepare_point_data(
-        radar_frames, lidar_frames, poses, data_tranformer,
+        radar_frames, lidar_frames, poses, data_transformer,
         dataset_part=1.0, logger=None
     ):
         assert len(radar_frames) == len(lidar_frames) == len(poses)
         assert 0.0 < dataset_part <= 1.0
         log_fn = logger.log if logger is not None else print
 
-        Y, nonempty_lidar_idx = process_lidar_frames(lidar_frames)                                  # remove empty lidar clouds + convert log odds -> probs
-        log_fn("Filtered", len(lidar_frames) - len(Y), "empty lidar clouds out of", len(lidar_frames), ".")
-
-        X = data_tranformer.polar_grid_to_cartesian_points(grids=radar_frames[nonempty_lidar_idx])  # remove heatmaps with empty ground truth + convert to points
-        X, nonempty_radar_idx = data_tranformer.filter_point_intensity(points=X)                    # remove points with 0 intensity from every radar cloud + remove empty clouds
-        log_fn("Filtered", len(radar_frames) - len(X), "empty radar clouds out of", len(radar_frames), ".")
-
-        Y = [Y[i] for i in nonempty_lidar_idx[nonempty_radar_idx]]                                  # remove ground truth where input is empty
+        Y, nonempty_lidar_idx = process_lidar_frames(lidar_frames)                                   # remove empty lidar clouds + convert log odds -> probs
+        X = data_transformer.polar_grid_to_cartesian_points(grids=radar_frames[nonempty_lidar_idx])  # remove heatmaps with empty ground truth + convert to points
+        X, nonempty_radar_idx = data_transformer.filter_point_intensity(points=X, threshold=0.09)   # remove points with 0 intensity from every radar cloud + remove empty clouds
+        Y = [Y[i] for i in nonempty_radar_idx]                                                       # remove ground truth where input is empty
         poses = poses[nonempty_lidar_idx][nonempty_radar_idx]
-        name = name.capitalize()
+        log_fn("Filtered", len(radar_frames) - len(X), "empty samples out of", len(radar_frames), ".")
 
         assert len(X) == len(Y) == len(poses) != 0
         if dataset_part < 1:
-            target_num_samples = int(len(X) * dataset_part)
+            target_num_samples = int(len(radar_frames) * dataset_part)
             X = X[:target_num_samples]
             Y = Y[:target_num_samples]
-            poses = poses[:target_num_samples]
+            poses = poses[:target_num_samples, ...]
         return X, Y, poses
 
 class RadarDataset(Dataset):
     def __init__(
-            self, radar_frames, lidar_frames, poses, data_tranformer, *args,
+            self, radar_frames, lidar_frames, poses, data_transformer, *args,
             intensity_mean=None, intensity_std=None, data_buffer=None,
             name='dataset', logger=None, **kwargs
     ):
-        self.X, self.intensity_mean, self.intensity_std = data_tranformer.scale_point_intensity(
+        self.X, self.intensity_mean, self.intensity_std = data_transformer.scale_point_intensity(
             points=radar_frames, intensity_mean=intensity_mean, intensity_std=intensity_std
         )
         self.Y = lidar_frames
@@ -129,17 +125,16 @@ class RadarDataset(Dataset):
         radar_list, lidar_list, poses = zip(*batch)
         poses = default_collate(poses)
 
-        radar_pts_list = [torch.as_tensor(pts, dtype=torch.float32) for pts, _ in radar_list]
-        radar_lens = [p.shape[0] for p in radar_pts_list]
-        radar_pts = torch.cat(radar_pts_list, dim=0)
-        radar_batch_idx = torch.arange(len(radar_lens), device=radar_pts.device).repeat_interleave(radar_lens)
+        radar_batch, radar_batch_indices, lidar_batch, lidar_batch_indices = [], [], [], []
+        for i, (radar_cloud, lidar_cloud, _) in enumerate(batch):
+            radar_batch.append(torch.as_tensor(radar_cloud, dtype=torch.float32))
+            lidar_batch.append(torch.as_tensor(lidar_cloud, dtype=torch.float32))
+            radar_batch_indices.extend([i] * radar_cloud.shape[0])
+            lidar_batch_indices.extend([i] * lidar_cloud.shape[0])
 
-        lidar_pts_list = [torch.as_tensor(pts, dtype=torch.float32) for pts, _ in lidar_list]
-        lidar_lens = [p.shape[0] for p in lidar_pts_list]
-        lidar_pts = torch.cat(lidar_pts_list, dim=0)
-        lidar_batch_idx = torch.arange(len(lidar_lens), device=lidar_pts.device).repeat_interleave(lidar_lens)
-
-        return (radar_pts, radar_batch_idx), (lidar_pts, lidar_batch_idx), poses
+        radar_batch, lidar_batch = torch.cat(radar_batch, dim=0), torch.cat(lidar_batch, dim=0)
+        radar_batch_indices, lidar_batch_indices = torch.as_tensor(radar_batch_indices, dtype=torch.int64), torch.as_tensor(lidar_batch_indices, dtype=torch.int64)
+        return (radar_batch, radar_batch_indices), (lidar_batch, lidar_batch_indices), poses
 
     def print_log(self, logger=None):
         log_fn = logger.log if logger is not None else print
@@ -208,10 +203,10 @@ def get_dataset(
     # poses = poses[:num_samples]
     # print(num_samples, 'samples total.')
 
-    data_tranformer=NumpyDataTransform(radar_config)
+    data_transformer = NumpyDataTransform(radar_config)
     radar_frames_filtered, lidar_frames_filtered, poses_filtered = prepare_point_data(
         radar_frames, lidar_frames, poses,
-        data_tranformer=data_tranformer, dataset_part=partial, logger=logger
+        data_transformer=data_transformer, dataset_part=partial, logger=logger
     )
 
     # for i, sample in enumerate(lidar_frames):
@@ -222,13 +217,13 @@ def get_dataset(
     #     else:
     #         print('invalid sample', i, 'resolution:', resolution)
 
-    radar_train, radar_temp, lidar_train, lidar_temp, poses_train, poses_temp = train_test_split(radar_frames_filtered, lidar_frames_filtered, poses, test_size=0.5, random_state=random_state)
+    radar_train, radar_temp, lidar_train, lidar_temp, poses_train, poses_temp = train_test_split(radar_frames_filtered, lidar_frames_filtered, poses_filtered, test_size=0.5, random_state=random_state)
     radar_val, radar_test, lidar_val, lidar_test, poses_val, poses_test = train_test_split(radar_temp, lidar_temp, poses_temp, test_size=0.6, random_state=random_state)
 
     # dataset_class = RadarDatasetGrid if grid else RadarDataset
-    train_dataset = dataset_type(radar_train, lidar_train, poses_train, data_tranformer=data_tranformer, data_buffer=data_buffer, device=device, radar_config=radar_config, voxel_size=grid_voxel_size, name='train')
-    val_dataset = dataset_type(radar_val, lidar_val, poses_val, data_tranformer=data_tranformer, data_buffer=data_buffer, device=device, radar_config=radar_config, voxel_size=grid_voxel_size, intensity_mean=train_dataset.intensity_mean, intensity_std=train_dataset.intensity_std, name='valid')
-    test_dataset = dataset_type(radar_test, lidar_test, poses_test, data_tranformer=data_tranformer, data_buffer=data_buffer, device=device, radar_config=radar_config, voxel_size=grid_voxel_size, intensity_mean=train_dataset.intensity_mean, intensity_std=train_dataset.intensity_std, name='test')
+    train_dataset = dataset_type(radar_train, lidar_train, poses_train, data_transformer=data_transformer, data_buffer=data_buffer, device=device, radar_config=radar_config, voxel_size=grid_voxel_size, name='train')
+    val_dataset = dataset_type(radar_val, lidar_val, poses_val, data_transformer=data_transformer, data_buffer=data_buffer, device=device, radar_config=radar_config, voxel_size=grid_voxel_size, intensity_mean=train_dataset.intensity_mean, intensity_std=train_dataset.intensity_std, name='valid')
+    test_dataset = dataset_type(radar_test, lidar_test, poses_test, data_transformer=data_transformer, data_buffer=data_buffer, device=device, radar_config=radar_config, voxel_size=grid_voxel_size, intensity_mean=train_dataset.intensity_mean, intensity_std=train_dataset.intensity_std, name='test')
 
     # train_dataset.print_log()
     # val_dataset.print_log()

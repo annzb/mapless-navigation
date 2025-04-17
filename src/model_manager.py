@@ -62,7 +62,6 @@ class ModelManager(ABC):
             dataset_file_path=dataset_path, dataset_type=self._dataset_type,
             batch_size=batch_size, partial=dataset_part, shuffle_runs=shuffle_dataset_runs,
             grid_voxel_size=grid_voxel_size, random_state=random_state,
-            occupied_only=self.occupied_only, occupancy_threshold=self.occupancy_threshold,
             data_buffer=self.data_buffer, device=self.device
         )
         self.init_model()
@@ -132,7 +131,7 @@ class ModelManager(ABC):
         print('Using device:', device_name)
 
     def init_model(self, model_path=None):
-        model = self._model_type(self.radar_config)
+        model = self._model_type(radar_config=self.radar_config)
         model.to(self.device)
         if model_path is not None:
             model.load_state_dict(torch.load(model_path, map_location=self.device))
@@ -215,11 +214,12 @@ class ModelManager(ABC):
         self.reset_metrics_epoch(mode=mode)
 
         with torch.no_grad():
-            for radar_frames, (lidar_frames, lidar_frame_indices), poses in data_loader:
+            for (radar_frames, radar_frame_indices), (lidar_frames, lidar_frame_indices), poses in data_loader:
                 radar_frames = radar_frames.to(self.device)
+                radar_frame_indices = radar_frame_indices.to(self.device)
                 lidar_frames = lidar_frames.to(self.device)
                 lidar_frame_indices = lidar_frame_indices.to(self.device)
-                pred_frames, pred_indices = self.model(radar_frames)
+                pred_frames, pred_indices = self.model((radar_frames, radar_frame_indices))
 
                 self.data_buffer.create_masks(y=(pred_frames, pred_indices), y_other=(lidar_frames, lidar_frame_indices))
                 batch_loss = self.loss_fn(y_pred=(pred_frames, pred_indices), y_true=(lidar_frames, lidar_frame_indices), data_buffer=self.data_buffer)
@@ -239,11 +239,12 @@ class ModelManager(ABC):
         self.model.train()
         self.reset_metrics_epoch(mode=mode)
 
-        for radar_frames, (lidar_frames, lidar_frame_indices), poses in data_loader:
+        for (radar_frames, radar_frame_indices), (lidar_frames, lidar_frame_indices), poses in data_loader:
             radar_frames = radar_frames.to(self.device)
+            radar_frame_indices = radar_frame_indices.to(self.device)
             lidar_frames = lidar_frames.to(self.device)
             lidar_frame_indices = lidar_frame_indices.to(self.device)
-            pred_frames, pred_indices = self.model(radar_frames)
+            pred_frames, pred_indices = self.model((radar_frames, radar_frame_indices))
 
             self.data_buffer.create_masks(y=(pred_frames, pred_indices), y_other=(lidar_frames, lidar_frame_indices))
             batch_loss = self.loss_fn(y_pred=(pred_frames, pred_indices), y_true=(lidar_frames, lidar_frame_indices), data_buffer=self.data_buffer)
@@ -284,9 +285,8 @@ class ModelManager(ABC):
         self._saved_models.add(save_path)
         self.logger.log(f'Saved model as {save_path}')
 
-    def train(self, n_epochs=None, save_model_name=None):
+    def train(self, n_epochs=None):
         n_epochs = n_epochs or self.n_epochs
-        save_model_name = save_model_name or self.save_model_name
         best_train_loss, best_val_loss = float('inf'), float('inf')
         self.reset_metrics(mode='train')
         self.reset_metrics(mode='val')

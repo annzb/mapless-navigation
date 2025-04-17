@@ -6,19 +6,24 @@ from utils.radar_config import RadarConfig
 
 class NumpyDataTransform:
     def __init__(self, radar_config: RadarConfig):
-        self._storage_type = np.array
+        self._storage_type = np.ndarray
         self.radar_config = radar_config
-        el_bins = torch.tensor(radar_config.clipped_elevation_bins, dtype=torch.float32)
-        az_bins = torch.tensor(radar_config.clipped_azimuth_bins, dtype=torch.float32)
-        r_bins = torch.linspace(0, (radar_config.num_range_bins - 1) * radar_config.range_bin_width, radar_config.num_range_bins)
-        el_grid, r_grid, az_grid = torch.meshgrid(el_bins, r_bins, az_bins, indexing="ij") 
-        x = r_grid * torch.cos(el_grid) * torch.sin(az_grid)
-        y = r_grid * torch.cos(el_grid) * torch.cos(az_grid)
-        z = r_grid * torch.sin(el_grid)
-        self.cartesian_coords = torch.stack([x, y, z], dim=-1).reshape(-1, 3)
+        el_bins = np.array(radar_config.clipped_elevation_bins, dtype=float)
+        az_bins = np.array(radar_config.clipped_azimuth_bins, dtype=float)
+        r_bins  = np.linspace(
+            0,
+            (radar_config.num_range_bins - 1) * radar_config.range_bin_width,
+            radar_config.num_range_bins,
+            dtype=float
+        )
+        el_grid, az_grid, r_grid = np.meshgrid(el_bins, az_bins, r_bins, indexing="ij")
+        x = r_grid * np.cos(el_grid) * np.sin(az_grid)
+        y = r_grid * np.cos(el_grid) * np.cos(az_grid)
+        z = r_grid * np.sin(el_grid)
+        self.cartesian_coords = np.stack((x, y, z), axis=-1).reshape(-1, 3)
 
     def process_grid_input(self, samples, **kwargs):
-        if not samples:
+        if len(samples) < 1:
             raise ValueError("Empty samples")
         if not isinstance(samples, self._storage_type):
             raise TypeError(f"samples must be of type {self._storage_type}")
@@ -29,15 +34,15 @@ class NumpyDataTransform:
         elif len(samples.shape) == 4:
             multiple = True
         else:
-            raise ValueError("Heatmap must be of shape (El, R, Az) or (B, El, R, Az)")
-        N, El, R, Az = samples.shape
+            raise ValueError("Heatmap must be of shape (El, Az, R) or (B, El, Az, R)")
+        N, El, Az, R = samples.shape
         if El != self.radar_config.num_elevation_bins or R != self.radar_config.num_range_bins or Az != self.radar_config.num_azimuth_bins:
             raise ValueError("Heatmap shape does not match radar config's clipped bin dimensions.")
 
         return samples, multiple
     
     def process_point_input(self, samples, **kwargs):
-        if not samples:
+        if len(samples) < 1:
             raise ValueError("Empty samples")
         
         multiple = False
@@ -62,15 +67,15 @@ class NumpyDataTransform:
         # always return a list of clouds to support different sizes
         return samples, multiple
         
+
     def polar_grid_to_cartesian_points(self, grids, **kwargs):
-        grids, input_has_multiple_samples = self.process_grid_input(grids, **kwargs)
-        num_samples = grids.shape[0]
-        grids_flat = grids.reshape(num_samples, -1)
-        coords_batch = self.cartesian_coords.unsqueeze(0).expand(num_samples, -1, -1)
-        intensities = grids_flat.unsqueeze(-1)               
-        points_all = torch.cat((coords_batch, intensities), dim=2)
-        points = points_all if input_has_multiple_samples else points_all.squeeze(0)
-        return points
+        samples, multiple = self.process_grid_input(grids, **kwargs)
+        B = samples.shape[0]
+        flat_int = samples.reshape(B, -1)
+        coords_batch = np.tile(self.cartesian_coords[None, ...],(B, 1, 1))
+        intensities = flat_int[..., None]
+        points_all = np.concatenate((coords_batch, intensities), axis=2)
+        return points_all if multiple else points_all[0]
     
     def filter_point_intensity(self, points, threshold=0.0, **kwargs):
         cloud_list, input_has_multiple_samples = self.process_point_input(points, **kwargs)
@@ -96,6 +101,77 @@ class NumpyDataTransform:
             cloud_scaled[:, 3] = (cloud_scaled[:, 3] - intensity_mean) / intensity_std
             scaled_clouds.append(cloud_scaled)
         return (scaled_clouds if input_has_multiple_samples else scaled_clouds[0]), intensity_mean, intensity_std
+
+
+# class TorchDataTransform:
+#     def __init__(self, radar_config: RadarConfig):
+#         self._storage_type = np.ndarray
+#         self.radar_config = radar_config
+#         el_bins = torch.tensor(radar_config.clipped_elevation_bins, dtype=torch.float32)
+#         az_bins = torch.tensor(radar_config.clipped_azimuth_bins, dtype=torch.float32)
+#         r_bins = torch.linspace(0, (radar_config.num_range_bins - 1) * radar_config.range_bin_width,
+#                                 radar_config.num_range_bins)
+#         el_grid, az_grid, r_grid = torch.meshgrid(el_bins, az_bins, r_bins, indexing="ij")
+#         x = r_grid * torch.cos(el_grid) * torch.sin(az_grid)
+#         y = r_grid * torch.cos(el_grid) * torch.cos(az_grid)
+#         z = r_grid * torch.sin(el_grid)
+#         self.cartesian_coords = torch.stack([x, y, z], dim=-1).reshape(-1, 3)
+#
+#     def process_grid_input(self, samples, **kwargs):
+#         if not samples.ndim or not samples.size:
+#             raise ValueError("Empty samples")
+#         if not isinstance(samples, self._storage_type):
+#             raise TypeError(f"samples must be of type {self._storage_type}")
+#
+#         multiple = False
+#         if len(samples.shape) == 3:
+#             samples = np.expand_dims(samples, 0)
+#         elif len(samples.shape) == 4:
+#             multiple = True
+#         else:
+#             raise ValueError("Heatmap must be of shape (El, Az, R) or (B, El, Az, R)")
+#         N, El, Az, R = samples.shape
+#         if El != self.radar_config.num_elevation_bins or R != self.radar_config.num_range_bins or Az != self.radar_config.num_azimuth_bins:
+#             raise ValueError("Heatmap shape does not match radar config's clipped bin dimensions.")
+#
+#         return samples, multiple
+#
+#     def process_point_input(self, samples, **kwargs):
+#         if not samples.ndim or not samples.size:
+#             raise ValueError("Empty samples")
+#
+#         multiple = False
+#         if isinstance(samples,
+#                       self._storage_type):  # input is an np.array if all clouds are the same size or there's only one cloud
+#             if len(samples.shape) == 2:
+#                 samples = [samples]  # convert to collection of one cloud
+#             elif len(samples.shape) == 3:
+#                 multiple = True
+#             else:
+#                 raise ValueError("samples must be a list or a numpy array of shape (B, N, 4) or (N, 4)")
+#             if samples[0].shape[1] != 4:
+#                 raise ValueError("samples must be a list or a numpy array of shape (B, N, 4) or (N, 4)")
+#         else:
+#             if isinstance(samples, list):  # input is a list if clouds may have different sizes
+#                 multiple = True
+#             for sample in samples:
+#                 if not isinstance(sample, self._storage_type):
+#                     raise TypeError(f"Each element in samples must be of type {self._storage_type}")
+#                 if len(sample.shape) != 2 or sample.shape[1] != 4:
+#                     raise ValueError("Each element in samples must be of shape (N,4).")
+#
+#         # always return a list of clouds to support different sizes
+#         return samples, multiple
+#
+#     def polar_grid_to_cartesian_points(self, grids, **kwargs):
+#         grids, input_has_multiple_samples = self.process_grid_input(grids, **kwargs)
+#         num_samples = grids.shape[0]
+#         grids_flat = grids.reshape(num_samples, -1)
+#         coords_batch = self.cartesian_coords.unsqueeze(0).expand(num_samples, -1, -1)
+#         intensities = grids_flat.unsqueeze(-1)
+#         points_all = torch.cat((coords_batch, intensities), dim=2)
+#         points = points_all if input_has_multiple_samples else points_all.squeeze(0)
+#         return points
 
 
 def polar_to_cartesian_grid(heatmap, radar_config, device=None):

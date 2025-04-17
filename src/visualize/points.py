@@ -1,85 +1,49 @@
-import torch
 import numpy as np
 import matplotlib.pyplot as plt
-import open3d as o3d
 
 
-def show_occupancy_pcl(cloud, prob_threshold=0):
-    probabilities = 1 - 1 / (1 + np.exp(cloud[:, 3]))
-    mask = probabilities >= prob_threshold
-    filtered_points = cloud[:, :3][mask]
-    filtered_probs = probabilities[mask]
-    # fp_max, fp_min = filtered_probs.max(), filtered_probs.min()
-    # normalized_probs = (filtered_probs - fp_min) / (fp_max - fp_min)
+def show_radar_clouds(clouds, prob_flags, intensity_threshold_percent=0.0, window_name="Radar Visualization"):
+    """
+    Display multiple radar point clouds in a single Matplotlib 3D window, coloring by intensity or probability.
 
+    Args:
+        clouds (list of np.ndarray): Each array is (N,4) with columns [x,y,z,intensity_or_prob].
+        prob_flags (list of bool): Same length as clouds; True if the corresponding cloud's 4th column represents probabilities in [0,1], False if raw intensities.
+        intensity_threshold_percent (float): Percentile threshold (0-100) to filter out low-intensity points.
+        window_name (str): Title of the plot window.
+    """
+    if len(clouds) != len(prob_flags):
+        raise ValueError("clouds and prob_flags must have the same length.")
+
+    fig = plt.figure(window_name, figsize=(10, 8))
+    ax = fig.add_subplot(111, projection='3d')
     cmap = plt.get_cmap("plasma")
-    colors = cmap(filtered_probs)[:, :3]
 
-    pcd = o3d.geometry.PointCloud()
-    pcd.points = o3d.utility.Vector3dVector(filtered_points)
-    pcd.colors = o3d.utility.Vector3dVector(colors)
-    axes = o3d.geometry.TriangleMesh.create_coordinate_frame(size=5.0)
-    o3d.visualization.draw_geometries([pcd, axes])
+    for cloud, is_prob in zip(clouds, prob_flags):
+        if cloud.ndim != 2 or cloud.shape[1] != 4:
+            raise ValueError("Each cloud must be an (N,4) array.")
+        intensities = cloud[:, 3]
+        if is_prob:
+            norm_vals = np.clip(intensities, 0.0, 1.0)
+        else:
+            lo, hi = intensities.min(), intensities.max()
+            if hi > lo:
+                norm_vals = (intensities - lo) / (hi - lo)
+            else:
+                norm_vals = np.zeros_like(intensities)
 
-def show_radar_pcl(cloud, intensity_threshold_percent=0.0):
-    min_intensity = np.min(cloud[:, 3])
-    max_intensity = np.max(cloud[:, 3])
-    normalized_intensities = (cloud[:, 3] - min_intensity) / (max_intensity - min_intensity)
-    filtered_idx = normalized_intensities >= intensity_threshold_percent / 100
-    cmap = plt.get_cmap("plasma")
-    colors = cmap(normalized_intensities[filtered_idx])[:, :3]
-    pcd = o3d.geometry.PointCloud()
-    pcd.points = o3d.utility.Vector3dVector(cloud[:, :3][filtered_idx])
-    pcd.colors = o3d.utility.Vector3dVector(colors)
-    axes = o3d.geometry.TriangleMesh.create_coordinate_frame(size=3.0)
-    o3d.visualization.draw_geometries([pcd, axes], "Radar Point Cloud Visualization")
+        if intensity_threshold_percent > 0:
+            thresh = np.percentile(norm_vals, intensity_threshold_percent)
+            mask = norm_vals >= thresh
+        else:
+            mask = np.ones_like(norm_vals, dtype=bool)
+        pts = cloud[mask, :3]
+        colors = cmap(norm_vals[mask])[:, :3]
+        ax.scatter(pts[:, 0], pts[:, 1], pts[:, 2], c=colors, s=2, depthshade=True)
 
-
-def image_to_pcl(images, radar_config, batch_size=1):
-    azimuths = torch.tensor(radar_config.clipped_azimuth_bins)
-    ranges = torch.linspace(0, radar_config.num_range_bins * radar_config.range_bin_width, radar_config.num_range_bins)
-    elevations = torch.tensor(radar_config.clipped_elevation_bins)
-
-    azimuths_grid, ranges_grid, elevations_grid = torch.meshgrid(azimuths, ranges, elevations, indexing="ij")
-    azimuths_grid = azimuths_grid.unsqueeze(0).expand(batch_size, -1, -1, -1)
-    ranges_grid = ranges_grid.unsqueeze(0).expand(batch_size, -1, -1, -1)
-    elevations_grid = elevations_grid.unsqueeze(0).expand(batch_size, -1, -1, -1)
-
-    cos_azimuths = torch.cos(azimuths_grid)
-    sin_azimuths = torch.sin(azimuths_grid)
-    cos_elevations = torch.cos(elevations_grid)
-    sin_elevations = torch.sin(elevations_grid)
-
-    x = ranges_grid * cos_elevations * sin_azimuths  # Right
-    y = ranges_grid * cos_elevations * cos_azimuths  # Forward
-    z = ranges_grid * sin_elevations                 # Up
-
-    x = x.flatten(start_dim=1).unsqueeze(-1)
-    y = y.flatten(start_dim=1).unsqueeze(-1)
-    z = z.flatten(start_dim=1).unsqueeze(-1)
-
-    intensity = images.flatten(start_dim=1, end_dim=3).unsqueeze(-1)
-    cartesian_points = torch.cat((x, y, z, intensity), dim=-1)
-
-    return cartesian_points  # [B, N, 4]
-
-
-def apply_layers(model, polar_frames, radar_config):
-    # ptc = PolarToCartesian(radar_config)
-    # cartesian_points = ptc(polar_frames)
-    cartesian_points = model.polar_to_cartesian(polar_frames)
-    # downsampled_points = model.down(cartesian_points)
-    # points = downsampled_points[..., :3]
-    # features = downsampled_points[..., 3:]
-    # log_odds = self.pointnet(points, features)
-    # probabilities = self.apply_sigmoid(log_odds)
-    return cartesian_points
-
-    # reshaped_frames = polar_frames.view(batch_size, model.radar_config.num_azimuth_bins * model.radar_config.num_range_bins, model.radar_config.num_elevation_bins)
-    # transformed_frames = model.transformer(reshaped_frames)
-    # transformed_frames = transformed_frames.view(batch_size, model.radar_config.num_azimuth_bins, model.radar_config.num_range_bins, model.radar_config.num_elevation_bins)
-    # cartesian_points = model.polar_to_cartesian(transformed_frames)
-    # less_points = model.down(cartesian_points)
-    # log_odds = model.pointnet(less_points)
-    # print('less_points', less_points.shape)
-    # probabilities = model.apply_sigmoid(less_points)
+    ax.set_xlabel('X')
+    ax.set_ylabel('Y')
+    ax.set_zlabel('Z')
+    plt.title(window_name)
+    plt.tight_layout()
+    plt.show()
