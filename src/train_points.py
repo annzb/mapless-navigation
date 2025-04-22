@@ -4,7 +4,7 @@ torch.autograd.set_detect_anomaly(True)
 from metrics import metrics as metric_defs
 from utils.dataset import RadarDataset
 from metrics import MsePointLoss as PointLoss, MappedPointOccupancyDataBuffer as PointDataBuffer
-from models import PointBaseline as PointModel
+from models import MlpPointnet as PointModel
 from model_manager import ModelManager
 from utils import get_local_params
 
@@ -35,7 +35,7 @@ class PointModelManager(ModelManager):
 def run():
     SHUFFLE_RUNS = True
     RANDOM_SEEED = 42
-    SESSION_NAME = 'testing'
+    SESSION_NAME = 'mlpe_pointnet'
     LOSS_SPATIAL_WEIGHT = 0.1
     LOSS_PROBABILITY_WEIGHT = 1.0
     OCCUPANCY_THRESHOLD = 0.6

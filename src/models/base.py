@@ -3,9 +3,10 @@ import torch.nn as nn
 
 
 class RadarOccupancyModel(nn.Module):
-    def __init__(self, radar_config, *args, **kwargs):
+    def __init__(self, radar_config, batch_size=1, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.radar_config = radar_config
+        self.batch_size = batch_size
         self.name = 'radar_occupancy_model'
 
     def apply_sigmoid(self, pcl_batch_flat):

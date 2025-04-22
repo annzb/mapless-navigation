@@ -1,43 +1,19 @@
 from models.base import RadarOccupancyModel
+from models.point_based.encoders import PointEncoder, MlpPointEncoder
 from models.point_based.polar_to_cartesian import PolarToCartesianPoints
 from models.point_based.downsampling import TrainedDownsampling
 from models.point_based.pointnet import PointNet
-
-import torch
-import torch.nn as nn
-from torch_geometric.nn import global_max_pool
-
-
-class PointEncoder(nn.Module):
-    def __init__(self, in_dim=4, hidden_dim=64, out_dim=128, **kwargs):
-        super(PointEncoder, self).__init__(**kwargs)
-        self.lin  = nn.Linear(in_dim, hidden_dim)
-        self.proj = nn.Linear(hidden_dim, out_dim)
-        self.out_dim = out_dim
-
-    def forward(self, flat_pts, batch_idx, batch_size=1, **kwargs):
-        """
-        flat_pts:   (P_total, 4)
-        batch_idx:  (P_total,) each element in 0..B-1
-        returns:    (B, out_dim)  fixed-size embedding per sample
-        """
-        h = self.lin(flat_pts)                      # (P_total, hidden_dim)
-        # use torch_geometric’s global_max_pool to aggregate per-sample
-        pooled = global_max_pool(h, batch_idx)      # (B, hidden_dim)
-        proj = self.proj(pooled)                    # (B, out_dim)
-        result = proj.view(batch_size, int(self.out_dim / 4), 4)
-        return result
 
 
 class PointBaseline(RadarOccupancyModel):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.name = 'baseline_v1.0'
-        self.encoder = PointEncoder(in_dim=4, hidden_dim=128, out_dim=256)
+        self.encoder = PointEncoder(in_dim=4, hidden_dim=256, output_size=4096)
 
-    def forward(self, X, batch_size=1, debug=False, **kwargs):
+    def forward(self, X, debug=False, **kwargs):
         flat_pts, batch_idx = X
-        embeddings = self.encoder(flat_pts, batch_idx, batch_size=batch_size, **kwargs)
+        embeddings = self.encoder(flat_pts, batch_idx, **kwargs)
         embeddings_flat, embeddings_flat_indices = self.merge_batches(embeddings)
         probs = self.apply_sigmoid(embeddings_flat)
 
@@ -46,19 +22,42 @@ class PointBaseline(RadarOccupancyModel):
         return probs, embeddings_flat_indices
 
 
-class SinglePointnet(RadarOccupancyModel):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
+class BasePointnet(RadarOccupancyModel):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.name = 'encoder+pointnet_v1.0'
+        self.encoder = PointEncoder(in_dim=4, hidden_dim=256, output_size=4096)
         self.pointnet = PointNet()
-        self.name = 'single_pointnet_v1.0'
 
-    def forward(self, X, debug=False):
-        points, batch_indices = X
-        predicted_log_odds = self.pointnet(points)
-        predicted_probabilities = self.apply_sigmoid(predicted_log_odds)
-        if not debug:
-            return predicted_probabilities, batch_indices
-        return predicted_log_odds, predicted_probabilities, batch_indices
+    def forward(self, X, debug=False, **kwargs):
+        flat_pts, batch_idx = X
+        embeddings = self.encoder(flat_pts, batch_idx, **kwargs)
+        predicted_log_odds = self.pointnet(coords=embeddings[..., :3], features=embeddings[..., 3:])
+        predicted_log_odds_flat, predicted_flat_indices = self.merge_batches(predicted_log_odds)
+        probs = self.apply_sigmoid(predicted_log_odds_flat)
+
+        if debug:
+            return embeddings, predicted_log_odds, probs, predicted_flat_indices
+        return probs, predicted_flat_indices
+
+
+class MlpPointnet(RadarOccupancyModel):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.name = 'mlp_encoder+pointnet_v1.0'
+        self.encoder = MlpPointEncoder(in_dim=4, hidden_dim=256, output_size=4096)
+        self.pointnet = PointNet()
+
+    def forward(self, X, debug=False, **kwargs):
+        flat_pts, batch_idx = X
+        embeddings = self.encoder(flat_pts, batch_idx, **kwargs)
+        predicted_log_odds = self.pointnet(coords=embeddings[..., :3], features=embeddings[..., 3:])
+        predicted_log_odds_flat, predicted_flat_indices = self.merge_batches(predicted_log_odds)
+        probs = self.apply_sigmoid(predicted_log_odds_flat)
+
+        if debug:
+            return embeddings, predicted_log_odds, probs, predicted_flat_indices
+        return probs, predicted_flat_indices
 
 
 class PointOccupancyModel(RadarOccupancyModel):

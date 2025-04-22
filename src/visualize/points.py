@@ -1,49 +1,60 @@
+import math
 import numpy as np
 import matplotlib.pyplot as plt
+from mpl_toolkits.mplot3d import Axes3D  # noqa: F401
 
-
-def show_radar_clouds(clouds, prob_flags, intensity_threshold_percent=0.0, window_name="Radar Visualization"):
-    """
-    Display multiple radar point clouds in a single Matplotlib 3D window, coloring by intensity or probability.
-
-    Args:
-        clouds (list of np.ndarray): Each array is (N,4) with columns [x,y,z,intensity_or_prob].
-        prob_flags (list of bool): Same length as clouds; True if the corresponding cloud's 4th column represents probabilities in [0,1], False if raw intensities.
-        intensity_threshold_percent (float): Percentile threshold (0-100) to filter out low-intensity points.
-        window_name (str): Title of the plot window.
-    """
+def show_radar_clouds(clouds, prob_flags,
+                      intensity_threshold_percent=0.0,
+                      window_name="Radar Visualization"):
     if len(clouds) != len(prob_flags):
         raise ValueError("clouds and prob_flags must have the same length.")
+    n = len(clouds)
 
-    fig = plt.figure(window_name, figsize=(10, 8))
-    ax = fig.add_subplot(111, projection='3d')
+    # 1) global XYZ extents
+    all_xyz = np.vstack([c[:, :3] for c in clouds])
+    xyz_min = all_xyz.min(axis=0)
+    xyz_max = all_xyz.max(axis=0)
+
+    # 2) fixed 2 columns
+    ncols = 2
+    nrows = math.ceil(n / 2)
+
+    # 3) make figure
+    fig = plt.figure(window_name, figsize=(5 * ncols, 5 * nrows))
+    fig.suptitle(window_name)
+    axes = [
+        fig.add_subplot(nrows, ncols, i + 1, projection='3d')
+        for i in range(n)
+    ]
     cmap = plt.get_cmap("plasma")
 
-    for cloud, is_prob in zip(clouds, prob_flags):
-        if cloud.ndim != 2 or cloud.shape[1] != 4:
-            raise ValueError("Each cloud must be an (N,4) array.")
-        intensities = cloud[:, 3]
+    # 4) plot each
+    for ax, cloud, is_prob in zip(axes, clouds, prob_flags):
+        vals = cloud[:, 3]
         if is_prob:
-            norm_vals = np.clip(intensities, 0.0, 1.0)
+            norm = np.clip(vals, 0.0, 1.0)
         else:
-            lo, hi = intensities.min(), intensities.max()
-            if hi > lo:
-                norm_vals = (intensities - lo) / (hi - lo)
-            else:
-                norm_vals = np.zeros_like(intensities)
+            lo, hi = vals.min(), vals.max()
+            norm = (vals - lo) / (hi - lo) if hi > lo else np.zeros_like(vals)
 
         if intensity_threshold_percent > 0:
-            thresh = np.percentile(norm_vals, intensity_threshold_percent)
-            mask = norm_vals >= thresh
+            thr = np.percentile(norm, intensity_threshold_percent)
+            mask = norm >= thr
         else:
-            mask = np.ones_like(norm_vals, dtype=bool)
-        pts = cloud[mask, :3]
-        colors = cmap(norm_vals[mask])[:, :3]
-        ax.scatter(pts[:, 0], pts[:, 1], pts[:, 2], c=colors, s=2, depthshade=True)
+            mask = np.ones_like(norm, bool)
 
-    ax.set_xlabel('X')
-    ax.set_ylabel('Y')
-    ax.set_zlabel('Z')
-    plt.title(window_name)
-    plt.tight_layout()
-    plt.show()
+        pts = cloud[mask, :3]
+        colors = cmap(norm[mask])[:, :3]
+        ax.scatter(pts[:,0], pts[:,1], pts[:,2], c=colors, s=2, depthshade=True)
+
+        # same axes limits & equal aspect
+        ax.set_xlim(xyz_min[0], xyz_max[0])
+        ax.set_ylim(xyz_min[1], xyz_max[1])
+        ax.set_zlim(xyz_min[2], xyz_max[2])
+        ax.set_box_aspect((1,1,1))
+
+        ax.set_title("Prob" if is_prob else "Intensity")
+        ax.set_xlabel('X'); ax.set_ylabel('Y'); ax.set_zlabel('Z')
+
+    plt.tight_layout(rect=[0, 0, 1, 0.96])  # leave space for suptitle
+    plt.show(block=True)

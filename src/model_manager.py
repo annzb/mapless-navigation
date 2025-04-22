@@ -53,6 +53,8 @@ class ModelManager(ABC):
         self.probability_weight = loss_probability_weight
         self.learning_rate = learning_rate
         self.logger = logger
+        self.n_epochs = n_epochs
+        self.batch_size = batch_size
 
         self._define_types()
         self._init_device(device_name)
@@ -60,13 +62,13 @@ class ModelManager(ABC):
         self.init_data_buffer(occupancy_threshold=self.occupancy_threshold)
         self.train_loader, self.val_loader, self.test_loader, self.radar_config = get_dataset(
             dataset_file_path=dataset_path, dataset_type=self._dataset_type,
-            batch_size=batch_size, partial=dataset_part, shuffle_runs=shuffle_dataset_runs,
+            batch_size=self.batch_size, partial=dataset_part, shuffle_runs=shuffle_dataset_runs,
             grid_voxel_size=grid_voxel_size, random_state=random_state,
             data_buffer=self.data_buffer, device=self.device
         )
         self.init_model()
         self.init_loss_function(
-            batch_size=batch_size,
+            batch_size=self.batch_size,
             occupancy_threshold=self.occupancy_threshold,
             occupied_only=self.occupied_only,
             unmatched_point_spatial_penalty=loss_spatial_penalty,
@@ -75,7 +77,7 @@ class ModelManager(ABC):
             device=self.device
         )
         self.init_metrics(
-            batch_size=batch_size,
+            batch_size=self.batch_size,
             occupancy_threshold=self.occupancy_threshold,
             occupied_only=self.occupied_only,
             max_point_distance=self.max_point_distance
@@ -86,8 +88,6 @@ class ModelManager(ABC):
             self._filter_cloud = lambda cloud: cloud[cloud[:, 3] >= self.occupancy_threshold]
         else:
             self._filter_cloud = lambda cloud: cloud
-
-        self.n_epochs = n_epochs
 
         self.session_name = datetime.now().strftime("%d%B%y").lower()  # current date as DDmonthYY
         if session_name:
@@ -103,7 +103,7 @@ class ModelManager(ABC):
                 "learning_rate": self.learning_rate,
                 "epochs": self.n_epochs,
                 "dataset_part": dataset_part,
-                "batch_size": batch_size,
+                "batch_size": self.batch_size,
                 "occupancy_threshold": self.occupancy_threshold,
                 "point_match_radius": self.max_point_distance,
                 "loss": {
@@ -131,7 +131,7 @@ class ModelManager(ABC):
         print('Using device:', device_name)
 
     def init_model(self, model_path=None):
-        model = self._model_type(radar_config=self.radar_config)
+        model = self._model_type(radar_config=self.radar_config, batch_size=self.batch_size)
         model.to(self.device)
         if model_path is not None:
             model.load_state_dict(torch.load(model_path, map_location=self.device))

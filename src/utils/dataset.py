@@ -82,8 +82,10 @@ def prepare_point_data(
         log_fn = logger.log if logger is not None else print
 
         Y, nonempty_lidar_idx = process_lidar_frames(lidar_frames)                                   # remove empty lidar clouds + convert log odds -> probs
-        X = data_transformer.polar_grid_to_cartesian_points(grids=radar_frames[nonempty_lidar_idx])  # remove heatmaps with empty ground truth + convert to points
-        X, nonempty_radar_idx = data_transformer.filter_point_intensity(points=X, threshold=0.09)   # remove points with 0 intensity from every radar cloud + remove empty clouds
+        orig_radar_frames = radar_frames[nonempty_lidar_idx]                                         # remove heatmaps with empty ground truth
+        X = data_transformer.polar_grid_to_cartesian_points(grids=orig_radar_frames)                 # convert to points
+        X, nonempty_radar_idx = data_transformer.filter_point_intensity(points=X, threshold=0.09)    # remove points with 0 intensity from every radar cloud + remove empty clouds
+        orig_radar_frames = orig_radar_frames[nonempty_radar_idx]
         Y = [Y[i] for i in nonempty_radar_idx]                                                       # remove ground truth where input is empty
         poses = poses[nonempty_lidar_idx][nonempty_radar_idx]
         log_fn("Filtered", len(radar_frames) - len(X), "empty samples out of", len(radar_frames), ".")
@@ -94,19 +96,21 @@ def prepare_point_data(
             X = X[:target_num_samples]
             Y = Y[:target_num_samples]
             poses = poses[:target_num_samples, ...]
-        return X, Y, poses
+            orig_radar_frames = orig_radar_frames[:target_num_samples]
+        return X, Y, poses, orig_radar_frames
 
 class RadarDataset(Dataset):
     def __init__(
             self, radar_frames, lidar_frames, poses, data_transformer, *args,
             intensity_mean=None, intensity_std=None, data_buffer=None,
-            name='dataset', logger=None, **kwargs
+            name='dataset', logger=None, orig_radar_frames=None, **kwargs
     ):
         self.X, self.intensity_mean, self.intensity_std = data_transformer.scale_point_intensity(
             points=radar_frames, intensity_mean=intensity_mean, intensity_std=intensity_std
         )
         self.Y = lidar_frames
         self.poses = poses
+        self.orig_radar_frames = orig_radar_frames
         self.name = name.capitalize()
         if logger is not None:
             self.print_log(logger=logger)
@@ -204,7 +208,7 @@ def get_dataset(
     # print(num_samples, 'samples total.')
 
     data_transformer = NumpyDataTransform(radar_config)
-    radar_frames_filtered, lidar_frames_filtered, poses_filtered = prepare_point_data(
+    radar_frames_filtered, lidar_frames_filtered, poses_filtered, orig_radar_frames = prepare_point_data(
         radar_frames, lidar_frames, poses,
         data_transformer=data_transformer, dataset_part=partial, logger=logger
     )
@@ -217,18 +221,13 @@ def get_dataset(
     #     else:
     #         print('invalid sample', i, 'resolution:', resolution)
 
-    radar_train, radar_temp, lidar_train, lidar_temp, poses_train, poses_temp = train_test_split(radar_frames_filtered, lidar_frames_filtered, poses_filtered, test_size=0.5, random_state=random_state)
-    radar_val, radar_test, lidar_val, lidar_test, poses_val, poses_test = train_test_split(radar_temp, lidar_temp, poses_temp, test_size=0.6, random_state=random_state)
+    radar_train, radar_temp, lidar_train, lidar_temp, poses_train, poses_temp, orig_radar_frames_train, orig_radar_frames_temp = train_test_split(radar_frames_filtered, lidar_frames_filtered, poses_filtered, orig_radar_frames, test_size=0.5, random_state=random_state)
+    radar_val, radar_test, lidar_val, lidar_test, poses_val, poses_test, orig_radar_frames_val, orig_radar_frames_test = train_test_split(radar_temp, lidar_temp, poses_temp, orig_radar_frames_temp, test_size=0.6, random_state=random_state)
 
     # dataset_class = RadarDatasetGrid if grid else RadarDataset
-    train_dataset = dataset_type(radar_train, lidar_train, poses_train, data_transformer=data_transformer, data_buffer=data_buffer, device=device, radar_config=radar_config, voxel_size=grid_voxel_size, name='train')
-    val_dataset = dataset_type(radar_val, lidar_val, poses_val, data_transformer=data_transformer, data_buffer=data_buffer, device=device, radar_config=radar_config, voxel_size=grid_voxel_size, intensity_mean=train_dataset.intensity_mean, intensity_std=train_dataset.intensity_std, name='valid')
-    test_dataset = dataset_type(radar_test, lidar_test, poses_test, data_transformer=data_transformer, data_buffer=data_buffer, device=device, radar_config=radar_config, voxel_size=grid_voxel_size, intensity_mean=train_dataset.intensity_mean, intensity_std=train_dataset.intensity_std, name='test')
-
-    # train_dataset.print_log()
-    # val_dataset.print_log()
-    # test_dataset.print_log()
-    # print()
+    train_dataset = dataset_type(radar_train, lidar_train, poses_train, orig_radar_frames=orig_radar_frames_train, data_transformer=data_transformer, data_buffer=data_buffer, device=device, radar_config=radar_config, voxel_size=grid_voxel_size, name='train')
+    val_dataset = dataset_type(radar_val, lidar_val, poses_val, orig_radar_frames=orig_radar_frames_val, data_transformer=data_transformer, data_buffer=data_buffer, device=device, radar_config=radar_config, voxel_size=grid_voxel_size, intensity_mean=train_dataset.intensity_mean, intensity_std=train_dataset.intensity_std, name='valid')
+    test_dataset = dataset_type(radar_test, lidar_test, poses_test, orig_radar_frames=orig_radar_frames_test, data_transformer=data_transformer, data_buffer=data_buffer, device=device, radar_config=radar_config, voxel_size=grid_voxel_size, intensity_mean=train_dataset.intensity_mean, intensity_std=train_dataset.intensity_std, name='test')
 
     train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, collate_fn=dataset_type.custom_collate_fn)
     val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False, collate_fn=dataset_type.custom_collate_fn)
