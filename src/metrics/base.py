@@ -15,7 +15,7 @@ class BaseCriteria:
         self._batch_size = batch_size
 
     def _validate_input(self, y_pred, y_true, *args, **kwargs):
-        return len(y_pred) != 0 and len(y_true) != 0, 'Empty inputs.'
+        return len(y_pred) != 0 or len(y_true) != 0, 'Empty inputs.'
 
     def _calc(self, y_pred, y_true, *args, **kwargs):
         return self.default_value
@@ -43,8 +43,6 @@ class BaseMetric(BaseCriteria):
         self._scaled = False
 
     def reset_epoch(self):
-        # if self.total_score > self.best_score:
-        #     self.best_score = self.total_score
         self.total_score = 0.0
         self._scaled = False
 
