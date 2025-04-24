@@ -3,7 +3,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D  # noqa: F401
 
-def show_radar_clouds(clouds, prob_flags,
+
+def show_radar_clouds(clouds, prob_flags, titles=[],
                       intensity_threshold_percent=0.0,
                       window_name="Radar Visualization"):
     if len(clouds) != len(prob_flags):
@@ -20,7 +21,7 @@ def show_radar_clouds(clouds, prob_flags,
     nrows = math.ceil(n / 2)
 
     # 3) make figure
-    fig = plt.figure(window_name, figsize=(5 * ncols, 5 * nrows))
+    fig = plt.figure(figsize=(5 * ncols, 5 * nrows))
     fig.suptitle(window_name)
     axes = [
         fig.add_subplot(nrows, ncols, i + 1, projection='3d')
@@ -29,7 +30,7 @@ def show_radar_clouds(clouds, prob_flags,
     cmap = plt.get_cmap("plasma")
 
     # 4) plot each
-    for ax, cloud, is_prob in zip(axes, clouds, prob_flags):
+    for i, (ax, cloud, is_prob) in enumerate(zip(axes, clouds, prob_flags)):
         vals = cloud[:, 3]
         if is_prob:
             norm = np.clip(vals, 0.0, 1.0)
@@ -53,8 +54,13 @@ def show_radar_clouds(clouds, prob_flags,
         ax.set_zlim(xyz_min[2], xyz_max[2])
         ax.set_box_aspect((1,1,1))
 
-        ax.set_title("Prob" if is_prob else "Intensity")
+        if titles and i < len(titles):
+            plot_title = titles[i]
+        else:
+            plot_title = "Prob" if is_prob else "Intensity"
+        ax.set_title(plot_title)
         ax.set_xlabel('X'); ax.set_ylabel('Y'); ax.set_zlabel('Z')
 
+    # plt.title(window_name)
     plt.tight_layout(rect=[0, 0, 1, 0.96])  # leave space for suptitle
     plt.show(block=True)

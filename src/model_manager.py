@@ -59,7 +59,7 @@ class ModelManager(ABC):
         self._define_types()
         self._init_device(device_name)
 
-        self.init_data_buffer(occupancy_threshold=self.occupancy_threshold)
+        self.init_data_buffer(occupancy_threshold=self.occupancy_threshold, match_occupied_only=self.occupied_only)
         self.train_loader, self.val_loader, self.test_loader, self.radar_config = get_dataset(
             dataset_file_path=dataset_path, dataset_type=self._dataset_type,
             batch_size=self.batch_size, partial=dataset_part, shuffle_runs=shuffle_dataset_runs,
@@ -83,11 +83,6 @@ class ModelManager(ABC):
             max_point_distance=self.max_point_distance
         )
         self.init_optimizer(learning_rate=self.learning_rate)
-
-        if self.occupied_only:
-            self._filter_cloud = lambda cloud: cloud[cloud[:, 3] >= self.occupancy_threshold]
-        else:
-            self._filter_cloud = lambda cloud: cloud
 
         self.session_name = datetime.now().strftime("%d%B%y").lower()  # current date as DDmonthYY
         if session_name:
@@ -269,7 +264,7 @@ class ModelManager(ABC):
             self.optimizer.step()
             for name, param in self.model.named_parameters():
                 if param.grad is None:
-                    print(f"Warning: {name} has no gradient!")
+                    raise RuntimeError(f"Warning: {name} has no gradient!")
                 elif torch.isnan(param.grad).any():
                     raise RuntimeError(f"NaN detected in gradient of {name}!")
 

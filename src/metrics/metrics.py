@@ -124,3 +124,49 @@ class AUPRC(PointcloudOccupancyMetric):
             return torch.tensor(1.0)
         score = average_precision_score(y_true_binary, y_score)
         return torch.tensor(score)
+
+
+class CoordinateError(PointcloudOccupancyMetric):
+    """Metric to evaluate spatial accuracy of point predictions.
+    
+    This metric computes the mean Euclidean distance between matched points
+    in the prediction and ground truth point clouds. Lower values indicate
+    better spatial accuracy.
+    """
+    
+    def _calc(self, y_pred, y_true, data_buffer=None, *args, **kwargs):
+        # Get mapped points using the buffer
+        if self.occupied_only:
+            pred_matched, true_matched, _ = data_buffer.get_occupied_mapped_data(y_pred, y_true)
+        else:
+            pred_matched, true_matched, _ = data_buffer.get_mapped_data(y_pred, y_true)
+            
+        if pred_matched.numel() == 0 or true_matched.numel() == 0:
+            return torch.tensor(float('inf'), device=pred_matched.device)
+            
+        # Compute Euclidean distances between matched points
+        sq_dists = torch.sum((pred_matched[:, :3] - true_matched[:, :3]) ** 2, dim=1)
+        return torch.sqrt(sq_dists.mean())
+
+
+class ProbabilityError(PointcloudOccupancyMetric):
+    """Metric to evaluate occupancy probability prediction accuracy.
+    
+    This metric computes the mean absolute error between predicted and ground truth
+    occupancy probabilities for matched points. Lower values indicate better
+    probability prediction accuracy.
+    """
+    
+    def _calc(self, y_pred, y_true, data_buffer=None, *args, **kwargs):
+        # Get mapped points using the buffer
+        if self.occupied_only:
+            pred_matched, true_matched, _ = data_buffer.get_occupied_mapped_data(y_pred, y_true)
+        else:
+            pred_matched, true_matched, _ = data_buffer.get_mapped_data(y_pred, y_true)
+            
+        if pred_matched.numel() == 0 or true_matched.numel() == 0:
+            return torch.tensor(1.0, device=pred_matched.device)
+            
+        # Compute absolute error between predicted and ground truth probabilities
+        abs_errors = torch.abs(pred_matched[:, 3] - true_matched[:, 3])
+        return abs_errors.mean()

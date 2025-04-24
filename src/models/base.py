@@ -34,3 +34,12 @@ class RadarOccupancyModel(nn.Module):
         pcl_batch_flat = pcl_batch.view(B * N, C)
         batch_indices = torch.arange(B, device=pcl_batch.device).unsqueeze(1).repeat(1, N).view(-1)
         return pcl_batch_flat, batch_indices
+    
+    def check_gradient(self, tensor, name):
+        if not self.training:
+            return
+        if not tensor.requires_grad:
+            raise RuntimeError(f"{name} does not require gradients")
+        # Just check if the tensor is connected to the computation graph
+        if tensor.grad_fn is None:
+            raise RuntimeError(f"{name} is not connected to computation graph")

@@ -10,7 +10,7 @@ from visualize.points import show_radar_clouds
 def run():
     SHUFFLE_RUNS = True
     RANDOM_SEEED = 42
-    SESSION_NAME = 'testing'
+    SESSION_NAME = 'encoded_pointnet'
     LOSS_SPATIAL_WEIGHT = 0.1
     LOSS_PROBABILITY_WEIGHT = 1.0
     OCCUPANCY_THRESHOLD = 0.6
@@ -29,19 +29,20 @@ def run():
         **local_params
     )
 
-    mm.init_model(model_path='/home/arpg/projects/mapless-navigation/trained_models/21april25_pointnet/best_val_occupancyratio.pth')
+    mm.init_model(model_path='/home/arpg/projects/mapless-navigation/trained_models/23april25_dual_pointnet/best_train_loss.pth')
     idx = 10
 
     with torch.no_grad():
         input_cloud, gt_cloud, _ = mm.train_loader.dataset[idx]
         input_tensor = torch.from_numpy(input_cloud)
         input_batch_idx = torch.as_tensor(np.zeros(input_cloud.shape[0]), dtype=torch.int64)
-        embeddings, predicted_log_odds, probs, predicted_flat_indices = mm.model((input_tensor, input_batch_idx), debug=True)
+        spatial_features, intensity_features, embeddings, predicted_log_odds, probs, predicted_flat_indices = mm.model((input_tensor, input_batch_idx), debug=True)
         probs = probs.numpy()
         probs_occupied = probs[probs[:, 3] >= OCCUPANCY_THRESHOLD]
         gt_cloud_occupied = gt_cloud[gt_cloud[:, 3] >= OCCUPANCY_THRESHOLD]
 
-    title = 'Best Valid Occupancy Ratio Model'
+    # title = 'Best Valid Occupancy Ratio Model'
+    title = 'Best Train Loss Model'
     # show_radar_clouds(
     #     clouds=[input_cloud, embeddings[0].numpy(), predicted_log_odds[0].numpy(), probs, probs_occupied, gt_cloud, gt_cloud_occupied],
     #     prob_flags=[False, False, False, True, True, True, True],
@@ -52,9 +53,16 @@ def run():
     #     prob_flags=[True, True],
     #     window_name=title
     # )
+    # show_radar_clouds(
+    #     clouds=[input_cloud, embeddings[0].numpy(), predicted_log_odds[0].numpy(), probs, gt_cloud],
+    #     prob_flags=[False, False, False, True, True],
+    #     titles=[],
+    #     window_name=title
+    # )
     show_radar_clouds(
-        clouds=[input_cloud, embeddings[0].numpy(), predicted_log_odds[0].numpy(), probs, gt_cloud],
-        prob_flags=[False, False, False, True, True],
+        clouds=[embeddings[0].numpy(), predicted_log_odds[0].numpy(), probs],
+        prob_flags=[False, False, True],
+        titles=['embeddings', 'predicted_log_odds', 'probs'],
         window_name=title
     )
 

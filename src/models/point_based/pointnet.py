@@ -52,9 +52,9 @@ class PointNet(nn.Module):
     def __init__(self):
         super(PointNet, self).__init__()
         # PointNet++ MSG backbone
-        self.sa1 = PointNetSetAbstraction(3776, 0.2, 16, 1 + 3, [32, 32, 64], False)
-        self.sa2 = PointNetSetAbstraction(944, 0.4, 16, 64 + 3, [64, 64, 128], False)
-        self.sa3 = PointNetSetAbstraction(236, 0.6, 16, 128 + 3, [128, 128, 256], False)
+        self.sa1 = PointNetSetAbstraction(2048, 0.4, 16, 1 + 3, [32, 32, 64], False)
+        self.sa2 = PointNetSetAbstraction(512, 0.8, 16, 64 + 3, [64, 64, 128], False)
+        self.sa3 = PointNetSetAbstraction(128, 1.2, 16, 128 + 3, [128, 128, 256], False)
         self.fp3 = PointNetFeaturePropagation(384, [256, 256])
         self.fp2 = PointNetFeaturePropagation(320, [256, 128])
         self.fp1 = PointNetFeaturePropagation(128, [128, 128, 128])
@@ -73,6 +73,7 @@ class PointNet(nn.Module):
         features = features.permute(0, 2, 1)  # [B, n_features, N_points]
 
         l0_xyz, l0_points = xyz, features
+        # print('xyz, features, l0_xyz, l0_points', xyz.shape, features.shape, l0_xyz.shape, l0_points.shape)
         l1_xyz, l1_points = self.sa1(l0_xyz, l0_points)
         l2_xyz, l2_points = self.sa2(l1_xyz, l1_points)
         l3_xyz, l3_points = self.sa3(l2_xyz, l2_points)
