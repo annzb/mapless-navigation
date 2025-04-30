@@ -31,11 +31,12 @@ class RadarOccupancyModel(nn.Module):
             batch_indices (torch.Tensor): Tensor of shape (B*N, ) containing the original batch index for each point.
         """
         B, N, C = pcl_batch.shape
-        pcl_batch_flat = pcl_batch.view(B * N, C)
+        pcl_batch_flat = pcl_batch.reshape(B * N, C)
         batch_indices = torch.arange(B, device=pcl_batch.device).unsqueeze(1).repeat(1, N).view(-1)
         return pcl_batch_flat, batch_indices
     
     def check_gradient(self, tensor, name):
+        # tensor.register_hook(lambda g: print(g.norm()))
         if not self.training:
             return
         if not tensor.requires_grad:

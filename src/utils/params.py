@@ -28,7 +28,7 @@ def get_local_params():
         dataset_part = 0.1
         logger = Logger(print_log=True)
         batch_size = 2
-        n_epochs = 5
+        n_epochs = 10
         model_save_directory = '/home/arpg/projects/mapless-navigation/trained_models'
     return {
         'dataset_path': dataset_path,

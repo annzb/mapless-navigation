@@ -1,6 +1,6 @@
 import torch
 import torch.nn as nn
-
+import torch.nn.functional as F
 from Pointnet_Pointnet2_pytorch.models.pointnet2_utils import PointNetSetAbstraction, PointNetFeaturePropagation
 
 
@@ -86,7 +86,94 @@ class PointNet(nn.Module):
         global_context = self.global_pool(l0_points).expand_as(l0_points)
         combined_features = torch.cat((l0_points, global_context), dim=1)
 
-        x = self.drop1(self.bn1(self.conv1(combined_features)))
+        x = F.relu(self.drop1(self.bn1(self.conv1(combined_features))))
         log_odds = self.conv2(x)              # [B, 1, N_points]
         log_odds = log_odds.permute(0, 2, 1)  # [B, N_points, 1]
         return torch.cat((coords[..., :3], log_odds), dim=-1)
+    
+
+class PointNet2(nn.Module):
+    def __init__(self, num_features=4):
+        super(PointNet2, self).__init__()
+        self.sa1 = PointNetSetAbstraction(
+            npoint=1024, radius=0.5, nsample=32, 
+            in_channel=num_features + 3, mlp=[32, 32, 64], group_all=False
+        )
+        self.sa2 = PointNetSetAbstraction(
+            npoint=256, radius=1.0, nsample=32, 
+            in_channel=64 + 3, mlp=[64, 64, 128], group_all=False
+        )
+        self.fp2 = PointNetFeaturePropagation(
+            in_channel=128 + 64, mlp=[128, 128]
+        )
+        self.fp1 = PointNetFeaturePropagation(
+            in_channel=128 + num_features, mlp=[128, 128, 64]
+        )
+        self.global_pool = nn.AdaptiveAvgPool1d(1)
+        self.conv1 = nn.Conv1d(128, 64, 1)
+        self.bn1 = nn.BatchNorm1d(64)
+        self.drop1 = nn.Dropout(0.5)
+        self.conv2 = nn.Conv1d(64, 1, 1)
+
+    def forward(self, coords, features):
+        xyz = coords.permute(0, 2, 1)            # [B, 3, N_points]
+        features = features.permute(0, 2, 1)     # [B, num_features, N_points]
+
+        l0_xyz, l0_points = xyz, features
+        l1_xyz, l1_points = self.sa1(l0_xyz, l0_points)
+        l2_xyz, l2_points = self.sa2(l1_xyz, l1_points)
+
+        l1_points = self.fp2(l1_xyz, l2_xyz, l1_points, l2_points)
+        l0_points = self.fp1(l0_xyz, l1_xyz, l0_points, l1_points)
+
+        global_context = self.global_pool(l0_points).expand_as(l0_points)
+        combined_features = torch.cat((l0_points, global_context), dim=1)
+
+        x = F.relu(self.drop1(self.bn1(self.conv1(combined_features))))
+        log_odds = self.conv2(x)              # [B, 1, N_points]
+        log_odds = log_odds.permute(0, 2, 1)  # [B, N_points, 1]
+
+        return torch.cat((coords[..., :3], log_odds), dim=-1)
+
+
+class PointNet2Spatial(nn.Module):
+    def __init__(self, num_features=4):
+        super(PointNet2Spatial, self).__init__()
+        self.sa1 = PointNetSetAbstraction(
+            npoint=1024, radius=0.5, nsample=32, 
+            in_channel=num_features + 3, mlp=[32, 32, 64], group_all=False
+        )
+        self.sa2 = PointNetSetAbstraction(
+            npoint=256, radius=1.0, nsample=32, 
+            in_channel=64 + 3, mlp=[64, 64, 128], group_all=False
+        )
+        self.fp2 = PointNetFeaturePropagation(
+            in_channel=128 + 64, mlp=[128, 128]
+        )
+        self.fp1 = PointNetFeaturePropagation(
+            in_channel=128 + num_features, mlp=[128, 128, 64]
+        )
+        self.global_pool = nn.AdaptiveAvgPool1d(1)
+        self.conv1 = nn.Conv1d(128, 64, 1)
+        self.bn1 = nn.BatchNorm1d(64)
+        self.drop1 = nn.Dropout(0.5)
+        self.conv2 = nn.Conv1d(64, 4, 1)
+
+    def forward(self, coords, features):
+        xyz = coords.permute(0, 2, 1)            # [B, 3, N]
+        features = features.permute(0, 2, 1)     # [B, F, N]
+
+        l0_xyz, l0_points = xyz, features
+        l1_xyz, l1_points = self.sa1(l0_xyz, l0_points)
+        l2_xyz, l2_points = self.sa2(l1_xyz, l1_points)
+
+        l1_points = self.fp2(l1_xyz, l2_xyz, l1_points, l2_points)
+        l0_points = self.fp1(l0_xyz, l1_xyz, l0_points, l1_points)
+
+        global_context = self.global_pool(l0_points).expand_as(l0_points)
+        combined_features = torch.cat((l0_points, global_context), dim=1)
+
+        x = F.relu(self.drop1(self.bn1(self.conv1(combined_features))))
+        output = self.conv2(x)                   # [B, 4, N]
+        output = output.permute(0, 2, 1)         # [B, N, 4]
+        return output

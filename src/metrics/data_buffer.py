@@ -319,7 +319,7 @@ class ChamferPointDataBuffer(MappedPointOccupancyDataBuffer):
             matched_idx2 = best_12[mutual_mask]
             
             # Filter by distance threshold efficiently
-            valid_dist_mask = dists[matched_idx1, matched_idx2] < max_distance
+            valid_dist_mask = dists[matched_idx1, matched_idx2] <= max_distance
             matched_idx1 = matched_idx1[valid_dist_mask]
             matched_idx2 = matched_idx2[valid_dist_mask]
             

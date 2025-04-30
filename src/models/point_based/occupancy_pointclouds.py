@@ -1,8 +1,8 @@
 from models.base import RadarOccupancyModel
-from models.point_based.encoders import PointEncoder, MlpPointEncoder, PointEncoder2, SpatialEncoder, IntensityEncoder, DualPointEncoder, build_encoder
+from models.point_based.encoders import PointEncoder, MlpPointEncoder2, PointEncoder2, DualPointEncoder, build_encoder
 from models.point_based.polar_to_cartesian import PolarToCartesianPoints
 from models.point_based.downsampling import TrainedDownsampling
-from models.point_based.pointnet import PointNet
+from models.point_based.pointnet import PointNet, PointNet2, PointNet2Spatial
 import torch
 
 
@@ -71,6 +71,33 @@ class MlpPointnet(RadarOccupancyModel):
         self.check_gradient(predicted_log_odds_flat, "Merged predictions")
             
         # Apply sigmoid
+        probs = self.apply_sigmoid(predicted_log_odds_flat)
+        self.check_gradient(probs, "Final probabilities")
+
+        if debug:
+            return embeddings, predicted_log_odds, probs, predicted_flat_indices
+        return probs, predicted_flat_indices
+    
+
+class EncoderPointnet(RadarOccupancyModel):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.name = 'encoder_pointnet_v1.1'
+        self.encoder = MlpPointEncoder2(in_dim=4, hidden_dim=128, output_size=4096, output_features=4)
+        self.pointnet = PointNet2Spatial(num_features=1)
+
+    def forward(self, X, debug=False, **kwargs):
+        flat_pts, batch_idx = X
+
+        embeddings = self.encoder(flat_pts, batch_idx)
+        self.check_gradient(embeddings, "Encoder output")
+
+        predicted_log_odds = self.pointnet(coords=embeddings[..., :3], features=embeddings[..., 3:])
+        self.check_gradient(predicted_log_odds, "PointNet output")
+
+        predicted_log_odds_flat, predicted_flat_indices = self.merge_batches(predicted_log_odds)
+        self.check_gradient(predicted_log_odds_flat, "Merged predictions")
+
         probs = self.apply_sigmoid(predicted_log_odds_flat)
         self.check_gradient(probs, "Final probabilities")
 

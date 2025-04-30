@@ -32,6 +32,7 @@ class ModelManager(ABC):
             # ...
             # loss
             loss_spatial_penalty=1, loss_spatial_weight=1.0, loss_probability_weight=1.0,
+            loss_unmatched_pred_weight=1.0, loss_unmatched_true_weight=1.0,
             # loss, metrics
             occupancy_threshold=0.5, evaluate_over_occupied_points_only=False,
             # metrics
@@ -51,6 +52,8 @@ class ModelManager(ABC):
         self.spatial_penalty = loss_spatial_penalty
         self.spatial_weight = loss_spatial_weight
         self.probability_weight = loss_probability_weight
+        self.unmatched_pred_weight = loss_unmatched_pred_weight
+        self.unmatched_true_weight = loss_unmatched_true_weight
         self.learning_rate = learning_rate
         self.logger = logger
         self.n_epochs = n_epochs
@@ -74,6 +77,8 @@ class ModelManager(ABC):
             unmatched_point_spatial_penalty=loss_spatial_penalty,
             spatial_weight=self.spatial_weight,
             probability_weight=self.probability_weight,
+            unmatched_pred_weight=self.unmatched_pred_weight,
+            unmatched_true_weight=self.unmatched_true_weight,
             device=self.device
         )
         self.init_metrics(
@@ -252,14 +257,6 @@ class ModelManager(ABC):
             self.optimizer.zero_grad(set_to_none=True)
             if torch.isnan(batch_loss).any() or torch.isinf(batch_loss).any():
                 raise RuntimeError("Detected NaN or Inf in batch_loss before backward!")
-            # for name, param in self.model.named_parameters():
-            #     if param.requires_grad:
-            #         try:
-            #             grads = torch.autograd.grad(batch_loss, param, retain_graph=True, allow_unused=True)
-            #             if grads[0] is not None
-            #             print(f"{name}: grad computed? {grads[0] is not None}")
-            #         except Exception as e:
-            #             print(f"{name}: Error computing grad: {e}")
             batch_loss.backward()
             self.optimizer.step()
             for name, param in self.model.named_parameters():
@@ -313,6 +310,7 @@ class ModelManager(ABC):
             log.update(self.report_metrics(mode='val'))
             self.logger.log(log)
 
+        self._save_model('last_epoch')
 
     def evaluate(self):
         mode = 'test'

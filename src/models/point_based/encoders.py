@@ -37,6 +37,32 @@ class MlpPointEncoder(nn.Module):
         proj = self.proj(pooled)  # (B, output_size*4)
         B = proj.size(0)  # infer batch dimension
         return proj.view(B, self.output_size, 4)  # (B, output_size, 4)
+    
+
+class MlpPointEncoder2(nn.Module):
+    def __init__(self, in_dim=4, hidden_dim=128, output_size=1024, output_features=4):
+        super().__init__()
+        self.output_size = output_size
+        self.output_features = output_features
+        self.mlp = nn.Sequential(
+            nn.Linear(in_dim, hidden_dim),
+            nn.BatchNorm1d(hidden_dim),
+            nn.ReLU(),
+            nn.Linear(hidden_dim, hidden_dim),
+            nn.BatchNorm1d(hidden_dim),
+            nn.ReLU(),
+        )
+        self.output_proj = nn.Sequential(
+            nn.Linear(hidden_dim, output_size * output_features),
+            nn.ReLU()
+        )
+
+    def forward(self, flat_pts, batch_idx):
+        X = self.mlp(flat_pts)  # (P_total, hidden_dim)
+        pooled = global_max_pool(X, batch_idx)  # (B, hidden_dim)
+        proj = self.output_proj(pooled)  # (B, output_size * output_features)
+        B = proj.size(0)
+        return proj.view(B, self.output_size, self.output_features)
 
 
 class PointEncoder2(nn.Module):
@@ -136,103 +162,6 @@ class PointEncoder2(nn.Module):
                 raise RuntimeError(f"{name} does not require gradients")
             if tensor.grad_fn is None:
                 raise RuntimeError(f"{name} is not connected to computation graph")
-
-
-class SpatialEncoder(nn.Module):
-    """Encodes spatial (x,y,z) coordinates into a higher-dimensional feature space.
-    
-    Architecture:
-    - Input: (N, 3) coordinates
-    - Expand: 3 -> 64 -> 128 -> 256
-    - Compress: 256 -> 256
-    - Output: (N, 256) spatial features
-    """
-    def __init__(self, in_dim=3, hidden_dim=16, dropout_rate=0.1):
-        super().__init__()
-        self.mlp = nn.Sequential(
-            # Expansion phase
-            nn.Linear(in_dim, 64),
-            nn.BatchNorm1d(64),
-            nn.ReLU(),
-            nn.Dropout(dropout_rate),
-            
-            nn.Linear(64, 128),
-            nn.BatchNorm1d(128),
-            nn.ReLU(),
-            nn.Dropout(dropout_rate),
-
-            nn.Linear(128, hidden_dim),
-            nn.BatchNorm1d(hidden_dim),
-            nn.ReLU()
-            
-            # nn.Linear(128, 256),
-            # nn.BatchNorm1d(256),
-            # nn.ReLU(),
-            # nn.Dropout(dropout_rate),
-            
-            # Compression phase
-            # nn.Linear(256, hidden_dim),
-            # nn.BatchNorm1d(hidden_dim),
-            # nn.ReLU()
-        )
-    
-    def forward(self, coords):
-        """
-        Args:   
-            coords (torch.Tensor): Point coordinates of shape (N, 3)
-        Returns:
-            torch.Tensor: Spatial features of shape (N, hidden_dim)
-        """
-        return self.mlp(coords)
-    
-
-class IntensityEncoder(nn.Module):
-    """Encodes radar intensity values into a higher-dimensional feature space.
-    
-    Architecture:
-    - Input: (N, 1) intensity
-    - Expand: 1 -> 64 -> 128 -> 256
-    - Compress: 256 -> 256
-    - Output: (N, 256) intensity features
-    """
-    def __init__(self, in_dim=1, hidden_dim=16, dropout_rate=0.1):
-        super().__init__()
-        self.mlp = nn.Sequential(
-            # Expansion phase
-            nn.Linear(in_dim, 64),
-            nn.BatchNorm1d(64),
-            nn.ReLU(),
-            nn.Dropout(dropout_rate),
-            
-            nn.Linear(64, 128),
-            nn.BatchNorm1d(128),
-            nn.ReLU(),
-            nn.Dropout(dropout_rate),
-
-            # Compression phase
-            nn.Linear(128, hidden_dim),
-            nn.BatchNorm1d(hidden_dim),
-            nn.ReLU()
-            
-            # nn.Linear(128, 256),
-            # nn.BatchNorm1d(256),
-            # nn.ReLU(),
-            # nn.Dropout(dropout_rate),
-            
-            # # Compression phase
-            # nn.Linear(256, hidden_dim),
-            # nn.BatchNorm1d(hidden_dim),
-            # nn.ReLU()
-        )
-    
-    def forward(self, intensity):
-        """
-        Args:
-            intensity (torch.Tensor): Intensity values of shape (N, 1)
-        Returns:
-            torch.Tensor: Intensity features of shape (N, hidden_dim)
-        """
-        return self.mlp(intensity)
     
 
 def build_encoder(in_num_features: int, out_num_features: int, hidden_num_features_multiplier=32, dropout_rate: float = 0.5, num_layers: int = 2):
@@ -276,9 +205,6 @@ class DualPointEncoder(nn.Module):
     def __init__(self, output_size=4096, dropout_rate=0.5, in_num_intensity_features=1, in_num_spatial_features=3):
         super().__init__()
         self.output_size = output_size
-        
-        # self.spatial_encoder = SpatialEncoder(in_dim=3, hidden_dim=hidden_dim, dropout_rate=dropout_rate)
-        # self.intensity_encoder = IntensityEncoder(in_dim=1, hidden_dim=hidden_dim, dropout_rate=dropout_rate)
         hidden_dim = 32
         num_features = in_num_intensity_features + in_num_spatial_features
 
@@ -313,7 +239,7 @@ class DualPointEncoder(nn.Module):
         """Initialize weights using Xavier uniform initialization."""
         for m in self.modules():
             if isinstance(m, nn.Linear):
-                nn.init.xavier_uniform_(m.weight, gain=0.01)
+                nn.init.xavier_uniform_(m.weight, gain=1.0)
                 if m.bias is not None:
                     nn.init.zeros_(m.bias)
     
@@ -367,10 +293,3 @@ class DualPointEncoder(nn.Module):
         output = self.fusion(selected_features)
         
         return output.view(batch_size, self.output_size, 4)
-
-    def check_gradient(self, tensor, name):
-        if self.training:  # Only check during training
-            if not tensor.requires_grad:
-                raise RuntimeError(f"{name} does not require gradients")
-            if tensor.grad_fn is None:
-                raise RuntimeError(f"{name} is not connected to computation graph")

@@ -102,6 +102,21 @@ class NumpyDataTransform:
             scaled_clouds.append(cloud_scaled)
         return (scaled_clouds if input_has_multiple_samples else scaled_clouds[0]), intensity_mean, intensity_std
 
+    def scale_point_coords(self, points, coord_means=None, coord_stds=None, **kwargs):
+        if (coord_means is None) != (coord_stds is None):
+            raise ValueError("Both coord_means and coord_stds must be provided, or neither.")
+        cloud_list, input_has_multiple_samples = self.process_point_input(points, **kwargs)
+        if coord_means is None:
+            all_points = np.vstack(cloud_list)
+            coord_means = np.mean(all_points[:, :3], axis=0)  # (3,)
+            coord_stds = np.std(all_points[:, :3], axis=0) + 1e-6  # (3,) avoid div-by-zero
+        scaled_clouds = []
+        for cloud in cloud_list:
+            cloud_scaled = cloud.astype(np.float32, copy=True)
+            cloud_scaled[:, :3] = (cloud_scaled[:, :3] - coord_means) / coord_stds
+            scaled_clouds.append(cloud_scaled)
+        return (scaled_clouds if input_has_multiple_samples else scaled_clouds[0]), coord_means, coord_stds
+
 
 # class TorchDataTransform:
 #     def __init__(self, radar_config: RadarConfig):

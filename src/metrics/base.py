@@ -86,8 +86,6 @@ class PointcloudOccupancyCriteria(OccupancyCriteria):
             if isinstance(data_buffer, MappedPointOccupancyDataBuffer):
                 if data_buffer.mapped_mask() is None:
                     valid, error = False, 'Mapped masks not available in data buffer.'
-                if data_buffer.occupied_mapped_mask() is None:
-                    valid, error = False, 'Occupied mapped masks not available in data buffer.'
                 if data_buffer.mapping() is None:
                     valid, error = False, 'Point mapping not available in data buffer.'
         return valid, error

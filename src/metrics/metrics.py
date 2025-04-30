@@ -1,4 +1,6 @@
 import torch
+import torch.nn.functional as F
+# from pytorch3d.loss import chamfer_distance
 from sklearn.metrics import average_precision_score, roc_auc_score
 
 from metrics.base import PointcloudOccupancyMetric
@@ -11,6 +13,39 @@ class OccupancyRatio(PointcloudOccupancyMetric):
         true_ratio = true_occupied_mask.float().mean()
         score = 1.0 - torch.abs(pred_ratio - true_ratio)
         return score
+    
+
+# class ChamferMetric(PointcloudOccupancyMetric):
+#     def _calc(self, y_pred, y_true, data_buffer=None, *args, **kwargs):
+#         pred_coords, pred_batch_idx = y_pred
+#         true_coords, true_batch_idx = y_true
+#         cd_total = 0.0
+#         for b in range(self._batch_size):
+#             pred_b = pred_coords[pred_batch_idx == b, :3].unsqueeze(0)  # [1, N_pred, 3]
+#             true_b = true_coords[true_batch_idx == b, :3].unsqueeze(0)  # [1, N_true, 3]
+#             cd, _ = chamfer_distance(pred_b, true_b)
+#             cd_total += cd
+#         return cd_total / self._batch_size
+
+
+class OccupancyPrecisionRecall(PointcloudOccupancyMetric):
+    def _calc(self, y_pred, y_true, data_buffer=None, *args, **kwargs):
+        mapping = data_buffer.mapping()
+        pred_matched_mask = torch.zeros(len(y_pred[0]), dtype=torch.bool, device=y_pred[0].device)
+        pred_matched_mask[mapping[:, 0]] = True
+
+        precision = pred_matched_mask.float().mean()
+        recall = mapping.size(0) / (len(y_true[0]) + 1e-8)
+
+        return {'precision': precision, 'recall': recall}
+    
+
+class UnmatchedPointRatio(PointcloudOccupancyMetric):
+    def _calc(self, y_pred, y_true, data_buffer=None, *args, **kwargs):
+        pred_mask, true_mask = data_buffer.mapped_mask()
+        unmatched_pred_ratio = (~pred_mask).float().mean()
+        unmatched_true_ratio = (~true_mask).float().mean()
+        return (unmatched_pred_ratio + unmatched_true_ratio) / 2
 
 
 class IoU(PointcloudOccupancyMetric):
