@@ -7,7 +7,7 @@ from utils.logger import Logger
 
 def get_local_params():
     if os.path.isdir('/media/giantdrive'):
-        dataset_path = '/media/giantdrive/coloradar/all-mar11.h5'
+        dataset_path = '/media/giantdrive/coloradar/dataset_may2_all.h5'
         device_name = 'cuda:1'
         dataset_part = 1.0
         logger = Logger(print_log=True, loggers=(wandb, ))
