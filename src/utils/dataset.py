@@ -38,14 +38,17 @@ def read_h5_dataset(file_path):
 
 
 def process_lidar_frames(lidar_frames):
-    filtered_frames, nonempty_cloud_idx = [], []
-    for i in range(len(lidar_frames)):
-        if len(lidar_frames[i]) > 0:
-            nonempty_cloud_idx.append(i)
-            new_frame = lidar_frames[i].astype(np.float32, copy=True)
-            new_frame[..., 3] = 1 / (1 + np.exp(-new_frame[..., 3]))
-            filtered_frames.append(new_frame)
-    return filtered_frames, np.array(nonempty_cloud_idx)
+    nonempty_mask = np.array([len(frame) > 0 for frame in lidar_frames])
+    nonempty_cloud_idx = np.where(nonempty_mask)[0]
+    if len(nonempty_cloud_idx) == 0:
+        return [], np.array([])
+    
+    filtered_frames = [None] * len(nonempty_cloud_idx)
+    for idx, i in enumerate(nonempty_cloud_idx):
+        frame = lidar_frames[i].astype(np.float32, copy=True)
+        frame[..., 3] = 1 / (1 + np.exp(-frame[..., 3]))
+        filtered_frames[idx] = frame
+    return filtered_frames, nonempty_cloud_idx
 
 
 def prepare_point_data(

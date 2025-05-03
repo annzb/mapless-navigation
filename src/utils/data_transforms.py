@@ -71,10 +71,11 @@ class NumpyDataTransform:
     def polar_grid_to_cartesian_points(self, grids, **kwargs):
         samples, multiple = self.process_grid_input(grids, **kwargs)
         B = samples.shape[0]
-        flat_int = samples.reshape(B, -1)
-        coords_batch = np.tile(self.cartesian_coords[None, ...],(B, 1, 1))
-        intensities = flat_int[..., None]
-        points_all = np.concatenate((coords_batch, intensities), axis=2)
+        intensities = samples.reshape(B, -1)[..., None]
+        num_points = self.cartesian_coords.shape[0]
+        points_all = np.empty((B, num_points, 4), dtype=samples.dtype)
+        points_all[:, :, :3] = self.cartesian_coords
+        points_all[:, :, 3:4] = intensities
         return points_all if multiple else points_all[0]
     
     def filter_point_intensity(self, points, threshold=0.0, **kwargs):
