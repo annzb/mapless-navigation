@@ -5,6 +5,7 @@ import psutil
 import gc
 import sys
 from collections.abc import Mapping, Iterable
+import tracemalloc
 
 import torch
 from torch.utils.data import Dataset, DataLoader
@@ -77,33 +78,48 @@ def get_size_recursive(obj):
 
 
 def log_memory(stage, arrays=None, log_fn=print):
-    log_fn(f'==== {stage.upper()} ====')
+    log_fn(f"\n==== {stage.upper()} ====")
     process = psutil.Process()
-    memory_info = process.memory_info()
-    mem_usage = memory_info.rss / (1024 ** 3)  # GB
-    log_fn(f"TOTAL MEMORY: {mem_usage:.2f} GB")
-    
-    total_size = 0
-    if arrays:
-        for name, arr in arrays.items():
-            if isinstance(arr, np.ndarray):
-                size_gb = arr.nbytes / (1024 ** 3)
-                log_fn(f"    - {name}: {size_gb:.2f} GB, shape: {arr.shape}, dtype: {arr.dtype}")
-                total_size += size_gb
-            elif isinstance(arr, list) and arr and isinstance(arr[0], np.ndarray):
-                total_bytes = sum(x.nbytes for x in arr)
-                size_gb = total_bytes / (1024 ** 3)
-                avg_points = sum(x.shape[0] for x in arr) / len(arr) if arr else 0
-                log_fn(f"    - {name}: {size_gb:.2f} GB, avg {avg_points:.1f} points")
-                total_size += size_gb
-            else:
-                size_bytes = get_size_recursive(arr)
-                size_gb = size_bytes / (1024 ** 3)
-                log_fn(f"    - {name}: {size_gb:.4f} GB (estimated recursively)")
-                total_size += size_gb
+    rss = process.memory_info().rss / (1024**3)
+    log_fn(f"TOTAL MEMORY: {rss:.2f} GB")
+    if not arrays:
+        return
 
-        log_fn(f"  TOTAL ARRAY MEMORY: {total_size:.2f} GB")
-    log_fn(f"  UNTRACKED MEMORY: {mem_usage - total_size:.2f} GB\n")
+    seen_ids = set()
+    def get_size(obj):
+        obj_id = id(obj)
+        if obj_id in seen_ids:
+            return 0
+        seen_ids.add(obj_id)
+
+        if isinstance(obj, np.ndarray):
+            return obj.nbytes
+        if isinstance(obj, (str, bytes, int, float, bool, type(None))):
+            return sys.getsizeof(obj)
+        if isinstance(obj, Mapping):
+            size = sys.getsizeof(obj)
+            for k, v in obj.items():
+                size += get_size(k) + get_size(v)
+            return size
+        if isinstance(obj, Iterable):
+            size = sys.getsizeof(obj)
+            if isinstance(obj, list) and obj and isinstance(obj[0], np.ndarray):
+                return size + sum(x.nbytes for x in obj)
+            for item in obj:
+                size += get_size(item)
+            return size
+        return sys.getsizeof(obj)
+
+    total_bytes = 0
+    for name, arr in arrays.items():
+        sz = get_size(arr)
+        gb = sz / (1024**3)
+        log_fn(f"    - {name}: {gb:.2f} GB")
+        total_bytes += sz
+
+    total_gb = total_bytes / (1024**3)
+    log_fn(f"  TOTAL ARRAY MEMORY: {total_gb:.2f} GB")
+    log_fn(f"  UNTRACKED MEMORY: {rss - total_gb:.2f} GB")
 
 
 def prepare_point_data(X, Y, poses, data_transformer, dataset_part=1.0, logger=None):
@@ -116,9 +132,16 @@ def prepare_point_data(X, Y, poses, data_transformer, dataset_part=1.0, logger=N
         Y, nonempty_lidar_idx = process_lidar_frames(Y)
         log_memory("processed lidar frames", {'X': X, 'Y': Y, 'poses': poses, 'nonempty_lidar_idx': nonempty_lidar_idx})
 
+        tracemalloc.start()
+        snap1 = tracemalloc.take_snapshot()
         X = data_transformer.polar_grid_to_cartesian_points(X[nonempty_lidar_idx])
         log_memory("cartesian points", {'X': X, 'Y': Y, 'poses': poses, 'nonempty_lidar_idx': nonempty_lidar_idx})
-
+        snap2 = tracemalloc.take_snapshot()
+        top_stats = snap2.compare_to(snap1, 'lineno')
+        print("[ Top 10 Python allocs ]")
+        for stat in top_stats[:10]:
+            print(stat)
+        
         X, nonempty_radar_idx = data_transformer.filter_point_intensity(points=X, threshold=0.09)
         log_memory("filtered points", {'X': X, 'Y': Y, 'poses': poses, 'nonempty_lidar_idx': nonempty_lidar_idx, 'nonempty_radar_idx': nonempty_radar_idx})
         
@@ -202,7 +225,7 @@ class RadarDataset(Dataset):
 def get_dataset(
         dataset_file_path, dataset_type,
         partial=1.0, batch_size=16, shuffle_runs=True, random_state=42, grid_voxel_size=1.0,
-       device=None, logger=None, **kwargs
+        device=None, logger=None, **kwargs
 ):
     log_memory("reading dataset")
     data_dict, radar_config = read_h5_dataset(dataset_file_path)

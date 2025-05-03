@@ -9,7 +9,7 @@ def get_local_params():
     if os.path.isdir('/media/giantdrive'):
         dataset_path = '/media/giantdrive/coloradar/dataset_may2_all.h5'
         device_name = 'cuda:1'
-        dataset_part = 0.5
+        dataset_part = 1.0
         logger = Logger(print_log=True, loggers=(wandb, ))
         batch_size = 8
         n_epochs = 100
@@ -17,7 +17,7 @@ def get_local_params():
     elif platform.system() == "Darwin":
         dataset_path = '/Users/anna/data/coloradar/dataset_may2_one.h5'
         device_name = 'mps'
-        dataset_part = 0.1
+        dataset_part = 0.2
         logger = Logger(print_log=True)
         batch_size = 4
         n_epochs = 10
