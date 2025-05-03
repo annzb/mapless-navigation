@@ -252,7 +252,6 @@ class ModelManager(ABC):
 
             epoch_loss += batch_loss.item()
             batch_loss = batch_loss / len(radar_frames)
-            torch.cuda.synchronize()
 
             self.optimizer.zero_grad(set_to_none=True)
             if torch.isnan(batch_loss).any() or torch.isinf(batch_loss).any():

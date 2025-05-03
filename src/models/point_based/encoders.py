@@ -46,16 +46,19 @@ class MlpPointEncoder2(nn.Module):
         self.output_features = output_features
         self.mlp = nn.Sequential(
             nn.Linear(in_dim, hidden_dim),
-            nn.BatchNorm1d(hidden_dim),
+            nn.LayerNorm(hidden_dim),
             nn.ReLU(),
             nn.Linear(hidden_dim, hidden_dim),
-            nn.BatchNorm1d(hidden_dim),
+            nn.LayerNorm(hidden_dim),
             nn.ReLU(),
         )
         self.output_proj = nn.Sequential(
             nn.Linear(hidden_dim, output_size * output_features),
             nn.ReLU()
         )
+        nn.init.xavier_uniform_(self.output_proj[0].weight, gain=1.0)
+        if self.output_proj[0].bias is not None:
+            nn.init.zeros_(self.output_proj[0].bias)
 
     def forward(self, flat_pts, batch_idx):
         X = self.mlp(flat_pts)  # (P_total, hidden_dim)

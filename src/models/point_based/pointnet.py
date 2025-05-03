@@ -137,7 +137,7 @@ class PointNet2(nn.Module):
 
 
 class PointNet2Spatial(nn.Module):
-    def __init__(self, num_features=4):
+    def __init__(self, num_features=4, dropout=0.5):
         super(PointNet2Spatial, self).__init__()
         self.sa1 = PointNetSetAbstraction(
             npoint=1024, radius=0.5, nsample=32, 
@@ -156,7 +156,7 @@ class PointNet2Spatial(nn.Module):
         self.global_pool = nn.AdaptiveAvgPool1d(1)
         self.conv1 = nn.Conv1d(128, 64, 1)
         self.bn1 = nn.BatchNorm1d(64)
-        self.drop1 = nn.Dropout(0.5)
+        self.drop1 = nn.Dropout(dropout)
         self.conv2 = nn.Conv1d(64, 4, 1)
 
     def forward(self, coords, features):

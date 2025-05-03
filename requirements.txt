@@ -1,7 +1,6 @@
 torch
 torchvision
 torchaudio
-open3d
 wandb
 numpy
 tqdm
@@ -13,4 +12,4 @@ h5py
 scipy
 pillow
 torch-geometric
-json5 
+json5

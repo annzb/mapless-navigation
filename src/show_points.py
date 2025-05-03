@@ -29,7 +29,9 @@ def run():
         **local_params
     )
 
-    mm.init_model(model_path='/home/arpg/projects/mapless-navigation/trained_models/29april25_multiencoder_pointnet_chamfer/last_epoch.pth')
+    # model_path='/home/arpg/projects/mapless-navigation/trained_models/29april25_multiencoder_pointnet_chamfer/last_epoch.pth'
+    model_path='/Users/anna/data/coloradar/models/02may25_multiencoder_pointnet_chamfer_2/best_val_loss.pth'
+    mm.init_model(model_path=model_path)
     idx = 10
 
     with torch.no_grad():

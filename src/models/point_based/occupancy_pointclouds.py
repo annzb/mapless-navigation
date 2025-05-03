@@ -82,9 +82,9 @@ class MlpPointnet(RadarOccupancyModel):
 class EncoderPointnet(RadarOccupancyModel):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        self.name = 'encoder_pointnet_v1.1'
+        self.name = 'encoder_pointnet_v1.2'
         self.encoder = MlpPointEncoder2(in_dim=4, hidden_dim=128, output_size=4096, output_features=4)
-        self.pointnet = PointNet2Spatial(num_features=1)
+        self.pointnet = PointNet2Spatial(num_features=1, dropout=0.2)
 
     def forward(self, X, debug=False, **kwargs):
         flat_pts, batch_idx = X

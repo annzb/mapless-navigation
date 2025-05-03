@@ -34,8 +34,8 @@ class PointModelManager(ModelManager):
 
 def run():
     SHUFFLE_RUNS = True
-    RANDOM_SEEED = 42
-    SESSION_NAME = 'multiencoder_pointnet_chamfer'
+    RANDOM_SEEED = 41
+    SESSION_NAME = 'encoder_pointnet_chamfer_2'
     LOSS_SPATIAL_WEIGHT = 1.0
     LOSS_PROBABILITY_WEIGHT = 1.0
     UNMATCHED_WEIGHT = 0.01

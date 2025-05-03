@@ -87,7 +87,9 @@ class RadarDataset(Dataset):
         self.X, self.intensity_mean, self.intensity_std = data_transformer.scale_point_intensity(
             points=self.X, intensity_mean=intensity_mean, intensity_std=intensity_std
         )
-        self.Y = lidar_frames
+        self.Y, _, _ = data_transformer.scale_point_coords(
+            points=lidar_frames, coord_means=coord_means, coord_stds=coord_stds
+        )
         self.poses = poses
         self.orig_radar_frames = orig_radar_frames
         self.name = name.capitalize()
