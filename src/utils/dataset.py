@@ -82,43 +82,43 @@ def log_memory(stage, arrays=None, log_fn=print):
     process = psutil.Process()
     rss = process.memory_info().rss / (1024**3)
     log_fn(f"TOTAL MEMORY: {rss:.2f} GB")
-    if not arrays:
-        return
 
-    seen_ids = set()
-    def get_size(obj):
-        obj_id = id(obj)
-        if obj_id in seen_ids:
-            return 0
-        seen_ids.add(obj_id)
+    total_gb = 0
+    if arrays:
+        seen_ids = set()
+        def get_size(obj):
+            obj_id = id(obj)
+            if obj_id in seen_ids:
+                return 0
+            seen_ids.add(obj_id)
 
-        if isinstance(obj, np.ndarray):
-            return obj.nbytes
-        if isinstance(obj, (str, bytes, int, float, bool, type(None))):
+            if isinstance(obj, np.ndarray):
+                return obj.nbytes
+            if isinstance(obj, (str, bytes, int, float, bool, type(None))):
+                return sys.getsizeof(obj)
+            if isinstance(obj, Mapping):
+                size = sys.getsizeof(obj)
+                for k, v in obj.items():
+                    size += get_size(k) + get_size(v)
+                return size
+            if isinstance(obj, Iterable):
+                size = sys.getsizeof(obj)
+                if isinstance(obj, list) and obj and isinstance(obj[0], np.ndarray):
+                    return size + sum(x.nbytes for x in obj)
+                for item in obj:
+                    size += get_size(item)
+                return size
             return sys.getsizeof(obj)
-        if isinstance(obj, Mapping):
-            size = sys.getsizeof(obj)
-            for k, v in obj.items():
-                size += get_size(k) + get_size(v)
-            return size
-        if isinstance(obj, Iterable):
-            size = sys.getsizeof(obj)
-            if isinstance(obj, list) and obj and isinstance(obj[0], np.ndarray):
-                return size + sum(x.nbytes for x in obj)
-            for item in obj:
-                size += get_size(item)
-            return size
-        return sys.getsizeof(obj)
 
-    total_bytes = 0
-    for name, arr in arrays.items():
-        sz = get_size(arr)
-        gb = sz / (1024**3)
-        log_fn(f"    - {name}: {gb:.2f} GB")
-        total_bytes += sz
+        total_bytes = 0
+        for name, arr in arrays.items():
+            sz = get_size(arr)
+            gb = sz / (1024**3)
+            log_fn(f"    - {name}: {gb:.2f} GB")
+            total_bytes += sz
+        total_gb = total_bytes / (1024**3)
+        log_fn(f"  TOTAL ARRAY MEMORY: {total_gb:.2f} GB")
 
-    total_gb = total_bytes / (1024**3)
-    log_fn(f"  TOTAL ARRAY MEMORY: {total_gb:.2f} GB")
     log_fn(f"  UNTRACKED MEMORY: {rss - total_gb:.2f} GB")
 
 
@@ -132,9 +132,14 @@ def prepare_point_data(X, Y, poses, data_transformer, dataset_part=1.0, logger=N
         Y, nonempty_lidar_idx = process_lidar_frames(Y)
         log_memory("processed lidar frames", {'X': X, 'Y': Y, 'poses': poses, 'nonempty_lidar_idx': nonempty_lidar_idx})
 
+        X = X[nonempty_lidar_idx]
+        log_memory("X sliced",  {'X': X, 'Y': Y, 'poses': poses, 'nonempty_lidar_idx': nonempty_lidar_idx})
+        gc.collect()
+        log_memory("X collected",  {'X': X, 'Y': Y, 'poses': poses, 'nonempty_lidar_idx': nonempty_lidar_idx})
+
         tracemalloc.start()
         snap1 = tracemalloc.take_snapshot()
-        X = data_transformer.polar_grid_to_cartesian_points(X[nonempty_lidar_idx])
+        X = data_transformer.polar_grid_to_cartesian_points(X)
         log_memory("cartesian points", {'X': X, 'Y': Y, 'poses': poses, 'nonempty_lidar_idx': nonempty_lidar_idx})
         snap2 = tracemalloc.take_snapshot()
         top_stats = snap2.compare_to(snap1, 'lineno')
