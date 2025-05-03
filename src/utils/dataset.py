@@ -52,28 +52,29 @@ def process_lidar_frames(lidar_frames):
 
 
 def prepare_point_data(
-        radar_frames, lidar_frames, poses, data_transformer,
+        X, Y, poses, data_transformer,
         dataset_part=1.0, logger=None
     ):
-        assert len(radar_frames) == len(lidar_frames) == len(poses)
+        assert len(X) == len(Y) == len(poses)
         assert 0.0 < dataset_part <= 1.0
         log_fn = logger.log if logger is not None else print
+        orig_size = len(X)
 
-        Y, nonempty_lidar_idx = process_lidar_frames(lidar_frames)
+        Y, nonempty_lidar_idx = process_lidar_frames(Y)
         log_fn(f"Finished processing {len(Y)} lidar frames.")                                   # remove empty lidar clouds + convert log odds -> probs
         # orig_radar_frames = radar_frames[nonempty_lidar_idx]                                         # remove heatmaps with empty ground truth
-        X = data_transformer.polar_grid_to_cartesian_points(grids=radar_frames[nonempty_lidar_idx])                 # convert to points
+        X = data_transformer.polar_grid_to_cartesian_points(X[nonempty_lidar_idx])                 # convert to points
         log_fn(f"Finished transforming {len(X)} radar frames to points.")
         X, nonempty_radar_idx = data_transformer.filter_point_intensity(points=X, threshold=0.09)    # remove points with 0 intensity from every radar cloud + remove empty clouds
         log_fn(f"Finished filtering {len(X)} radar points.")
         # orig_radar_frames = orig_radar_frames[nonempty_radar_idx]
         Y = [Y[i] for i in nonempty_radar_idx]                                                       # remove ground truth where input is empty
         poses = poses[nonempty_lidar_idx][nonempty_radar_idx]
-        log_fn("Filtered", len(radar_frames) - len(X), "empty samples out of", len(radar_frames), ".")
+        log_fn("Filtered", orig_size - len(X), "empty samples out of", orig_size, ".")
 
         assert len(X) == len(Y) == len(poses) != 0
         if dataset_part < 1:
-            target_num_samples = int(len(radar_frames) * dataset_part)
+            target_num_samples = int(orig_size * dataset_part)
             X = X[:target_num_samples]
             Y = Y[:target_num_samples]
             poses = poses[:target_num_samples, ...]
