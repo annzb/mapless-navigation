@@ -132,10 +132,17 @@ def prepare_point_data(X, Y, poses, data_transformer, dataset_part=1.0, logger=N
         Y, nonempty_lidar_idx = process_lidar_frames(Y)
         log_memory("processed lidar frames", {'X': X, 'Y': Y, 'poses': poses, 'nonempty_lidar_idx': nonempty_lidar_idx})
 
+        tracemalloc.start()
+        snap1 = tracemalloc.take_snapshot()
         X = X[nonempty_lidar_idx]
         log_memory("X sliced",  {'X': X, 'Y': Y, 'poses': poses, 'nonempty_lidar_idx': nonempty_lidar_idx})
         gc.collect()
         log_memory("X collected",  {'X': X, 'Y': Y, 'poses': poses, 'nonempty_lidar_idx': nonempty_lidar_idx})
+        snap2 = tracemalloc.take_snapshot()
+        top_stats = snap2.compare_to(snap1, 'lineno')
+        print("[ Top 5 Python allocs ]")
+        for stat in top_stats[:5]:
+            print(stat)
 
         tracemalloc.start()
         snap1 = tracemalloc.take_snapshot()
@@ -143,8 +150,8 @@ def prepare_point_data(X, Y, poses, data_transformer, dataset_part=1.0, logger=N
         log_memory("cartesian points", {'X': X, 'Y': Y, 'poses': poses, 'nonempty_lidar_idx': nonempty_lidar_idx})
         snap2 = tracemalloc.take_snapshot()
         top_stats = snap2.compare_to(snap1, 'lineno')
-        print("[ Top 10 Python allocs ]")
-        for stat in top_stats[:10]:
+        print("[ Top 5 Python allocs ]")
+        for stat in top_stats[:5]:
             print(stat)
         
         X, nonempty_radar_idx = data_transformer.filter_point_intensity(points=X, threshold=0.09)
