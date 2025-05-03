@@ -56,10 +56,13 @@ def prepare_point_data(
         assert 0.0 < dataset_part <= 1.0
         log_fn = logger.log if logger is not None else print
 
-        Y, nonempty_lidar_idx = process_lidar_frames(lidar_frames)                                   # remove empty lidar clouds + convert log odds -> probs
+        Y, nonempty_lidar_idx = process_lidar_frames(lidar_frames)
+        log_fn(f"Finished processing {len(Y)} lidar frames.")                                   # remove empty lidar clouds + convert log odds -> probs
         # orig_radar_frames = radar_frames[nonempty_lidar_idx]                                         # remove heatmaps with empty ground truth
         X = data_transformer.polar_grid_to_cartesian_points(grids=radar_frames[nonempty_lidar_idx])                 # convert to points
+        log_fn(f"Finished transforming {len(X)} radar frames to points.")
         X, nonempty_radar_idx = data_transformer.filter_point_intensity(points=X, threshold=0.09)    # remove points with 0 intensity from every radar cloud + remove empty clouds
+        log_fn(f"Finished filtering {len(X)} radar points.")
         # orig_radar_frames = orig_radar_frames[nonempty_radar_idx]
         Y = [Y[i] for i in nonempty_radar_idx]                                                       # remove ground truth where input is empty
         poses = poses[nonempty_lidar_idx][nonempty_radar_idx]
@@ -153,6 +156,7 @@ def get_dataset(
     _, num_elevation_bins, num_azimuth_bins, num_range_bins = radar_frames.shape
     radar_config.set_radar_frame_params(num_azimuth_bins=num_azimuth_bins, num_range_bins=num_range_bins, num_elevation_bins=num_elevation_bins, grid_voxel_size=grid_voxel_size)
 
+    print(f"Preparing point data...")
     data_transformer = NumpyDataTransform(radar_config)
     radar_frames_filtered, lidar_frames_filtered, poses_filtered = prepare_point_data(
         radar_frames, lidar_frames, poses,
