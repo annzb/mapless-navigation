@@ -51,38 +51,36 @@ def process_lidar_frames(lidar_frames):
     return [lidar_frames[i] for i in nonempty_cloud_idx], nonempty_cloud_idx
 
 
-def prepare_point_data(
-        X, Y, poses, data_transformer,
-        dataset_part=1.0, logger=None
-    ):
-        def log_memory(stage, arrays=None):
-            process = psutil.Process()
-            memory_info = process.memory_info()
-            mem_usage = memory_info.rss / (1024 ** 3)  # GB
-            log_fn(f"Memory usage at {stage}: {mem_usage:.2f} GB")
-            
-            if arrays:
-                total_size = 0
-                log_fn(f"  Array sizes:")
-                
-                for name, arr in arrays.items():
-                    if isinstance(arr, np.ndarray):
-                        size_gb = arr.nbytes / (1024 ** 3)
-                        log_fn(f"    {name} (array): {size_gb:.2f} GB, shape: {arr.shape}, dtype: {arr.dtype}")
-                        total_size += size_gb
-                    elif isinstance(arr, list) and arr and isinstance(arr[0], np.ndarray):
-                        total_bytes = sum(x.nbytes for x in arr)
-                        size_gb = total_bytes / (1024 ** 3)
-                        avg_points = sum(x.shape[0] for x in arr) / len(arr) if arr else 0
-                        log_fn(f"    {name} (list of {len(arr)} arrays): {size_gb:.2f} GB, avg {avg_points:.1f} points")
-                        total_size += size_gb
-                    else:
-                        size_gb = sys.getsizeof(arr) / (1024 ** 3)
-                        log_fn(f"    {name}: {size_gb:.6f} GB (approximate)")
-                        total_size += size_gb
-                
-                log_fn(f"  Total tracked arrays: {total_size:.2f} GB")
-        
+def log_memory(stage, arrays=None, log_fn=print):
+    log_fn(f'==== {stage.upper()} ====')
+    process = psutil.Process()
+    memory_info = process.memory_info()
+    mem_usage = memory_info.rss / (1024 ** 3)  # GB
+    log_fn(f"TOTAL MEMORY: {mem_usage:.2f} GB")
+    
+    total_size = 0
+    if arrays:
+        for name, arr in arrays.items():
+            if isinstance(arr, np.ndarray):
+                size_gb = arr.nbytes / (1024 ** 3)
+                log_fn(f"    - {name}: {size_gb:.2f} GB, shape: {arr.shape}, dtype: {arr.dtype}")
+                total_size += size_gb
+            elif isinstance(arr, list) and arr and isinstance(arr[0], np.ndarray):
+                total_bytes = sum(x.nbytes for x in arr)
+                size_gb = total_bytes / (1024 ** 3)
+                avg_points = sum(x.shape[0] for x in arr) / len(arr) if arr else 0
+                log_fn(f"    - {name}: {size_gb:.2f} GB, avg {avg_points:.1f} points")
+                total_size += size_gb
+            else:
+                size_gb = sys.getsizeof(arr) / (1024 ** 3)
+                log_fn(f"    - {name}: {size_gb:.6f} GB (approximate)")
+                total_size += size_gb
+
+        log_fn(f"  TOTAL ARRAY MEMORY: {total_size:.2f} GB")
+    log_fn(f"  UNTRACKED MEMORY: {mem_usage - total_size:.2f} GB\n")
+
+
+def prepare_point_data(X, Y, poses, data_transformer, dataset_part=1.0, logger=None):
         assert len(X) == len(Y) == len(poses)
         assert 0.0 < dataset_part <= 1.0
         log_fn = logger.log if logger is not None else print
@@ -90,22 +88,24 @@ def prepare_point_data(
         log_memory("start", {'X': X, 'Y': Y, 'poses': poses})
         
         Y, nonempty_lidar_idx = process_lidar_frames(Y)
+        log_memory("processed lidar frames", {'X': X, 'Y': Y, 'poses': poses, 'nonempty_lidar_idx': nonempty_lidar_idx})
         gc.collect()
-        log_memory("after process_lidar_frames", {'X': X, 'Y': Y, 'poses': poses})
+        log_memory("collect 1", {'X': X, 'Y': Y, 'poses': poses, 'nonempty_lidar_idx': nonempty_lidar_idx})
         
-        log_fn(f"About to process {len(X[nonempty_lidar_idx])} radar frames")
         X = data_transformer.polar_grid_to_cartesian_points(X[nonempty_lidar_idx])
-        log_memory("after polar_grid_to_cartesian_points", {'X': X, 'Y': Y, 'poses': poses})
+        log_memory("cartesian points", {'X': X, 'Y': Y, 'poses': poses, 'nonempty_lidar_idx': nonempty_lidar_idx})
+        gc.collect()
+        log_memory("collect 2", {'X': X, 'Y': Y, 'poses': poses, 'nonempty_lidar_idx': nonempty_lidar_idx})
         
         X, nonempty_radar_idx = data_transformer.filter_point_intensity(points=X, threshold=0.09)
-        log_memory("after filter_point_intensity", {'X': X, 'Y': Y, 'poses': poses})
+        log_memory("filtered points", {'X': X, 'Y': Y, 'poses': poses, 'nonempty_lidar_idx': nonempty_lidar_idx, 'nonempty_radar_idx': nonempty_radar_idx})
         
         Y = [Y[i] for i in nonempty_radar_idx]
-        log_memory("after filtering Y", {'X': X, 'Y': Y, 'poses': poses})
+        log_memory("filtered Y", {'X': X, 'Y': Y, 'poses': poses, 'nonempty_lidar_idx': nonempty_lidar_idx, 'nonempty_radar_idx': nonempty_radar_idx})
         
         poses = poses[nonempty_lidar_idx][nonempty_radar_idx]
         log_fn("Filtered", orig_size - len(X), "empty samples out of", orig_size, ".")
-        log_memory("after filtering poses", {'X': X, 'Y': Y, 'poses': poses})
+        log_memory("filtered poses", {'X': X, 'Y': Y, 'poses': poses, 'nonempty_lidar_idx': nonempty_lidar_idx, 'nonempty_radar_idx': nonempty_radar_idx})
 
         assert len(X) == len(Y) == len(poses) != 0
         if dataset_part < 1:
@@ -113,7 +113,7 @@ def prepare_point_data(
             X = X[:target_num_samples]
             Y = Y[:target_num_samples]
             poses = poses[:target_num_samples, ...]
-            log_memory("after slicing for dataset_part", {'X': X, 'Y': Y, 'poses': poses})
+            log_memory("sliced for dataset_part", {'X': X, 'Y': Y, 'poses': poses})
             
         return X, Y, poses
 
@@ -182,11 +182,17 @@ def get_dataset(
         partial=1.0, batch_size=16, shuffle_runs=True, random_state=42, grid_voxel_size=1.0,
         data_buffer=None, device=None, logger=None
 ):
+    log_memory("reading dataset")
     data_dict, radar_config = read_h5_dataset(dataset_file_path)
+    log_memory("dataset read", {'data_dict': data_dict})
     radar_frames = data_dict['cascade_heatmaps']
     lidar_frames = data_dict['lidar_map_samples']
     poses = data_dict['cascade_poses']
-
+    log_memory("dataset split", {'data_dict': data_dict, 'radar_frames': radar_frames, 'lidar_frames': lidar_frames, 'poses': poses})
+    del data_dict
+    gc.collect()
+    log_memory("dataset collected", {'radar_frames': radar_frames, 'lidar_frames': lidar_frames, 'poses': poses})
+    
     if shuffle_runs:
         radar_frames = np.concatenate(list(radar_frames.values()), axis=0)
         lidar_frames = [np.array(frame) for run_frames in lidar_frames.values() for frame in run_frames]
