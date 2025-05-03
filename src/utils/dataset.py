@@ -1,6 +1,9 @@
 import h5py
 import json
 import numpy as np
+import psutil
+import gc
+import sys
 
 import torch
 from torch.utils.data import Dataset, DataLoader
@@ -43,34 +46,66 @@ def process_lidar_frames(lidar_frames):
     if len(nonempty_cloud_idx) == 0:
         return [], np.array([])
     
-    filtered_frames = [None] * len(nonempty_cloud_idx)
-    for idx, i in enumerate(nonempty_cloud_idx):
-        frame = lidar_frames[i].astype(np.float32, copy=True)
-        frame[..., 3] = 1 / (1 + np.exp(-frame[..., 3]))
-        filtered_frames[idx] = frame
-    return filtered_frames, nonempty_cloud_idx
+    for i in nonempty_cloud_idx:
+        lidar_frames[i][..., 3] = 1 / (1 + np.exp(-lidar_frames[i][..., 3]))
+    return [lidar_frames[i] for i in nonempty_cloud_idx], nonempty_cloud_idx
 
 
 def prepare_point_data(
         X, Y, poses, data_transformer,
         dataset_part=1.0, logger=None
     ):
+        def log_memory(stage, arrays=None):
+            process = psutil.Process()
+            memory_info = process.memory_info()
+            mem_usage = memory_info.rss / (1024 ** 3)  # GB
+            log_fn(f"Memory usage at {stage}: {mem_usage:.2f} GB")
+            
+            if arrays:
+                total_size = 0
+                log_fn(f"  Array sizes:")
+                
+                for name, arr in arrays.items():
+                    if isinstance(arr, np.ndarray):
+                        size_gb = arr.nbytes / (1024 ** 3)
+                        log_fn(f"    {name} (array): {size_gb:.2f} GB, shape: {arr.shape}, dtype: {arr.dtype}")
+                        total_size += size_gb
+                    elif isinstance(arr, list) and arr and isinstance(arr[0], np.ndarray):
+                        total_bytes = sum(x.nbytes for x in arr)
+                        size_gb = total_bytes / (1024 ** 3)
+                        avg_points = sum(x.shape[0] for x in arr) / len(arr) if arr else 0
+                        log_fn(f"    {name} (list of {len(arr)} arrays): {size_gb:.2f} GB, avg {avg_points:.1f} points")
+                        total_size += size_gb
+                    else:
+                        size_gb = sys.getsizeof(arr) / (1024 ** 3)
+                        log_fn(f"    {name}: {size_gb:.6f} GB (approximate)")
+                        total_size += size_gb
+                
+                log_fn(f"  Total tracked arrays: {total_size:.2f} GB")
+        
         assert len(X) == len(Y) == len(poses)
         assert 0.0 < dataset_part <= 1.0
         log_fn = logger.log if logger is not None else print
         orig_size = len(X)
-
+        log_memory("start", {'X': X, 'Y': Y, 'poses': poses})
+        
         Y, nonempty_lidar_idx = process_lidar_frames(Y)
-        log_fn(f"Finished processing {len(Y)} lidar frames.")                                   # remove empty lidar clouds + convert log odds -> probs
-        # orig_radar_frames = radar_frames[nonempty_lidar_idx]                                         # remove heatmaps with empty ground truth
-        X = data_transformer.polar_grid_to_cartesian_points(X[nonempty_lidar_idx])                 # convert to points
-        log_fn(f"Finished transforming {len(X)} radar frames to points.")
-        X, nonempty_radar_idx = data_transformer.filter_point_intensity(points=X, threshold=0.09)    # remove points with 0 intensity from every radar cloud + remove empty clouds
-        log_fn(f"Finished filtering {len(X)} radar points.")
-        # orig_radar_frames = orig_radar_frames[nonempty_radar_idx]
-        Y = [Y[i] for i in nonempty_radar_idx]                                                       # remove ground truth where input is empty
+        gc.collect()
+        log_memory("after process_lidar_frames", {'X': X, 'Y': Y, 'poses': poses})
+        
+        log_fn(f"About to process {len(X[nonempty_lidar_idx])} radar frames")
+        X = data_transformer.polar_grid_to_cartesian_points(X[nonempty_lidar_idx])
+        log_memory("after polar_grid_to_cartesian_points", {'X': X, 'Y': Y, 'poses': poses})
+        
+        X, nonempty_radar_idx = data_transformer.filter_point_intensity(points=X, threshold=0.09)
+        log_memory("after filter_point_intensity", {'X': X, 'Y': Y, 'poses': poses})
+        
+        Y = [Y[i] for i in nonempty_radar_idx]
+        log_memory("after filtering Y", {'X': X, 'Y': Y, 'poses': poses})
+        
         poses = poses[nonempty_lidar_idx][nonempty_radar_idx]
         log_fn("Filtered", orig_size - len(X), "empty samples out of", orig_size, ".")
+        log_memory("after filtering poses", {'X': X, 'Y': Y, 'poses': poses})
 
         assert len(X) == len(Y) == len(poses) != 0
         if dataset_part < 1:
@@ -78,8 +113,9 @@ def prepare_point_data(
             X = X[:target_num_samples]
             Y = Y[:target_num_samples]
             poses = poses[:target_num_samples, ...]
-            # orig_radar_frames = orig_radar_frames[:target_num_samples]
-        return X, Y, poses #, orig_radar_frames
+            log_memory("after slicing for dataset_part", {'X': X, 'Y': Y, 'poses': poses})
+            
+        return X, Y, poses
 
 
 class RadarDataset(Dataset):
