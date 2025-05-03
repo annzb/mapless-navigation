@@ -162,7 +162,7 @@ def get_dataset(
 
     print(f"Preparing point data...")
     data_transformer = NumpyDataTransform(radar_config)
-    radar_frames_filtered, lidar_frames_filtered, poses_filtered = prepare_point_data(
+    radar_frames, lidar_frames, poses = prepare_point_data(
         radar_frames, lidar_frames, poses,
         data_transformer=data_transformer, dataset_part=partial, logger=logger
     )
@@ -172,7 +172,7 @@ def get_dataset(
         poses_train, poses_temp,
         # orig_radar_frames_train, orig_radar_frames_temp
     ) = train_test_split(
-        radar_frames_filtered, lidar_frames_filtered, poses_filtered, # orig_radar_frames, 
+        radar_frames, lidar_frames, poses, # orig_radar_frames, 
         test_size=0.5, random_state=random_state
     )
     (
