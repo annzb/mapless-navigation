@@ -4,6 +4,7 @@ import numpy as np
 import psutil
 import gc
 import sys
+from collections.abc import Mapping, Iterable
 
 import torch
 from torch.utils.data import Dataset, DataLoader
@@ -51,6 +52,30 @@ def process_lidar_frames(lidar_frames):
     return [lidar_frames[i] for i in nonempty_cloud_idx], nonempty_cloud_idx
 
 
+def get_size_recursive(obj):
+    seen = set()
+    def inner(obj):
+        obj_id = id(obj)
+        if obj_id in seen:
+            return 0
+        seen.add(obj_id)
+        size = sys.getsizeof(obj)
+        if isinstance(obj, np.ndarray):
+            return obj.nbytes
+        elif isinstance(obj, (str, bytes, int, float, bool, type(None))):
+            return size
+        elif isinstance(obj, Mapping):
+            return size + sum(inner(k) + inner(v) for k, v in obj.items())
+        elif isinstance(obj, Iterable):
+            if hasattr(obj, '__len__') and len(obj) == 0:
+                return size
+            if isinstance(obj, list) and obj and isinstance(obj[0], np.ndarray):
+                return size + sum(x.nbytes for x in obj)
+            return size + sum(inner(x) for x in obj)
+        return size
+    return inner(obj)
+
+
 def log_memory(stage, arrays=None, log_fn=print):
     log_fn(f'==== {stage.upper()} ====')
     process = psutil.Process()
@@ -72,8 +97,9 @@ def log_memory(stage, arrays=None, log_fn=print):
                 log_fn(f"    - {name}: {size_gb:.2f} GB, avg {avg_points:.1f} points")
                 total_size += size_gb
             else:
-                size_gb = sys.getsizeof(arr) / (1024 ** 3)
-                log_fn(f"    - {name}: {size_gb:.6f} GB (approximate)")
+                size_bytes = get_size_recursive(arr)
+                size_gb = size_bytes / (1024 ** 3)
+                log_fn(f"    - {name}: {size_gb:.4f} GB (estimated recursively)")
                 total_size += size_gb
 
         log_fn(f"  TOTAL ARRAY MEMORY: {total_size:.2f} GB")
@@ -89,14 +115,10 @@ def prepare_point_data(X, Y, poses, data_transformer, dataset_part=1.0, logger=N
         
         Y, nonempty_lidar_idx = process_lidar_frames(Y)
         log_memory("processed lidar frames", {'X': X, 'Y': Y, 'poses': poses, 'nonempty_lidar_idx': nonempty_lidar_idx})
-        gc.collect()
-        log_memory("collect 1", {'X': X, 'Y': Y, 'poses': poses, 'nonempty_lidar_idx': nonempty_lidar_idx})
-        
+
         X = data_transformer.polar_grid_to_cartesian_points(X[nonempty_lidar_idx])
         log_memory("cartesian points", {'X': X, 'Y': Y, 'poses': poses, 'nonempty_lidar_idx': nonempty_lidar_idx})
-        gc.collect()
-        log_memory("collect 2", {'X': X, 'Y': Y, 'poses': poses, 'nonempty_lidar_idx': nonempty_lidar_idx})
-        
+
         X, nonempty_radar_idx = data_transformer.filter_point_intensity(points=X, threshold=0.09)
         log_memory("filtered points", {'X': X, 'Y': Y, 'poses': poses, 'nonempty_lidar_idx': nonempty_lidar_idx, 'nonempty_radar_idx': nonempty_radar_idx})
         
@@ -150,7 +172,7 @@ class RadarDataset(Dataset):
 
     @staticmethod
     def custom_collate_fn(batch):
-        radar_list, lidar_list, poses = zip(*batch)
+        _, _, poses = zip(*batch)
         poses = default_collate(poses)
 
         radar_batch, radar_batch_indices, lidar_batch, lidar_batch_indices = [], [], [], []
@@ -180,15 +202,14 @@ class RadarDataset(Dataset):
 def get_dataset(
         dataset_file_path, dataset_type,
         partial=1.0, batch_size=16, shuffle_runs=True, random_state=42, grid_voxel_size=1.0,
-        data_buffer=None, device=None, logger=None
+       device=None, logger=None, **kwargs
 ):
     log_memory("reading dataset")
     data_dict, radar_config = read_h5_dataset(dataset_file_path)
-    log_memory("dataset read", {'data_dict': data_dict})
     radar_frames = data_dict['cascade_heatmaps']
     lidar_frames = data_dict['lidar_map_samples']
     poses = data_dict['cascade_poses']
-    log_memory("dataset split", {'data_dict': data_dict, 'radar_frames': radar_frames, 'lidar_frames': lidar_frames, 'poses': poses})
+    log_memory("dataset read", {'data_dict': data_dict, 'radar_frames': radar_frames, 'lidar_frames': lidar_frames, 'poses': poses})
     del data_dict
     gc.collect()
     log_memory("dataset collected", {'radar_frames': radar_frames, 'lidar_frames': lidar_frames, 'poses': poses})

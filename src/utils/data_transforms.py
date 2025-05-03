@@ -78,10 +78,10 @@ class NumpyDataTransform:
         return points_all if multiple else points_all[0]
     
     def filter_point_intensity(self, points, threshold=0.0, **kwargs):
-        cloud_list, input_has_multiple_samples = self.process_point_input(points, **kwargs)
+        points, input_has_multiple_samples = self.process_point_input(points, **kwargs)
         filtered_clouds, nonempty_cloud_idx = [], []
-        for i in range(len(cloud_list)):
-            filtered_cloud = cloud_list[i][cloud_list[i][:, 3] > threshold]
+        for i in range(len(points)):
+            filtered_cloud = points[i][points[i][:, 3] > threshold]
             if filtered_cloud.shape[0] != 0:
                 filtered_clouds.append(filtered_cloud)
                 nonempty_cloud_idx.append(i)
