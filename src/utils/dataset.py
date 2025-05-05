@@ -6,6 +6,7 @@ import gc
 import sys
 from collections.abc import Mapping, Iterable
 import tracemalloc
+from tqdm import tqdm
 
 import torch
 from torch.utils.data import Dataset, DataLoader
@@ -127,12 +128,14 @@ def prepare_point_data(X, Y, poses, data_transformer, dataset_part=1.0, logger=N
         assert 0.0 < dataset_part <= 1.0
         log_fn = logger.log if logger is not None else print
         orig_size = len(X)
+        target_num_samples = int(orig_size * dataset_part)
+        log_fn(f"Collecting {target_num_samples} samples out of {orig_size}.")
         log_memory("start", {'X': X, 'Y': Y, 'poses': poses})
 
         batch_size = 100
         n_iter = len(X) // batch_size + (1 if len(X) % batch_size != 0 else 0)
         X_processed, Y_processed, poses_processed = [], [], []
-        for i in range(n_iter):
+        for i in tqdm(range(n_iter)):
             X_batch = X[i * batch_size:(i + 1) * batch_size]
             Y_batch = Y[i * batch_size:(i + 1) * batch_size]
             poses_batch = poses[i * batch_size:(i + 1) * batch_size]
@@ -151,6 +154,8 @@ def prepare_point_data(X, Y, poses, data_transformer, dataset_part=1.0, logger=N
             X_processed.extend(X_batch)
             Y_processed.extend(Y_batch)
             poses_processed.extend(poses_batch)
+            if len(X_processed) >= target_num_samples:
+                break
         
         # Y, nonempty_lidar_idx = process_lidar_frames(Y)
         # log_memory("processed lidar frames", {'X': X, 'Y': Y, 'poses': poses, 'nonempty_lidar_idx': nonempty_lidar_idx})
@@ -177,7 +182,6 @@ def prepare_point_data(X, Y, poses, data_transformer, dataset_part=1.0, logger=N
 
         assert len(X_processed) == len(Y_processed) == len(poses_processed) != 0
         if dataset_part < 1:
-            target_num_samples = int(orig_size * dataset_part)
             X_processed = X_processed[:target_num_samples]
             Y_processed = Y_processed[:target_num_samples]
             poses_processed = poses_processed[:target_num_samples]
@@ -207,8 +211,7 @@ class RadarDataset(Dataset):
         self.poses = poses
         self.orig_radar_frames = orig_radar_frames
         self.name = name.capitalize()
-        if logger is not None:
-            self.print_log(logger=logger)
+        self.print_log(logger=logger)
 
     def __len__(self):
         return len(self.X)
@@ -253,16 +256,13 @@ def get_dataset(
         partial=1.0, batch_size=16, shuffle_runs=True, random_state=42, grid_voxel_size=1.0,
         device=None, logger=None, **kwargs
 ):
-    log_memory("reading dataset")
     data_dict, radar_config = read_h5_dataset(dataset_file_path)
     radar_frames = data_dict['cascade_heatmaps']
     lidar_frames = data_dict['lidar_map_samples']
     poses = data_dict['cascade_poses']
-    log_memory("dataset read", {'data_dict': data_dict, 'radar_frames': radar_frames, 'lidar_frames': lidar_frames, 'poses': poses})
     del data_dict
     gc.collect()
-    log_memory("dataset collected", {'radar_frames': radar_frames, 'lidar_frames': lidar_frames, 'poses': poses})
-    
+
     if shuffle_runs:
         radar_frames = np.concatenate(list(radar_frames.values()), axis=0)
         lidar_frames = [np.array(frame) for run_frames in lidar_frames.values() for frame in run_frames]
@@ -296,7 +296,7 @@ def get_dataset(
         radar_temp, lidar_temp, poses_temp, # orig_radar_frames_temp, 
         test_size=0.6, random_state=random_state
     )
-
+    print(f"Finished splitting dataset.")
     # dataset_class = RadarDatasetGrid if grid else RadarDataset
     train_dataset = dataset_type(
         radar_train, lidar_train, poses_train, 
