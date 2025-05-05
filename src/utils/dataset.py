@@ -46,7 +46,7 @@ def process_lidar_frames(lidar_frames):
     nonempty_mask = np.array([len(frame) > 0 for frame in lidar_frames])
     nonempty_cloud_idx = np.where(nonempty_mask)[0]
     if len(nonempty_cloud_idx) == 0:
-        return [], np.array([])
+        return [], np.array([], dtype=np.int64)
     
     for i in nonempty_cloud_idx:
         lidar_frames[i][..., 3] = 1 / (1 + np.exp(-lidar_frames[i][..., 3]))
@@ -128,51 +128,65 @@ def prepare_point_data(X, Y, poses, data_transformer, dataset_part=1.0, logger=N
         log_fn = logger.log if logger is not None else print
         orig_size = len(X)
         log_memory("start", {'X': X, 'Y': Y, 'poses': poses})
-        
-        Y, nonempty_lidar_idx = process_lidar_frames(Y)
-        log_memory("processed lidar frames", {'X': X, 'Y': Y, 'poses': poses, 'nonempty_lidar_idx': nonempty_lidar_idx})
 
-        tracemalloc.start()
-        snap1 = tracemalloc.take_snapshot()
-        X = X[nonempty_lidar_idx]
-        log_memory("X sliced",  {'X': X, 'Y': Y, 'poses': poses, 'nonempty_lidar_idx': nonempty_lidar_idx})
-        gc.collect()
-        log_memory("X collected",  {'X': X, 'Y': Y, 'poses': poses, 'nonempty_lidar_idx': nonempty_lidar_idx})
-        snap2 = tracemalloc.take_snapshot()
-        top_stats = snap2.compare_to(snap1, 'lineno')
-        print("[ Top 5 Python allocs ]")
-        for stat in top_stats[:5]:
-            print(stat)
+        batch_size = 100
+        n_iter = len(X) // batch_size + (1 if len(X) % batch_size != 0 else 0)
+        X_processed, Y_processed, poses_processed = [], [], []
+        for i in range(n_iter):
+            X_batch = X[i * batch_size:(i + 1) * batch_size]
+            Y_batch = Y[i * batch_size:(i + 1) * batch_size]
+            poses_batch = poses[i * batch_size:(i + 1) * batch_size]
+            
+            Y_batch, nonempty_lidar_idx = process_lidar_frames(Y_batch)
+            if len(Y_batch) == 0:
+                continue
 
-        tracemalloc.start()
-        snap1 = tracemalloc.take_snapshot()
-        X = data_transformer.polar_grid_to_cartesian_points(X)
-        log_memory("cartesian points", {'X': X, 'Y': Y, 'poses': poses, 'nonempty_lidar_idx': nonempty_lidar_idx})
-        snap2 = tracemalloc.take_snapshot()
-        top_stats = snap2.compare_to(snap1, 'lineno')
-        print("[ Top 5 Python allocs ]")
-        for stat in top_stats[:5]:
-            print(stat)
-        
-        X, nonempty_radar_idx = data_transformer.filter_point_intensity(points=X, threshold=0.09)
-        log_memory("filtered points", {'X': X, 'Y': Y, 'poses': poses, 'nonempty_lidar_idx': nonempty_lidar_idx, 'nonempty_radar_idx': nonempty_radar_idx})
-        
-        Y = [Y[i] for i in nonempty_radar_idx]
-        log_memory("filtered Y", {'X': X, 'Y': Y, 'poses': poses, 'nonempty_lidar_idx': nonempty_lidar_idx, 'nonempty_radar_idx': nonempty_radar_idx})
-        
-        poses = poses[nonempty_lidar_idx][nonempty_radar_idx]
-        log_fn("Filtered", orig_size - len(X), "empty samples out of", orig_size, ".")
-        log_memory("filtered poses", {'X': X, 'Y': Y, 'poses': poses, 'nonempty_lidar_idx': nonempty_lidar_idx, 'nonempty_radar_idx': nonempty_radar_idx})
+            X_batch = data_transformer.polar_grid_to_cartesian_points(X_batch[nonempty_lidar_idx])
+            X_batch, nonempty_radar_idx = data_transformer.filter_point_intensity(points=X_batch, threshold=0.09)
+            if len(X_batch) == 0:
+                continue
 
-        assert len(X) == len(Y) == len(poses) != 0
+            Y_batch = [Y_batch[i] for i in nonempty_radar_idx]
+            poses_batch = poses_batch[nonempty_lidar_idx][nonempty_radar_idx]
+            X_processed.extend(X_batch)
+            Y_processed.extend(Y_batch)
+            poses_processed.extend(poses_batch)
+        
+        # Y, nonempty_lidar_idx = process_lidar_frames(Y)
+        # log_memory("processed lidar frames", {'X': X, 'Y': Y, 'poses': poses, 'nonempty_lidar_idx': nonempty_lidar_idx})
+
+        # tracemalloc.start()
+        # snap1 = tracemalloc.take_snapshot()
+        # X = data_transformer.polar_grid_to_cartesian_points(X[nonempty_lidar_idx])
+        # log_memory("cartesian points", {'X': X, 'Y': Y, 'poses': poses, 'nonempty_lidar_idx': nonempty_lidar_idx})
+        # snap2 = tracemalloc.take_snapshot()
+        # top_stats = snap2.compare_to(snap1, 'lineno')
+        # print("[ Top 5 Python allocs ]")
+        # for stat in top_stats[:5]:
+        #     print(stat)
+        
+        # X, nonempty_radar_idx = data_transformer.filter_point_intensity(points=X, threshold=0.09)
+        # log_memory("filtered points", {'X': X, 'Y': Y, 'poses': poses, 'nonempty_lidar_idx': nonempty_lidar_idx, 'nonempty_radar_idx': nonempty_radar_idx})
+        
+        # Y = [Y[i] for i in nonempty_radar_idx]
+        # log_memory("filtered Y", {'X': X, 'Y': Y, 'poses': poses, 'nonempty_lidar_idx': nonempty_lidar_idx, 'nonempty_radar_idx': nonempty_radar_idx})
+        
+        # poses = poses[nonempty_lidar_idx][nonempty_radar_idx]
+        # log_fn("Filtered", orig_size - len(X), "empty samples out of", orig_size, ".")
+        # log_memory("filtered poses", {'X': X, 'Y': Y, 'poses': poses, 'nonempty_lidar_idx': nonempty_lidar_idx, 'nonempty_radar_idx': nonempty_radar_idx})
+
+        assert len(X_processed) == len(Y_processed) == len(poses_processed) != 0
         if dataset_part < 1:
             target_num_samples = int(orig_size * dataset_part)
-            X = X[:target_num_samples]
-            Y = Y[:target_num_samples]
-            poses = poses[:target_num_samples, ...]
-            log_memory("sliced for dataset_part", {'X': X, 'Y': Y, 'poses': poses})
+            X_processed = X_processed[:target_num_samples]
+            Y_processed = Y_processed[:target_num_samples]
+            poses_processed = poses_processed[:target_num_samples]
+        log_memory("sliced for dataset_part", {
+            'X': X, 'Y': Y, 'poses': poses, 
+            'X_processed': X_processed, 'Y_processed': Y_processed, 'poses_processed': poses_processed
+        })
             
-        return X, Y, poses
+        return X_processed, Y_processed, poses_processed
 
 
 class RadarDataset(Dataset):
