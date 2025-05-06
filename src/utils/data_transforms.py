@@ -89,32 +89,28 @@ class NumpyDataTransform:
     def scale_point_intensity(self, points, intensity_mean=None, intensity_std=None, **kwargs):
         if None in (intensity_mean, intensity_std) and intensity_mean != intensity_std:
             raise ValueError("Both intensity_mean and intensity_std must be provided, or neither.")
-        cloud_list, input_has_multiple_samples = self.process_point_input(points, **kwargs)
+        points, input_has_multiple_samples = self.process_point_input(points, **kwargs)
         if intensity_mean is None:
-            all_points = np.vstack(cloud_list)
+            all_points = np.vstack(points)
             intensity_mean = float(np.mean(all_points[:, 3]))
             intensity_std  = float(np.std(all_points[:, 3]))
-        scaled_clouds = []
-        for cloud in cloud_list:
-            cloud_scaled = cloud.astype(np.float32, copy=True)
-            cloud_scaled[:, 3] = (cloud_scaled[:, 3] - intensity_mean) / intensity_std
-            scaled_clouds.append(cloud_scaled)
-        return (scaled_clouds if input_has_multiple_samples else scaled_clouds[0]), intensity_mean, intensity_std
+            del all_points
+        for cloud in points:
+            cloud[:, 3] = (cloud[:, 3] - intensity_mean) / intensity_std
+        return (points if input_has_multiple_samples else points[0]), intensity_mean, intensity_std
 
     def scale_point_coords(self, points, coord_means=None, coord_stds=None, **kwargs):
         if (coord_means is None) != (coord_stds is None):
             raise ValueError("Both coord_means and coord_stds must be provided, or neither.")
-        cloud_list, input_has_multiple_samples = self.process_point_input(points, **kwargs)
+        points, input_has_multiple_samples = self.process_point_input(points, **kwargs)
         if coord_means is None:
-            all_points = np.vstack(cloud_list)
+            all_points = np.vstack(points)
             coord_means = np.mean(all_points[:, :3], axis=0)  # (3,)
             coord_stds = np.std(all_points[:, :3], axis=0) + 1e-6  # (3,) avoid div-by-zero
-        scaled_clouds = []
-        for cloud in cloud_list:
-            cloud_scaled = cloud.astype(np.float32, copy=True)
-            cloud_scaled[:, :3] = (cloud_scaled[:, :3] - coord_means) / coord_stds
-            scaled_clouds.append(cloud_scaled)
-        return (scaled_clouds if input_has_multiple_samples else scaled_clouds[0]), coord_means, coord_stds
+            del all_points
+        for cloud in points:
+            cloud[:, :3] = (cloud[:, :3] - coord_means) / coord_stds
+        return (points if input_has_multiple_samples else points[0]), coord_means, coord_stds
 
 
 # class TorchDataTransform:

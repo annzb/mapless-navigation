@@ -9,7 +9,7 @@ def get_local_params():
     if os.path.isdir('/media/giantdrive'):
         dataset_path = '/media/giantdrive/coloradar/dataset_may2_all.h5'
         device_name = 'cuda:1'
-        dataset_part = 0.5
+        dataset_part = 0.4
         logger = Logger(print_log=True, loggers=(wandb, ))
         batch_size = 8
         n_epochs = 100
