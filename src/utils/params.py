@@ -13,7 +13,7 @@ def get_local_params():
         logger = Logger(print_log=True, loggers=(wandb, ))
         batch_size = 8
         n_epochs = 100
-        model_save_directory = '/media/giantdrive/coloradar/models'
+        model_save_directory = '/home/annz/mapping/models'
     elif platform.system() == "Darwin":
         dataset_path = '/Users/anna/data/coloradar/dataset_may2_one.h5'
         device_name = 'mps'
