@@ -123,7 +123,7 @@ def log_memory(stage, arrays=None, log_fn=print):
     log_fn(f"  UNTRACKED MEMORY: {rss - total_gb:.2f} GB")
 
 
-def prepare_point_data(X, Y, poses, data_transformer, dataset_part=1.0, logger=None):
+def prepare_point_data(X, Y, poses, data_transformer, dataset_part=1.0, intensity_threshold=0.0, logger=None):
         assert len(X) == len(Y) == len(poses)
         assert 0.0 < dataset_part <= 1.0
         log_fn = logger.log if logger is not None else print
@@ -145,7 +145,7 @@ def prepare_point_data(X, Y, poses, data_transformer, dataset_part=1.0, logger=N
                 continue
 
             X_batch = data_transformer.polar_grid_to_cartesian_points(X_batch[nonempty_lidar_idx])
-            X_batch, nonempty_radar_idx = data_transformer.filter_point_intensity(points=X_batch, threshold=0.09)
+            X_batch, nonempty_radar_idx = data_transformer.filter_point_intensity(points=X_batch, threshold=intensity_threshold)
             if len(X_batch) == 0:
                 continue
 
@@ -254,7 +254,7 @@ class RadarDataset(Dataset):
 def get_dataset(
         dataset_file_path, dataset_type,
         partial=1.0, batch_size=16, shuffle_runs=True, random_state=42, grid_voxel_size=1.0,
-        device=None, logger=None, **kwargs
+        device=None, logger=None, intensity_threshold=0.0, **kwargs
 ):
     data_dict, radar_config = read_h5_dataset(dataset_file_path)
     radar_frames = data_dict['cascade_heatmaps']
@@ -276,7 +276,8 @@ def get_dataset(
     data_transformer = NumpyDataTransform(radar_config)
     radar_frames, lidar_frames, poses = prepare_point_data(
         radar_frames, lidar_frames, poses,
-        data_transformer=data_transformer, dataset_part=partial, logger=logger
+        data_transformer=data_transformer, dataset_part=partial, logger=logger,
+        intensity_threshold=intensity_threshold
     )
     (
         radar_train, radar_temp,

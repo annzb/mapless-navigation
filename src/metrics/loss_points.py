@@ -40,41 +40,6 @@ class PointLoss(PointcloudOccupancyLoss):
         self.unmatched_weight = unmatched_weight
         self.unmatched_pred_weight = unmatched_pred_weight
         self.unmatched_true_weight = unmatched_true_weight
-        
-    # def _calc_matched_loss(self, y_pred, y_true, data_buffer):
-    #     (y_pred_values, y_pred_batch_indices), (y_true_values, y_true_batch_indices) = y_pred, y_true
-        
-    #     mapping = data_buffer.mapping()
-    #     if mapping.numel() == 0:
-    #         return y_pred_values[0, 0] * 0.0, y_pred_values[0, 3] * 0.0
-            
-    #     pred_matched = y_pred_values[mapping[:, 0]]
-    #     true_matched = y_true_values[mapping[:, 1]]
-    #     batch_indices = y_pred_batch_indices[mapping[:, 0]]
-        
-    #     spatial_losses = []
-    #     prob_losses = []
-    #     for b in range(self._batch_size):
-    #         batch_mask = batch_indices == b
-    #         pred_b = pred_matched[batch_mask]
-    #         true_b = true_matched[batch_mask]
-            
-    #         if pred_b.size(0) == 0 or true_b.size(0) == 0:
-    #             spatial_loss = pred_matched[0, 0] * 0.0
-    #             prob_loss = pred_matched[0, 3] * 0.0
-    #             spatial_losses.append(spatial_loss)
-    #             prob_losses.append(prob_loss)
-    #             continue
-                
-    #         distances = torch.norm(pred_b[:, :3] - true_b[:, :3], dim=1)
-    #         spatial_loss = distances.mean()
-    #         spatial_losses.append(spatial_loss)
-            
-    #         prob_distances = torch.norm(pred_b[:, 3:4] - true_b[:, 3:4], dim=1)
-    #         prob_loss = prob_distances.mean()
-    #         prob_losses.append(prob_loss)
-            
-    #     return torch.stack(spatial_losses).mean(), torch.stack(prob_losses).mean()
 
     def _calc_matched_loss(self, y_pred, y_true, data_buffer):
         (y_pred_values, y_pred_batch_indices), (y_true_values, y_true_batch_indices) = y_pred, y_true
@@ -141,38 +106,6 @@ class PointLoss(PointcloudOccupancyLoss):
             unmatched_losses.append(unmatched_loss + gradient_anchor * 0.0)  # maintains gradient flow
 
         return torch.stack(unmatched_losses).mean()
-
-        
-    # def _calc_unmatched_loss(self, y_pred, y_true, data_buffer):
-    #     (y_pred_values, y_pred_batch_indices), (y_true_values, y_true_batch_indices) = y_pred, y_true
-    #     mapped_mask, mapped_mask_other = data_buffer.mapped_mask()
-    #     pred_occ_mask, true_occ_mask = data_buffer.occupied_mask()
-            
-    #     losses = []
-    #     for b in range(self._batch_size):
-    #         pred_batch_mask = y_pred_batch_indices == b
-    #         true_batch_mask = y_true_batch_indices == b
-            
-    #         if not pred_batch_mask.any() and not true_batch_mask.any():
-    #             losses.append(y_pred_values[0, 0] * 0.0)
-    #             continue
-                
-    #         pred_unmatched_mask = pred_batch_mask & ~mapped_mask
-    #         true_unmatched_mask = true_batch_mask & ~mapped_mask_other
-    #         if data_buffer._match_occupied_only:
-    #             pred_unmatched_mask = pred_unmatched_mask & pred_occ_mask
-    #             true_unmatched_mask = true_unmatched_mask & true_occ_mask
-    #         n_pred_unmatched = pred_unmatched_mask.sum().float()
-    #         n_true_unmatched = true_unmatched_mask.sum().float()
-            
-    #         batch_loss = (
-    #             y_pred_values[0, 0] * 0.0 +  # Maintain gradient flow
-    #             self.unmatched_pred_weight * self.max_distance * n_pred_unmatched +
-    #             self.unmatched_true_weight * self.max_distance * n_true_unmatched
-    #         )
-    #         losses.append(batch_loss)
-            
-    #     return torch.stack(losses).mean()
         
     def _calc(self, y_pred, y_true, data_buffer=None, *args, **kwargs):
         spatial_loss, probability_loss = self._calc_matched_loss(y_pred, y_true, data_buffer)

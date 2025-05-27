@@ -17,15 +17,15 @@ def get_local_params():
     elif platform.system() == "Darwin":
         dataset_path = '/Users/anna/data/coloradar/dataset_may2_one.h5'
         device_name = 'mps'
-        dataset_part = 0.2
+        dataset_part = 0.1
         logger = Logger(print_log=True)
         batch_size = 4
-        n_epochs = 10
+        n_epochs = 5
         model_save_directory = '/Users/anna/data/coloradar/models'
     else:
         dataset_path = '/home/arpg/coloradar/one-mar11.h5'
         device_name = 'cpu'
-        dataset_part = 0.1
+        dataset_part = 1.0
         logger = Logger(print_log=True)
         batch_size = 2
         n_epochs = 10

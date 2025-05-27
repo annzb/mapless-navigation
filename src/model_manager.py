@@ -23,6 +23,7 @@ class ModelManager(ABC):
             grid_voxel_size=1.0,
             batch_size=4,
             dataset_part=1.0,
+            radar_point_intensity_threshold=0.0,
             shuffle_dataset_runs=True,
             device_name='cpu',
             logger=Logger(),
@@ -67,7 +68,8 @@ class ModelManager(ABC):
             dataset_file_path=dataset_path, dataset_type=self._dataset_type,
             batch_size=self.batch_size, partial=dataset_part, shuffle_runs=shuffle_dataset_runs,
             grid_voxel_size=grid_voxel_size, random_state=random_state,
-            data_buffer=self.data_buffer, device=self.device
+            data_buffer=self.data_buffer, device=self.device, 
+            intensity_threshold=radar_point_intensity_threshold
         )
         self.init_model()
         self.init_loss_function(

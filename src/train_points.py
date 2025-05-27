@@ -4,7 +4,7 @@ torch.autograd.set_detect_anomaly(True)
 from metrics import metrics as metric_defs
 from utils.dataset import RadarDataset
 from metrics import PointLoss as PointLoss, ChamferPointDataBuffer as PointDataBuffer
-from models import EncoderPointnet as PointModel
+from models import Baseline as PointModel
 from model_manager import ModelManager
 from utils import get_local_params
 
@@ -34,8 +34,8 @@ class PointModelManager(ModelManager):
 
 def run():
     SHUFFLE_RUNS = True
-    RANDOM_SEEED = 41
-    SESSION_NAME = 'encoder_pointnet_chamfer_2'
+    RANDOM_SEEED = 42
+    SESSION_NAME = 'generative_baseline'
     LOSS_SPATIAL_WEIGHT = 1.0
     LOSS_PROBABILITY_WEIGHT = 1.0
     UNMATCHED_WEIGHT = 0.01
@@ -44,10 +44,12 @@ def run():
     # POINT_MATCH_RADIUS = 0.25
     NO_MATCH_DISTANCE_PENALTY=10
     LEARNING_RATE = 0.01
+    RADAR_POINT_INTENSITY_THRESHOLD = 5000
 
     local_params = get_local_params()
 
     mm = PointModelManager(
+        radar_point_intensity_threshold=RADAR_POINT_INTENSITY_THRESHOLD,
         shuffle_dataset_runs=SHUFFLE_RUNS, random_state=RANDOM_SEEED,
         learning_rate=LEARNING_RATE,
         occupancy_threshold=OCCUPANCY_THRESHOLD, evaluate_over_occupied_points_only=EVAL_OVER_OCCUPIED_POINTS_ONLY,

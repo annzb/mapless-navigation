@@ -177,3 +177,39 @@ class PointNet2Spatial(nn.Module):
         output = self.conv2(x)                   # [B, 4, N]
         output = output.permute(0, 2, 1)         # [B, N, 4]
         return output
+
+
+class SinglePointEncoder(nn.Module):
+    def __init__(self, output_size=1024, output_dim=16):
+        super().__init__()
+        self.output_size = output_size
+        self.output_dim = output_dim
+
+        self.sa1 = PointNetSetAbstraction(
+            npoint=output_size * 2, radius=0.4, nsample=32,
+            in_channel=4 + 3, mlp=[16, 16, 64], group_all=False
+        )
+        self.sa2 = PointNetSetAbstraction(
+            npoint=output_size, radius=0.8, nsample=32,
+            in_channel=64 + 3, mlp=[64, 64, 256], group_all=False
+        )
+        self.project = nn.Sequential(
+            nn.Conv1d(256, 128, 1),
+            nn.BatchNorm1d(128),
+            nn.ReLU(),
+            nn.Dropout(p=0.2),
+            
+            nn.Conv1d(128, output_dim, 1)
+        )
+
+    def forward(self, cloud):
+        cloud = cloud.unsqueeze(0).permute(0, 2, 1)    # (N, 4) -> (1, 4, N)
+        coords = cloud[:, :3, :]
+
+        l1_xyz, l1_points = self.sa1(coords, cloud)    
+        l2_xyz, l2_points = self.sa2(l1_xyz, l1_points)
+
+        projected = self.project(l2_points)     # → (1, output_dim, output_size)
+        projected = projected.squeeze(0).permute(1, 0)  # → (output_size, output_dim)
+
+        return projected

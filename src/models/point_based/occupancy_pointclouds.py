@@ -1,89 +1,15 @@
 from models.base import RadarOccupancyModel
-from models.point_based.encoders import PointEncoder, MlpPointEncoder2, PointEncoder2, DualPointEncoder, build_encoder
+from models.point_based.encoders import MlpPointEncoder, DualPointEncoder, build_encoder
 from models.point_based.polar_to_cartesian import PolarToCartesianPoints
 from models.point_based.downsampling import TrainedDownsampling
-from models.point_based.pointnet import PointNet, PointNet2, PointNet2Spatial
-import torch
+from models.point_based.pointnet import PointNet, PointNet2Spatial
 
 
-class PointBaseline(RadarOccupancyModel):
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
-        self.name = 'baseline_v1.0'
-        self.encoder = PointEncoder(in_dim=4, hidden_dim=256, output_size=4096)
-
-    def forward(self, X, debug=False, **kwargs):
-        flat_pts, batch_idx = X
-        embeddings = self.encoder(flat_pts, batch_idx, **kwargs)
-        embeddings_flat, embeddings_flat_indices = self.merge_batches(embeddings)
-        probs = self.apply_sigmoid(embeddings_flat)
-
-        if debug:
-            return embeddings_flat, embeddings_flat_indices, probs
-        return probs, embeddings_flat_indices
-
-
-class BasePointnet(RadarOccupancyModel):
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
-        self.name = 'encoder+pointnet_v1.0'
-        self.encoder = PointEncoder(in_dim=4, hidden_dim=256, output_size=4096)
-        self.pointnet = PointNet()
-
-    def forward(self, X, debug=False, **kwargs):
-        flat_pts, batch_idx = X
-        embeddings = self.encoder(flat_pts, batch_idx, **kwargs)
-        predicted_log_odds = self.pointnet(coords=embeddings[..., :3], features=embeddings[..., 3:])
-        predicted_log_odds_flat, predicted_flat_indices = self.merge_batches(predicted_log_odds)
-        probs = self.apply_sigmoid(predicted_log_odds_flat)
-
-        if debug:
-            return embeddings, predicted_log_odds, probs, predicted_flat_indices
-        return probs, predicted_flat_indices
-
-
-class MlpPointnet(RadarOccupancyModel):
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
-        self.name = 'test_encoder+pointnet_v1.0'
-        self.encoder = PointEncoder2(in_dim=4, hidden_dim=256, output_size=4096)
-        self.pointnet = PointNet()
-
-    def forward(self, X, debug=False, **kwargs):
-        flat_pts, batch_idx = X
-        
-        # Encoder
-        embeddings = self.encoder(flat_pts, batch_idx, **kwargs)
-        self.check_gradient(embeddings, "Encoder output")
-            
-        # Split coordinates and features
-        coords = embeddings[..., :3]
-        features = embeddings[..., 3:]
-        self.check_gradient(coords, "Coordinates")
-        self.check_gradient(features, "Features")
-            
-        # PointNet
-        predicted_log_odds = self.pointnet(coords=coords, features=features)
-        self.check_gradient(predicted_log_odds, "PointNet output")
-            
-        # Merge batches
-        predicted_log_odds_flat, predicted_flat_indices = self.merge_batches(predicted_log_odds)
-        self.check_gradient(predicted_log_odds_flat, "Merged predictions")
-            
-        # Apply sigmoid
-        probs = self.apply_sigmoid(predicted_log_odds_flat)
-        self.check_gradient(probs, "Final probabilities")
-
-        if debug:
-            return embeddings, predicted_log_odds, probs, predicted_flat_indices
-        return probs, predicted_flat_indices
-    
-
-class EncoderPointnet(RadarOccupancyModel):
+class Baseline(RadarOccupancyModel):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.name = 'encoder_pointnet_v1.2'
-        self.encoder = MlpPointEncoder2(in_dim=4, hidden_dim=128, output_size=4096, output_features=4)
+        self.encoder = MlpPointEncoder(in_dim=4, hidden_dim=128, output_size=4096, output_features=4)
         self.pointnet = PointNet2Spatial(num_features=1, dropout=0.2)
 
     def forward(self, X, debug=False, **kwargs):
