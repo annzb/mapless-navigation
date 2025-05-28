@@ -81,6 +81,7 @@ class PointLoss(PointcloudOccupancyLoss):
         pred_occ_mask, true_occ_mask = data_buffer.occupied_mask()
         
         unmatched_losses = []
+        
         for b in range(self._batch_size):
             pred_mask = (y_pred_batch_indices == b) & ~mapped_mask
             true_mask = (y_true_batch_indices == b) & ~mapped_mask_other
@@ -89,10 +90,10 @@ class PointLoss(PointcloudOccupancyLoss):
                 pred_mask &= pred_occ_mask
                 true_mask &= true_occ_mask
             
+            n_pred, n_true = (y_pred_batch_indices == b).sum(), (y_true_batch_indices == b).sum()
+            total_points = (n_pred + n_true).float() + 1e-6
             n_unmatched_pred = pred_mask.sum().float()
             n_unmatched_true = true_mask.sum().float()
-            
-            total_points = ((y_pred_batch_indices == b).sum() + (y_true_batch_indices == b).sum()).float() + 1e-6
             unmatched_ratio = (n_unmatched_pred + n_unmatched_true) / total_points
             unmatched_loss = unmatched_ratio * self.max_distance
 
@@ -111,20 +112,17 @@ class PointLoss(PointcloudOccupancyLoss):
         spatial_loss, probability_loss = self._calc_matched_loss(y_pred, y_true, data_buffer)
         unmatched_loss = self._calc_unmatched_loss(y_pred, y_true, data_buffer)
         total_loss = self.spatial_weight * spatial_loss + self.probability_weight * probability_loss + self.unmatched_weight * unmatched_loss
+        # context = {
+        #     'spatial_loss': spatial_loss,
+        #     'probability_loss': probability_loss,
+        #     'unmatched_loss': unmatched_loss
+        # }
         return total_loss
 
 
 class RegressionPointLoss(PointcloudOccupancyLoss):
-    def __init__(self, spatial_weight=1.0, probability_weight=1.0, max_distance=10.0, unmatched_weight=1.0, 
-                 unmatched_pred_weight=1.0, unmatched_true_weight=1.0, **kwargs):
+    def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        self.spatial_weight = spatial_weight
-        self.probability_weight = probability_weight
-        self.max_distance = max_distance
-        self.unmatched_weight = unmatched_weight
-        self.unmatched_pred_weight = unmatched_pred_weight
-        self.unmatched_true_weight = unmatched_true_weight
-
 
     def points_to_grid(points: torch.Tensor, support_coords: torch.Tensor, resolution: float) -> torch.Tensor:
         device = points.device
@@ -149,6 +147,12 @@ class RegressionPointLoss(PointcloudOccupancyLoss):
     
     def _calc(self, y_pred, y_true, data_buffer=None, *args, **kwargs):
         spatial_loss, probability_loss = self._calc_matched_loss(y_pred, y_true, data_buffer)
-        unmatched_loss = self._calc_unmatched_loss(y_pred, y_true, data_buffer)
+        unmatched_loss, unmatched_context = self._calc_unmatched_loss(y_pred, y_true, data_buffer)
         total_loss = self.spatial_weight * spatial_loss + self.probability_weight * probability_loss + self.unmatched_weight * unmatched_loss
-        return total_loss
+        context = {
+            'spatial_loss': spatial_loss,
+            'probability_loss': probability_loss,
+            'unmatched_loss': unmatched_loss,
+            **unmatched_context
+        }
+        return total_loss, context

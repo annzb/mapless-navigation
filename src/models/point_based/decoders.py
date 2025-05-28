@@ -8,7 +8,12 @@ class MlpDecoder(nn.Module):
         self.output_size = output_size
         self.output_dim = output_dim
         self.mlp = nn.Sequential(
-            nn.Linear(latent_dim, 256),
+            nn.Linear(latent_dim, 128),
+            nn.LayerNorm(128),
+            nn.ReLU(),
+            nn.Dropout(p=0.2),
+
+            nn.Linear(128, 256),
             nn.LayerNorm(256),
             nn.ReLU(),
             nn.Dropout(p=0.2),

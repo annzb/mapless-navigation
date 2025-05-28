@@ -4,7 +4,7 @@ import torch
 torch.autograd.set_detect_anomaly(True)
 
 from utils import get_local_params
-from train_points import PointModelManager
+from src.train_points_generative import PointModelManager
 from visualize.points import show_radar_clouds
 
 

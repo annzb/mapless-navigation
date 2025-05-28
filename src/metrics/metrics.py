@@ -15,6 +15,128 @@ class OccupancyRatio(PointcloudOccupancyMetric):
         return score
     
 
+class MatchedPointRatio(PointcloudOccupancyMetric):
+    def _calc(self, y_pred, y_true, data_buffer=None, *args, **kwargs):
+        (y_pred_values, y_pred_batch_indices), (y_true_values, y_true_batch_indices) = y_pred, y_true
+        mapped_mask, mapped_mask_other = data_buffer.mapped_mask()
+        pred_occ_mask, true_occ_mask = data_buffer.occupied_mask()
+        
+        matched_ratios = []
+        
+        for b in range(self._batch_size):
+            pred_mask = (y_pred_batch_indices == b) & ~mapped_mask
+            true_mask = (y_true_batch_indices == b) & ~mapped_mask_other
+            
+            if data_buffer._match_occupied_only:
+                pred_mask &= pred_occ_mask
+                true_mask &= true_occ_mask
+            
+            n_pred, n_true = (y_pred_batch_indices == b).sum(), (y_true_batch_indices == b).sum()
+            total_points = (n_pred + n_true).float() + 1e-6
+            n_unmatched_pred = pred_mask.sum().float()
+            n_unmatched_true = true_mask.sum().float()
+            unmatched_ratio = (n_unmatched_pred + n_unmatched_true) / total_points
+            matched_ratios.append(1.0 - unmatched_ratio)
+
+        return torch.stack(matched_ratios).mean()
+    
+
+class NegativeUnmatchedLoss(PointcloudOccupancyMetric):
+    def _calc(self, y_pred, y_true, data_buffer=None, *args, **kwargs):
+        (y_pred_values, y_pred_batch_indices), (y_true_values, y_true_batch_indices) = y_pred, y_true
+        mapped_mask, mapped_mask_other = data_buffer.mapped_mask()
+        pred_occ_mask, true_occ_mask = data_buffer.occupied_mask()
+        
+        unmatched_losses = []
+        
+        for b in range(self._batch_size):
+            pred_mask = (y_pred_batch_indices == b) & ~mapped_mask
+            true_mask = (y_true_batch_indices == b) & ~mapped_mask_other
+            
+            if data_buffer._match_occupied_only:
+                pred_mask &= pred_occ_mask
+                true_mask &= true_occ_mask
+            
+            n_pred, n_true = (y_pred_batch_indices == b).sum(), (y_true_batch_indices == b).sum()
+            total_points = (n_pred + n_true).float() + 1e-6
+            n_unmatched_pred = pred_mask.sum().float()
+            n_unmatched_true = true_mask.sum().float()
+            unmatched_ratio = (n_unmatched_pred + n_unmatched_true) / total_points
+            unmatched_loss = unmatched_ratio * self.max_distance
+
+            if pred_mask.any():
+                gradient_anchor = y_pred_values[pred_mask, 3].mean()
+            elif true_mask.any():
+                gradient_anchor = y_true_values[true_mask, 3].mean()
+            else:
+                gradient_anchor = y_pred_values[:, 3].mean()  # fallback
+            
+            unmatched_losses.append(unmatched_loss + gradient_anchor * 0.0)  # maintains gradient flow
+
+        return -torch.stack(unmatched_losses).mean()
+    
+
+class NegativeSpatialLoss(PointcloudOccupancyMetric):
+    def _calc(self, y_pred, y_true, data_buffer=None, *args, **kwargs):
+        (y_pred_values, y_pred_batch_indices), (y_true_values, y_true_batch_indices) = y_pred, y_true
+        
+        mapping = data_buffer.mapping()
+        if mapping.numel() == 0:
+            spatial_loss = y_pred_values[:, :3].mean() * 0.0
+            return -spatial_loss
+            
+        pred_matched = y_pred_values[mapping[:, 0]]
+        true_matched = y_true_values[mapping[:, 1]]
+        batch_indices = y_pred_batch_indices[mapping[:, 0]]
+        
+        spatial_losses = []
+        for b in range(self._batch_size):
+            batch_mask = batch_indices == b
+            pred_b = pred_matched[batch_mask]
+            true_b = true_matched[batch_mask]
+            
+            if pred_b.size(0) == 0 or true_b.size(0) == 0:
+                spatial_loss = y_pred_values[:, :3].mean() * 0.0
+                spatial_losses.append(spatial_loss)
+                continue
+                
+            spatial_loss = torch.norm(pred_b[:, :3] - true_b[:, :3], dim=1).mean()
+            spatial_losses.append(spatial_loss)
+            
+        return -torch.stack(spatial_losses).mean()
+
+
+class NegativeOccupancyLoss(PointcloudOccupancyMetric):
+    def _calc(self, y_pred, y_true, data_buffer=None, *args, **kwargs):
+        (y_pred_values, y_pred_batch_indices), (y_true_values, y_true_batch_indices) = y_pred, y_true
+        
+        mapping = data_buffer.mapping()
+        if mapping.numel() == 0:
+            prob_loss = y_pred_values[:, 3].mean() * 0.0
+            return -prob_loss
+            
+        pred_matched = y_pred_values[mapping[:, 0]]
+        true_matched = y_true_values[mapping[:, 1]]
+        batch_indices = y_pred_batch_indices[mapping[:, 0]]
+        
+        prob_losses = []
+        for b in range(self._batch_size):
+            batch_mask = batch_indices == b
+            pred_b = pred_matched[batch_mask]
+            true_b = true_matched[batch_mask]
+            
+            if pred_b.size(0) == 0 or true_b.size(0) == 0:
+                prob_loss = y_pred_values[:, 3].mean() * 0.0
+                prob_losses.append(prob_loss)
+                continue
+                
+            prob_loss = torch.norm(pred_b[:, 3:4] - true_b[:, 3:4], dim=1).mean()
+            prob_losses.append(prob_loss)
+            
+        return -torch.stack(prob_losses).mean()
+
+    
+
 # class ChamferMetric(PointcloudOccupancyMetric):
 #     def _calc(self, y_pred, y_true, data_buffer=None, *args, **kwargs):
 #         pred_coords, pred_batch_idx = y_pred

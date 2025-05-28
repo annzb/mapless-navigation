@@ -7,7 +7,7 @@ from dataset import get_dataset, clouds_to_grids
 from models import PolarToCartesianPoints
 from models import CloudsToGrids
 import metrics as metric_defs
-from train_points import get_model
+from src.train_points_generative import get_model
 
 
 def show_radar_grid(grid, voxel_size, point_range, intensity_threshold_percent=0.0):

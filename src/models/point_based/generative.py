@@ -13,7 +13,7 @@ class Baseline(RadarOccupancyModel):
         final_cloud_size = 4096
         
         self.encoder = SinglePointEncoder(output_size=encoded_cloud_size, output_dim=num_features)
-        self.decoder = MlpDecoder(latent_dim=num_features, output_size=final_cloud_size, output_dim=4)
+        self.decoder = MlpDecoder(latent_dim=num_features * 2, output_size=final_cloud_size, output_dim=4)
 
     def forward(self, X, debug=False, **kwargs):
         flat_pts, batch_idx = X

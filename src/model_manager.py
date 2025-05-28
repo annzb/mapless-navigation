@@ -81,13 +81,14 @@ class ModelManager(ABC):
             probability_weight=self.probability_weight,
             unmatched_pred_weight=self.unmatched_pred_weight,
             unmatched_true_weight=self.unmatched_true_weight,
-            device=self.device
+            device=self.device,
+            max_distance=self.max_point_distance
         )
         self.init_metrics(
             batch_size=self.batch_size,
             occupancy_threshold=self.occupancy_threshold,
             occupied_only=self.occupied_only,
-            max_point_distance=self.max_point_distance
+            max_distance=self.max_point_distance
         )
         self.init_optimizer(learning_rate=self.learning_rate)
 
