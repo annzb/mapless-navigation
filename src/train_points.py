@@ -4,7 +4,7 @@ torch.autograd.set_detect_anomaly(True)
 from metrics import metrics as metric_defs
 from utils.dataset import RadarDataset
 from metrics import PointLoss as PointLoss, ChamferPointDataBuffer as PointDataBuffer
-from models import Baseline as PointModel
+from models import GenerativeBaseline as PointModel
 from model_manager import ModelManager
 from utils import get_local_params
 

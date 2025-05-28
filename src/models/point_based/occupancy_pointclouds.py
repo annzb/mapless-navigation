@@ -1,8 +1,11 @@
+import torch
+import torch.nn as nn
+
 from models.base import RadarOccupancyModel
 from models.point_based.encoders import MlpPointEncoder, DualPointEncoder, build_encoder
 from models.point_based.polar_to_cartesian import PolarToCartesianPoints
 from models.point_based.downsampling import TrainedDownsampling
-from models.point_based.pointnet import PointNet, PointNet2Spatial
+from models.point_based.pointnet import PointNet, PointNet2Spatial, SinglePointEncoder
 
 
 class Baseline(RadarOccupancyModel):
@@ -30,7 +33,54 @@ class Baseline(RadarOccupancyModel):
         if debug:
             return embeddings, predicted_log_odds, probs, predicted_flat_indices
         return probs, predicted_flat_indices
+    
+
+class RegressionBaseline(RadarOccupancyModel):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.name = 'gregression_baseline_v1.0'
+        num_features = 128
+        encoded_cloud_size = 1024
         
+        self.encoder = SinglePointEncoder(output_size=encoded_cloud_size, output_dim=num_features)
+        self.decoder = nn.Sequential(
+            nn.Linear(num_features * 2 + 3, 256),
+            nn.ReLU(),
+            nn.Linear(256, 128),
+            nn.ReLU(),
+            nn.Linear(128, 1)  # Predict per-point occupancy logits
+        )
+
+    def forward(self, X, debug=False, **kwargs):
+        flat_pts, batch_idx = X
+
+        encoded_clouds = []
+        for sample_idx in range(self.batch_size):
+            cloud = flat_pts[batch_idx == sample_idx]
+            encoded = self.encoder(cloud)
+            pooled_mean = encoded.mean(dim=0, keepdim=True)
+            pooled_max = encoded.max(dim=0, keepdim=True).values
+            latent = torch.cat([pooled_mean, pooled_max], dim=-1)  # (1, num_features*2)
+            encoded_clouds.append(latent)
+
+        encoded_clouds = torch.cat(encoded_clouds, dim=0)  # (B, latent_dim)
+
+        B, latent_dim = encoded_clouds.shape
+        S = self.support_coords.shape[0]
+        expanded_support_coords = self.support_coords.unsqueeze(0).expand(B, -1, -1) # support_coords: (S, 3) → (B, S, 3)
+        expanded_latent = encoded_clouds.unsqueeze(1).expand(-1, S, -1) # encoded_clouds: (B, latent_dim) → (B, S, latent_dim)
+        decoder_input = torch.cat([expanded_support_coords, expanded_latent], dim=-1)  # (B, S, latent_dim + 3)
+        decoder_input = decoder_input.reshape(B * S, latent_dim + 3) # Reshape to (B*S, latent_dim+3) for MLP
+        clouds_logits = self.decoder(decoder_input).reshape(B, S)
+        clouds_probs = torch.sigmoid(clouds_logits)
+
+        cloud_probs_flat, cloud_probs_indices = self.merge_batches(clouds_probs)
+        self.check_gradient(cloud_probs_flat, "Merged predictions")
+
+        if debug:
+            return encoded_clouds, clouds_logits, clouds_probs, cloud_probs_flat, cloud_probs_indices
+        return cloud_probs_flat, cloud_probs_indices
+
     
 class DualBranchPointnet(RadarOccupancyModel):
     def __init__(self, **kwargs):

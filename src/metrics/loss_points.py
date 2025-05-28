@@ -112,3 +112,43 @@ class PointLoss(PointcloudOccupancyLoss):
         unmatched_loss = self._calc_unmatched_loss(y_pred, y_true, data_buffer)
         total_loss = self.spatial_weight * spatial_loss + self.probability_weight * probability_loss + self.unmatched_weight * unmatched_loss
         return total_loss
+
+
+class RegressionPointLoss(PointcloudOccupancyLoss):
+    def __init__(self, spatial_weight=1.0, probability_weight=1.0, max_distance=10.0, unmatched_weight=1.0, 
+                 unmatched_pred_weight=1.0, unmatched_true_weight=1.0, **kwargs):
+        super().__init__(**kwargs)
+        self.spatial_weight = spatial_weight
+        self.probability_weight = probability_weight
+        self.max_distance = max_distance
+        self.unmatched_weight = unmatched_weight
+        self.unmatched_pred_weight = unmatched_pred_weight
+        self.unmatched_true_weight = unmatched_true_weight
+
+
+    def points_to_grid(points: torch.Tensor, support_coords: torch.Tensor, resolution: float) -> torch.Tensor:
+        device = points.device
+        support_coords = support_coords.to(device)
+        points_xyz = points[:, :3]
+        points_p = points[:, 3]
+
+        support_voxels = torch.round(support_coords / resolution).to(dtype=torch.int32)
+        point_voxels = torch.round(points_xyz / resolution).to(dtype=torch.int32)
+        coeffs = torch.tensor([1_000_000, 1_000, 1], device=device, dtype=torch.int32)
+        flat_support = (support_voxels * coeffs).sum(dim=1)
+        flat_points = (point_voxels * coeffs).sum(dim=1)
+        support_index_map = dict(zip(flat_support.tolist(), range(support_coords.shape[0])))
+        output = torch.zeros(support_coords.shape[0], dtype=torch.float16, device=device)
+
+        for i in range(points.shape[0]):
+            key = flat_points[i].item()
+            if key in support_index_map:
+                output[support_index_map[key]] = points_p[i].half()
+
+        return output
+    
+    def _calc(self, y_pred, y_true, data_buffer=None, *args, **kwargs):
+        spatial_loss, probability_loss = self._calc_matched_loss(y_pred, y_true, data_buffer)
+        unmatched_loss = self._calc_unmatched_loss(y_pred, y_true, data_buffer)
+        total_loss = self.spatial_weight * spatial_loss + self.probability_weight * probability_loss + self.unmatched_weight * unmatched_loss
+        return total_loss
