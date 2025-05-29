@@ -5,14 +5,11 @@ from metrics.data_buffer import OccupancyDataBuffer, PointOccupancyDataBuffer, M
 
 
 class BaseCriteria:
-    def __init__(self, batch_size=0, **kwargs):
+    def __init__(self, batch_size=0, device=None, **kwargs):
         super().__init__()
         self.default_value = 0.0
-        for k, v in kwargs.items():
-            setattr(self, k, v)
-        if batch_size < 1:
-            raise ValueError("batch_size must be positive")
         self._batch_size = batch_size
+        self.device = device
 
     def _validate_input(self, y_pred, y_true, *args, **kwargs):
         return len(y_pred) != 0 or len(y_true) != 0, 'Empty inputs.'
@@ -29,8 +26,7 @@ class BaseCriteria:
 
 class BaseLoss(BaseCriteria, nn.Module):
     def __init__(self, **kwargs):
-        nn.Module.__init__(self)
-        BaseCriteria.__init__(self, **kwargs)
+        super().__init__(**kwargs)
         self.default_value = torch.tensor(float('inf'), device=self.device, requires_grad=True)
 
 
@@ -65,6 +61,10 @@ class BaseMetric(BaseCriteria):
 
 
 class OccupancyCriteria(BaseCriteria):
+    def __init__(self, occupied_only=False, **kwargs):
+        super().__init__(**kwargs)
+        self.occupied_only = occupied_only
+
     def _validate_input(self, y_pred, y_true, data_buffer=None, *args, **kwargs):
         valid, error = super()._validate_input(y_pred, y_true, data_buffer=data_buffer, *args, **kwargs)
         if valid:
@@ -77,8 +77,12 @@ class OccupancyCriteria(BaseCriteria):
 
 
 class PointcloudOccupancyCriteria(OccupancyCriteria):
-    def _validate_input(self, y_pred, y_true, data_buffer=None, occupied_only=False, *args, **kwargs):
-        valid, error = super()._validate_input(y_pred, y_true, data_buffer=data_buffer, occupied_only=occupied_only, *args, **kwargs)
+    def __init__(self, max_point_distance=10, **kwargs):
+        super().__init__(**kwargs)
+        self.max_distance = max_point_distance
+
+    def _validate_input(self, y_pred, y_true, data_buffer=None, *args, **kwargs):
+        valid, error = super()._validate_input(y_pred, y_true, data_buffer=data_buffer, *args, **kwargs)
         if valid:
             if data_buffer is None or not isinstance(data_buffer, (PointOccupancyDataBuffer, MappedPointOccupancyDataBuffer)):
                 valid, error = False, f'Data buffer not available. Expected instance of {PointOccupancyDataBuffer.__name__} or {MappedPointOccupancyDataBuffer.__name__}, got {type(data_buffer).__name__}'
@@ -89,6 +93,56 @@ class PointcloudOccupancyCriteria(OccupancyCriteria):
                 if data_buffer.mapping() is None:
                     valid, error = False, 'Point mapping not available in data buffer.'
         return valid, error
+    
+    def _calc_matched_masks(self, y_pred_batch_indices, y_true_batch_indices, data_buffer):
+        mapped_mask, mapped_mask_other = data_buffer.mapped_mask()
+        pred_occ_mask, true_occ_mask = data_buffer.occupied_mask()
+        masks = []
+        
+        for b in range(self._batch_size):
+            pred_mask = (y_pred_batch_indices == b) & mapped_mask
+            true_mask = (y_true_batch_indices == b) & mapped_mask_other
+            if data_buffer._match_occupied_only:
+                pred_mask &= pred_occ_mask
+                true_mask &= true_occ_mask
+            masks.append((pred_mask, true_mask))
+
+        return masks
+    
+    def _calc_unmatched_masks(self, y_pred_batch_indices, y_true_batch_indices, data_buffer):
+        mapped_mask, mapped_mask_other = data_buffer.mapped_mask()
+        pred_occ_mask, true_occ_mask = data_buffer.occupied_mask()
+        masks = []
+        
+        for b in range(self._batch_size):
+            pred_mask = (y_pred_batch_indices == b) & ~mapped_mask
+            true_mask = (y_true_batch_indices == b) & ~mapped_mask_other
+            if data_buffer._match_occupied_only:
+                pred_mask &= pred_occ_mask
+                true_mask &= true_occ_mask
+            masks.append((pred_mask, true_mask))
+
+        return masks
+    
+    def _calc_matching_ratios(self, y_pred_batch_indices, y_true_batch_indices, data_buffer, target_masks):
+        pred_occ_mask, true_occ_mask = data_buffer.occupied_mask()
+        ratios = []
+        
+        for b in range(self._batch_size):
+            pred_mask, true_mask = target_masks[b]
+            n_target_pred = pred_mask.sum().float()
+            n_target_true = true_mask.sum().float()
+
+            if self.occupied_only:
+                n_pred, n_true = ((y_pred_batch_indices == b) & pred_occ_mask).sum(), ((y_true_batch_indices == b) & true_occ_mask).sum()
+            else:
+                n_pred, n_true = (y_pred_batch_indices == b).sum(), (y_true_batch_indices == b).sum()
+
+            total_points = n_pred + n_true + 1e-6
+            ratio = (n_target_pred + n_target_true) / total_points
+            ratios.append(ratio)
+
+        return torch.stack(ratios)
 
 
 class GridOccupancyCriteria(OccupancyCriteria): pass

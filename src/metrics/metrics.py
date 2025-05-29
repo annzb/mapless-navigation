@@ -6,72 +6,45 @@ from sklearn.metrics import average_precision_score, roc_auc_score
 from metrics.base import PointcloudOccupancyMetric
 
 
-class OccupancyRatio(PointcloudOccupancyMetric):
-    def _calc(self, y_pred, y_true, data_buffer=None, *args, **kwargs):
-        pred_occupied_mask, true_occupied_mask = data_buffer.occupied_mask()
-        pred_ratio = pred_occupied_mask.float().mean()
-        true_ratio = true_occupied_mask.float().mean()
-        score = 1.0 - torch.abs(pred_ratio - true_ratio)
-        return score
-    
+# class OccupancyRatio(PointcloudOccupancyMetric):
+#     def _calc(self, y_pred, y_true, data_buffer=None, *args, **kwargs):
+#         y_pred_batch_indices, y_true_batch_indices = y_pred[1], y_true[1]
+#         target_masks = self._calc_matched_masks(y_pred_batch_indices, y_true_batch_indices, data_buffer)
+
+#         matched_ratios = []
+#         for b in range(self._batch_size):
+#             pred_mask, true_mask = target_masks[b]
+#             n_matched_pred = pred_mask.sum().float()
+#             n_matched_true = true_mask.sum().float()
+#             matched_ratios.append((n_matched_pred + n_matched_true) / (len(y_pred[0]) + len(y_true[0])))
+
+#         pred_occupied_mask, true_occupied_mask = data_buffer.occupied_mask()
+#         pred_ratio = pred_occupied_mask.float().mean()
+#         true_ratio = true_occupied_mask.float().mean()
+#         score = 1.0 - torch.abs(pred_ratio - true_ratio)
+#         return score
+
 
 class MatchedPointRatio(PointcloudOccupancyMetric):
     def _calc(self, y_pred, y_true, data_buffer=None, *args, **kwargs):
-        (y_pred_values, y_pred_batch_indices), (y_true_values, y_true_batch_indices) = y_pred, y_true
-        mapped_mask, mapped_mask_other = data_buffer.mapped_mask()
-        pred_occ_mask, true_occ_mask = data_buffer.occupied_mask()
-        
-        matched_ratios = []
-        
-        for b in range(self._batch_size):
-            pred_mask = (y_pred_batch_indices == b) & ~mapped_mask
-            true_mask = (y_true_batch_indices == b) & ~mapped_mask_other
-            
-            if data_buffer._match_occupied_only:
-                pred_mask &= pred_occ_mask
-                true_mask &= true_occ_mask
-            
-            n_pred, n_true = (y_pred_batch_indices == b).sum(), (y_true_batch_indices == b).sum()
-            total_points = (n_pred + n_true).float() + 1e-6
-            n_unmatched_pred = pred_mask.sum().float()
-            n_unmatched_true = true_mask.sum().float()
-            unmatched_ratio = (n_unmatched_pred + n_unmatched_true) / total_points
-            matched_ratios.append(1.0 - unmatched_ratio)
-
-        return torch.stack(matched_ratios).mean()
+        y_pred_batch_indices, y_true_batch_indices = y_pred[1], y_true[1]
+        target_masks = self._calc_matched_masks(y_pred_batch_indices, y_true_batch_indices, data_buffer)
+        matched_ratios = self._calc_matching_ratios(y_pred_batch_indices, y_true_batch_indices, data_buffer, target_masks)
+        return matched_ratios.mean()
     
 
 class NegativeUnmatchedLoss(PointcloudOccupancyMetric):
     def _calc(self, y_pred, y_true, data_buffer=None, *args, **kwargs):
         (y_pred_values, y_pred_batch_indices), (y_true_values, y_true_batch_indices) = y_pred, y_true
-        mapped_mask, mapped_mask_other = data_buffer.mapped_mask()
-        pred_occ_mask, true_occ_mask = data_buffer.occupied_mask()
         
+        target_masks = self._calc_unmatched_masks(y_pred_batch_indices, y_true_batch_indices, data_buffer)
+        unmatched_ratios = self._calc_matching_ratios(y_pred_batch_indices, y_true_batch_indices, data_buffer, target_masks)
         unmatched_losses = []
         
         for b in range(self._batch_size):
-            pred_mask = (y_pred_batch_indices == b) & ~mapped_mask
-            true_mask = (y_true_batch_indices == b) & ~mapped_mask_other
-            
-            if data_buffer._match_occupied_only:
-                pred_mask &= pred_occ_mask
-                true_mask &= true_occ_mask
-            
-            n_pred, n_true = (y_pred_batch_indices == b).sum(), (y_true_batch_indices == b).sum()
-            total_points = (n_pred + n_true).float() + 1e-6
-            n_unmatched_pred = pred_mask.sum().float()
-            n_unmatched_true = true_mask.sum().float()
-            unmatched_ratio = (n_unmatched_pred + n_unmatched_true) / total_points
-            unmatched_loss = unmatched_ratio * self.max_distance
-
-            if pred_mask.any():
-                gradient_anchor = y_pred_values[pred_mask, 3].mean()
-            elif true_mask.any():
-                gradient_anchor = y_true_values[true_mask, 3].mean()
-            else:
-                gradient_anchor = y_pred_values[:, 3].mean()  # fallback
-            
-            unmatched_losses.append(unmatched_loss + gradient_anchor * 0.0)  # maintains gradient flow
+            unmatched_loss = unmatched_ratios[b] * self.max_distance
+            gradient_anchor = y_pred_values[:, 3].mean()
+            unmatched_losses.append(unmatched_loss + gradient_anchor * 0.0)
 
         return -torch.stack(unmatched_losses).mean()
     

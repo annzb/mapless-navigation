@@ -32,7 +32,7 @@ class ModelManager(ABC):
             # overridable params
             # ...
             # loss
-            loss_spatial_penalty=1, loss_spatial_weight=1.0, loss_probability_weight=1.0,
+            loss_spatial_weight=1.0, loss_probability_weight=1.0,
             loss_unmatched_pred_weight=1.0, loss_unmatched_true_weight=1.0,
             # loss, metrics
             occupancy_threshold=0.5, evaluate_over_occupied_points_only=False,
@@ -47,50 +47,37 @@ class ModelManager(ABC):
             session_name=None,
             **kwargs
     ):
-        self.occupancy_threshold = occupancy_threshold
-        self.occupied_only = evaluate_over_occupied_points_only
-        self.max_point_distance = max_point_distance
-        self.spatial_penalty = loss_spatial_penalty
-        self.spatial_weight = loss_spatial_weight
-        self.probability_weight = loss_probability_weight
-        self.unmatched_pred_weight = loss_unmatched_pred_weight
-        self.unmatched_true_weight = loss_unmatched_true_weight
-        self.learning_rate = learning_rate
         self.logger = logger
-        self.n_epochs = n_epochs
-        self.batch_size = batch_size
-
+        self.n_epochs, self.batch_size = n_epochs, batch_size
         self._define_types()
         self._init_device(device_name)
 
-        self.init_data_buffer(occupancy_threshold=self.occupancy_threshold, match_occupied_only=self.occupied_only)
+        self.init_data_buffer(occupancy_threshold=occupancy_threshold, match_occupied_only=evaluate_over_occupied_points_only)
         self.train_loader, self.val_loader, self.test_loader, self.radar_config = get_dataset(
             dataset_file_path=dataset_path, dataset_type=self._dataset_type,
-            batch_size=self.batch_size, partial=dataset_part, shuffle_runs=shuffle_dataset_runs,
+            batch_size=batch_size, partial=dataset_part, shuffle_runs=shuffle_dataset_runs,
             grid_voxel_size=grid_voxel_size, random_state=random_state,
             data_buffer=self.data_buffer, device=self.device, 
             intensity_threshold=radar_point_intensity_threshold
         )
         self.init_model()
         self.init_loss_function(
-            batch_size=self.batch_size,
-            occupancy_threshold=self.occupancy_threshold,
-            occupied_only=self.occupied_only,
-            unmatched_point_spatial_penalty=loss_spatial_penalty,
-            spatial_weight=self.spatial_weight,
-            probability_weight=self.probability_weight,
-            unmatched_pred_weight=self.unmatched_pred_weight,
-            unmatched_true_weight=self.unmatched_true_weight,
             device=self.device,
-            max_distance=self.max_point_distance
+            batch_size=batch_size,
+            occupied_only=evaluate_over_occupied_points_only,
+            max_point_distance=max_point_distance,
+            spatial_weight=loss_spatial_weight,
+            probability_weight=loss_probability_weight,
+            unmatched_pred_weight=loss_unmatched_pred_weight,
+            unmatched_true_weight=loss_unmatched_true_weight,
+            grid_resolution=grid_voxel_size
         )
         self.init_metrics(
-            batch_size=self.batch_size,
-            occupancy_threshold=self.occupancy_threshold,
-            occupied_only=self.occupied_only,
-            max_distance=self.max_point_distance
+            batch_size=batch_size,
+            occupied_only=evaluate_over_occupied_points_only,
+            max_point_distance=max_point_distance
         )
-        self.init_optimizer(learning_rate=self.learning_rate)
+        self.init_optimizer(learning_rate=learning_rate)
 
         self.session_name = datetime.now().strftime("%d%B%y").lower()  # current date as DDmonthYY
         if session_name:
@@ -103,12 +90,12 @@ class ModelManager(ABC):
             config={
                 "dataset": os.path.basename(dataset_path),
                 "model": self.model.name,
-                "learning_rate": self.learning_rate,
-                "epochs": self.n_epochs,
+                "learning_rate": learning_rate,
+                "epochs": n_epochs,
                 "dataset_part": dataset_part,
-                "batch_size": self.batch_size,
-                "occupancy_threshold": self.occupancy_threshold,
-                "point_match_radius": self.max_point_distance,
+                "batch_size": batch_size,
+                "occupancy_threshold": occupancy_threshold,
+                "point_match_radius": max_point_distance,
                 "loss": {
                     "name": self.loss_fn.__class__.__name__,
                     "point_mapping_method": self.data_buffer.__class__.__name__,
@@ -145,7 +132,7 @@ class ModelManager(ABC):
         self.data_buffer = self._data_buffer_type(**kwargs)
 
     def init_loss_function(self, **kwargs):
-        self.loss_fn = self._loss_type(point_mapper=self.data_buffer, **kwargs)
+        self.loss_fn = self._loss_type(**kwargs)
 
     def init_optimizer(self, learning_rate=None, **kwargs):
         self.optimizer = self._optimizer_type(self.model.parameters(), lr=learning_rate)
@@ -153,7 +140,7 @@ class ModelManager(ABC):
     def init_metrics(self, **kwargs):
         self.metrics = {}
         for mode in self._modes:
-            self.metrics[mode] = tuple(m_t(name=mode, point_mapper=self.data_buffer, **kwargs) for m_t in self._metric_types)
+            self.metrics[mode] = tuple(m_t(name=mode, **kwargs) for m_t in self._metric_types)
 
     def report_metrics(self, mode=None):
         if mode and mode not in self._modes:
@@ -193,23 +180,6 @@ class ModelManager(ABC):
         metrics = self.metrics[mode] if mode else np.concatenate(list(self.metrics.values()), axis=0)
         for metric in metrics:
             metric.reset()
-
-    def reset_params(self, **kwargs):
-        for k, v in kwargs.items():
-            if v is not None:
-                setattr(self, k, v)
-        self.init_loss_function(
-            occupancy_threshold=self.occupancy_threshold,
-            occupied_only=self.occupied_only,
-            spatial_weight=self.spatial_weight,
-            probability_weight=self.probability_weight
-        )
-        self.init_metrics(
-            occupancy_threshold=self.occupancy_threshold,
-            occupied_only=self.occupied_only,
-            max_point_distance=self.max_point_distance
-        )
-        self.init_optimizer(learning_rate=self.learning_rate)
 
     def _evaluate_current_model(self, mode, data_loader):
         eval_loss = 0.0

@@ -213,14 +213,6 @@ class MappedPointOccupancyDataBuffer(PointOccupancyDataBuffer):
         """
         return self._mapped_mask
 
-    # def occupied_mapped_mask(self):
-    #     """Get the pair of masks indicating occupied mapped points.
-        
-    #     Returns:
-    #         Tuple of (mask, mask_other) where each mask is a boolean tensor indicating which occupied points are mapped to occupied points in the other cloud.
-    #     """
-    #     return self._occupied_mapped_mask
-
     def mapping(self):
         """Get the soft mapping between points.
         
@@ -228,14 +220,6 @@ class MappedPointOccupancyDataBuffer(PointOccupancyDataBuffer):
             Tensor of shape (N_matches, 2) containing the soft mapping weights between matched points.
         """
         return self._mapping
-
-    # def occupied_mapping(self):
-    #     """Get the soft mapping between occupied points.
-        
-    #     Returns:
-    #         Tensor of shape (N_matches, 2) containing the soft mapping weights between matched occupied points.
-    #     """
-    #     return self._occupied_mapping
 
     @abstractmethod
     def match_points(self, cloud_values_1, batch_indices_1, cloud_values_2, batch_indices_2, **kwargs):

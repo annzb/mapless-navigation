@@ -3,6 +3,7 @@ import sys
 
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
@@ -31,8 +32,7 @@ class MsePointLoss(PointcloudOccupancyLoss):
 
 
 class PointLoss(PointcloudOccupancyLoss):
-    def __init__(self, spatial_weight=1.0, probability_weight=1.0, max_distance=10.0, unmatched_weight=1.0, 
-                 unmatched_pred_weight=1.0, unmatched_true_weight=1.0, **kwargs):
+    def __init__(self, spatial_weight=1.0, probability_weight=1.0, max_distance=10.0, unmatched_weight=1.0, unmatched_pred_weight=1.0, unmatched_true_weight=1.0, **kwargs):
         super().__init__(**kwargs)
         self.spatial_weight = spatial_weight
         self.probability_weight = probability_weight
@@ -77,33 +77,14 @@ class PointLoss(PointcloudOccupancyLoss):
 
     def _calc_unmatched_loss(self, y_pred, y_true, data_buffer):
         (y_pred_values, y_pred_batch_indices), (y_true_values, y_true_batch_indices) = y_pred, y_true
-        mapped_mask, mapped_mask_other = data_buffer.mapped_mask()
-        pred_occ_mask, true_occ_mask = data_buffer.occupied_mask()
         
+        target_masks = self._calc_unmatched_masks(y_pred_batch_indices, y_true_batch_indices, data_buffer)
+        unmatched_ratios = self._calc_matching_ratios(y_pred_batch_indices, y_true_batch_indices, data_buffer, target_masks)
         unmatched_losses = []
         
         for b in range(self._batch_size):
-            pred_mask = (y_pred_batch_indices == b) & ~mapped_mask
-            true_mask = (y_true_batch_indices == b) & ~mapped_mask_other
-            
-            if data_buffer._match_occupied_only:
-                pred_mask &= pred_occ_mask
-                true_mask &= true_occ_mask
-            
-            n_pred, n_true = (y_pred_batch_indices == b).sum(), (y_true_batch_indices == b).sum()
-            total_points = (n_pred + n_true).float() + 1e-6
-            n_unmatched_pred = pred_mask.sum().float()
-            n_unmatched_true = true_mask.sum().float()
-            unmatched_ratio = (n_unmatched_pred + n_unmatched_true) / total_points
-            unmatched_loss = unmatched_ratio * self.max_distance
-
-            if pred_mask.any():
-                gradient_anchor = y_pred_values[pred_mask, 3].mean()
-            elif true_mask.any():
-                gradient_anchor = y_true_values[true_mask, 3].mean()
-            else:
-                gradient_anchor = y_pred_values[:, 3].mean()  # fallback
-            
+            unmatched_loss = unmatched_ratios[b] * self.max_distance
+            gradient_anchor = y_pred_values[:, 3].mean()
             unmatched_losses.append(unmatched_loss + gradient_anchor * 0.0)  # maintains gradient flow
 
         return torch.stack(unmatched_losses).mean()
@@ -112,31 +93,44 @@ class PointLoss(PointcloudOccupancyLoss):
         spatial_loss, probability_loss = self._calc_matched_loss(y_pred, y_true, data_buffer)
         unmatched_loss = self._calc_unmatched_loss(y_pred, y_true, data_buffer)
         total_loss = self.spatial_weight * spatial_loss + self.probability_weight * probability_loss + self.unmatched_weight * unmatched_loss
-        # context = {
-        #     'spatial_loss': spatial_loss,
-        #     'probability_loss': probability_loss,
-        #     'unmatched_loss': unmatched_loss
-        # }
         return total_loss
 
 
 class RegressionPointLoss(PointcloudOccupancyLoss):
-    def __init__(self, **kwargs):
+    def __init__(self, alpha=0.25, gamma=2.0, **kwargs):
         super().__init__(**kwargs)
+        self.alpha = alpha
+        self.gamma = gamma
+        self._init_points()
 
-    def points_to_grid(points: torch.Tensor, support_coords: torch.Tensor, resolution: float) -> torch.Tensor:
-        device = points.device
-        support_coords = support_coords.to(device)
+    def _init_points(self):
+        el_bins = torch.tensor(self.radar_config.clipped_elevation_bins, dtype=torch.float16)
+        az_bins = torch.tensor(self.radar_config.clipped_azimuth_bins, dtype=torch.float16)
+        r_bins = torch.linspace(
+            0,
+            (self.radar_config.num_range_bins - 1) * self.radar_config.range_bin_width,
+            self.radar_config.num_range_bins,
+            dtype=torch.float16
+        )
+        el_grid, az_grid, r_grid = torch.meshgrid(el_bins, az_bins, r_bins, indexing="ij")
+        x = r_grid * torch.cos(el_grid) * torch.sin(az_grid)
+        y = r_grid * torch.cos(el_grid) * torch.cos(az_grid)
+        z = r_grid * torch.sin(el_grid)
+
+        self.support_coords = torch.stack((x, y, z), dim=-1).reshape(-1, 3)
+
+    def _points_to_grid(self, points: torch.Tensor, batch_idx: torch.Tensor) -> torch.Tensor:
+        support_coords = self.support_coords.to(self.device)
         points_xyz = points[:, :3]
         points_p = points[:, 3]
 
-        support_voxels = torch.round(support_coords / resolution).to(dtype=torch.int32)
-        point_voxels = torch.round(points_xyz / resolution).to(dtype=torch.int32)
-        coeffs = torch.tensor([1_000_000, 1_000, 1], device=device, dtype=torch.int32)
+        support_voxels = torch.round(support_coords / self.grid_resolution).to(dtype=torch.int32)
+        point_voxels = torch.round(points_xyz / self.grid_resolution).to(dtype=torch.int32)
+        coeffs = torch.tensor([1_000_000, 1_000, 1], device=self.device, dtype=torch.int32)
         flat_support = (support_voxels * coeffs).sum(dim=1)
         flat_points = (point_voxels * coeffs).sum(dim=1)
         support_index_map = dict(zip(flat_support.tolist(), range(support_coords.shape[0])))
-        output = torch.zeros(support_coords.shape[0], dtype=torch.float16, device=device)
+        output = torch.zeros(support_coords.shape[0], dtype=torch.float16, device=self.device)
 
         for i in range(points.shape[0]):
             key = flat_points[i].item()
@@ -146,13 +140,7 @@ class RegressionPointLoss(PointcloudOccupancyLoss):
         return output
     
     def _calc(self, y_pred, y_true, data_buffer=None, *args, **kwargs):
-        spatial_loss, probability_loss = self._calc_matched_loss(y_pred, y_true, data_buffer)
-        unmatched_loss, unmatched_context = self._calc_unmatched_loss(y_pred, y_true, data_buffer)
-        total_loss = self.spatial_weight * spatial_loss + self.probability_weight * probability_loss + self.unmatched_weight * unmatched_loss
-        context = {
-            'spatial_loss': spatial_loss,
-            'probability_loss': probability_loss,
-            'unmatched_loss': unmatched_loss,
-            **unmatched_context
-        }
-        return total_loss, context
+        y_true = self._points_to_grid(*y_true)
+        bce = F.binary_cross_entropy_with_logits(y_pred[0], y_true, reduction='none')
+        focal = self.alpha * (1 - torch.exp(-bce)) ** self.gamma * bce
+        return focal.mean()

@@ -20,7 +20,6 @@ class PointModelManager(ModelManager):
         self._data_buffer_type = PointDataBuffer
         self._loss_type = PointLoss
         self._metric_types = (
-            metric_defs.OccupancyRatio,
             metric_defs.MatchedPointRatio,
             metric_defs.NegativeOccupancyLoss,
             metric_defs.NegativeSpatialLoss,
@@ -38,13 +37,15 @@ def run():
     OCCUPANCY_THRESHOLD = 0.6
     EVAL_OVER_OCCUPIED_POINTS_ONLY = True
     # POINT_MATCH_RADIUS = 0.25
-    NO_MATCH_DISTANCE_PENALTY=10
+    NO_MATCH_DISTANCE_PENALTY = 10
+    MAX_POINT_DISTANCE = 2
     LEARNING_RATE = 0.01
-    RADAR_POINT_INTENSITY_THRESHOLD = 5000
+    RADAR_POINT_INTENSITY_THRESHOLD = 0
 
     local_params = get_local_params()
 
     mm = PointModelManager(
+        max_point_distance=MAX_POINT_DISTANCE,
         radar_point_intensity_threshold=RADAR_POINT_INTENSITY_THRESHOLD,
         shuffle_dataset_runs=SHUFFLE_RUNS, random_state=RANDOM_SEEED,
         learning_rate=LEARNING_RATE,

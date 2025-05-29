@@ -20,7 +20,6 @@ class PointModelManager(ModelManager):
         self._data_buffer_type = PointDataBuffer
         self._loss_type = PointLoss
         self._metric_types = (
-            metric_defs.OccupancyRatio,
             metric_defs.MatchedPointRatio,
             metric_defs.NegativeOccupancyLoss,
             metric_defs.NegativeSpatialLoss,
@@ -34,7 +33,7 @@ def run():
     SESSION_NAME = 'generative_baseline'
     LOSS_SPATIAL_WEIGHT = 1.0
     LOSS_PROBABILITY_WEIGHT = 1.0
-    UNMATCHED_WEIGHT = 0.01
+    UNMATCHED_WEIGHT = 0.1
     OCCUPANCY_THRESHOLD = 0.6
     EVAL_OVER_OCCUPIED_POINTS_ONLY = True
     # POINT_MATCH_RADIUS = 0.25
