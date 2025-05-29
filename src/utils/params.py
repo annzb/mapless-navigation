@@ -25,10 +25,10 @@ def get_local_params():
     else:
         dataset_path = '/home/arpg/coloradar/one-mar11.h5'
         device_name = 'cpu'
-        dataset_part = 0.2
+        dataset_part = 0.05
         logger = Logger(print_log=True)
         batch_size = 2
-        n_epochs = 2
+        n_epochs = 1000
         model_save_directory = '/home/arpg/projects/mapless-navigation/trained_models'
 
     return {

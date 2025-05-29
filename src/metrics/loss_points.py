@@ -32,11 +32,10 @@ class MsePointLoss(PointcloudOccupancyLoss):
 
 
 class PointLoss(PointcloudOccupancyLoss):
-    def __init__(self, spatial_weight=1.0, probability_weight=1.0, max_distance=10.0, unmatched_weight=1.0, unmatched_pred_weight=1.0, unmatched_true_weight=1.0, **kwargs):
+    def __init__(self, spatial_weight=1.0, probability_weight=1.0, unmatched_weight=1.0, unmatched_pred_weight=1.0, unmatched_true_weight=1.0, **kwargs):
         super().__init__(**kwargs)
         self.spatial_weight = spatial_weight
         self.probability_weight = probability_weight
-        self.max_distance = max_distance
         self.unmatched_weight = unmatched_weight
         self.unmatched_pred_weight = unmatched_pred_weight
         self.unmatched_true_weight = unmatched_true_weight
@@ -94,6 +93,35 @@ class PointLoss(PointcloudOccupancyLoss):
         unmatched_loss = self._calc_unmatched_loss(y_pred, y_true, data_buffer)
         total_loss = self.spatial_weight * spatial_loss + self.probability_weight * probability_loss + self.unmatched_weight * unmatched_loss
         return total_loss
+
+
+class PointLoss2(PointLoss):
+    def _calc_unmatched_loss(self, y_pred, y_true, data_buffer):
+        (y_pred_values, y_pred_batch_indices), (y_true_values, y_true_batch_indices) = y_pred, y_true
+        target_masks = self._calc_unmatched_masks(y_pred_batch_indices, y_true_batch_indices, data_buffer)
+        unmatched_losses = []
+        
+        for b in range(self._batch_size):
+            pred_unmatched_mask, true_unmatched_mask = target_masks[b]
+            
+            # Penalize unmatched predictions explicitly
+            pred_unmatched_confidence = y_pred_values[pred_unmatched_mask, 3]
+            if pred_unmatched_confidence.numel() > 0:
+                pred_loss = torch.mean(pred_unmatched_confidence ** 2)
+            else:
+                pred_loss = y_pred_values[:, 3].mean() * 0.0  # Maintain gradient
+            
+            # Penalize unmatched ground truth explicitly
+            true_unmatched_confidence = y_true_values[true_unmatched_mask, 3]
+            if true_unmatched_confidence.numel() > 0:
+                true_loss = torch.mean((1 - true_unmatched_confidence) ** 2)
+            else:
+                true_loss = y_pred_values[:, 3].mean() * 0.0  # Maintain gradient
+            
+            total_unmatched_loss = self.unmatched_pred_weight * pred_loss + self.unmatched_true_weight * true_loss
+            unmatched_losses.append(total_unmatched_loss)
+
+        return torch.stack(unmatched_losses).mean()
 
 
 class RegressionPointLoss(PointcloudOccupancyLoss):

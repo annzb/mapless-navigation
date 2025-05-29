@@ -54,6 +54,10 @@ class OccupancyDataBuffer(ABC):
 
 
 class PointOccupancyDataBuffer(OccupancyDataBuffer):
+    def __init__(self, max_point_distance=10.0, **kwargs):
+        super().__init__(**kwargs)
+        self.max_point_distance = max_point_distance
+
     def _validate_input(self, y, y_other=None, **kwargs):
         """Validate input data.
         
@@ -265,7 +269,6 @@ class ChamferPointDataBuffer(MappedPointOccupancyDataBuffer):
             
         # Get unique batch indices
         unique_batches = torch.unique(batch_indices_1)
-        max_distance = 10.0  # Maximum distance threshold for valid matches
         
         # Pre-allocate lists for matches
         all_matches = []
@@ -303,7 +306,7 @@ class ChamferPointDataBuffer(MappedPointOccupancyDataBuffer):
             matched_idx2 = best_12[mutual_mask]
             
             # Filter by distance threshold efficiently
-            valid_dist_mask = dists[matched_idx1, matched_idx2] <= max_distance
+            valid_dist_mask = dists[matched_idx1, matched_idx2] <= self.max_point_distance
             matched_idx1 = matched_idx1[valid_dist_mask]
             matched_idx2 = matched_idx2[valid_dist_mask]
             

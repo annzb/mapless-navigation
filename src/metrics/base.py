@@ -31,12 +31,13 @@ class BaseLoss(BaseCriteria, nn.Module):
 
 
 class BaseMetric(BaseCriteria):
-    def __init__(self, name='', **kwargs):
+    def __init__(self, name='', score_multiplier=1.0, **kwargs):
         super().__init__(**kwargs)
         self.total_score = 0.0
         self.best_score = 0.0
         self.name = (f'{name}_' if name else '') + self.__class__.__name__.lower()
         self._scaled = False
+        self.score_multiplier = score_multiplier
 
     def reset_epoch(self):
         self.total_score = 0.0
@@ -55,9 +56,9 @@ class BaseMetric(BaseCriteria):
             self.best_score = self.total_score
 
     def __call__(self, y_pred, y_true, *args, **kwargs):
-        score = self.forward(y_pred, y_true, *args, **kwargs)
+        score = self.forward(y_pred, y_true, *args, **kwargs) * self.score_multiplier
         self.total_score += score
-        return score
+        return score.detach().item()
 
 
 class OccupancyCriteria(BaseCriteria):
@@ -130,8 +131,7 @@ class PointcloudOccupancyCriteria(OccupancyCriteria):
         
         for b in range(self._batch_size):
             pred_mask, true_mask = target_masks[b]
-            n_target_pred = pred_mask.sum().float()
-            n_target_true = true_mask.sum().float()
+            n_target_pred, n_target_true = pred_mask.sum(), true_mask.sum()
 
             if self.occupied_only:
                 n_pred, n_true = ((y_pred_batch_indices == b) & pred_occ_mask).sum(), ((y_true_batch_indices == b) & true_occ_mask).sum()

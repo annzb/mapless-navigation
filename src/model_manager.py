@@ -32,8 +32,7 @@ class ModelManager(ABC):
             # overridable params
             # ...
             # loss
-            loss_spatial_weight=1.0, loss_probability_weight=1.0,
-            loss_unmatched_pred_weight=1.0, loss_unmatched_true_weight=1.0,
+            loss_spatial_weight=1.0, loss_probability_weight=1.0, loss_unmatched_weight=1.0,
             # loss, metrics
             occupancy_threshold=0.5, evaluate_over_occupied_points_only=False,
             # metrics
@@ -52,7 +51,7 @@ class ModelManager(ABC):
         self._define_types()
         self._init_device(device_name)
 
-        self.init_data_buffer(occupancy_threshold=occupancy_threshold, match_occupied_only=evaluate_over_occupied_points_only)
+        self.init_data_buffer(occupancy_threshold=occupancy_threshold, match_occupied_only=evaluate_over_occupied_points_only, max_point_distance=max_point_distance)
         self.train_loader, self.val_loader, self.test_loader, self.radar_config = get_dataset(
             dataset_file_path=dataset_path, dataset_type=self._dataset_type,
             batch_size=batch_size, partial=dataset_part, shuffle_runs=shuffle_dataset_runs,
@@ -68,8 +67,7 @@ class ModelManager(ABC):
             max_point_distance=max_point_distance,
             spatial_weight=loss_spatial_weight,
             probability_weight=loss_probability_weight,
-            unmatched_pred_weight=loss_unmatched_pred_weight,
-            unmatched_true_weight=loss_unmatched_true_weight,
+            unmatched_weight=loss_unmatched_weight,
             grid_resolution=grid_voxel_size
         )
         self.init_metrics(
@@ -198,7 +196,7 @@ class ModelManager(ABC):
                 batch_loss = self.loss_fn(y_pred=(pred_frames, pred_indices), y_true=(lidar_frames, lidar_frame_indices), data_buffer=self.data_buffer)
                 self.apply_metrics(y_pred=(pred_frames, pred_indices), y_true=(lidar_frames, lidar_frame_indices), data_buffer=self.data_buffer, mode=mode)
 
-                eval_loss += batch_loss.item()
+                eval_loss += batch_loss.detach().item()
 
             eval_loss /= len(data_loader)
             self.scale_metrics(n_samples=len(data_loader), mode=mode)
@@ -223,7 +221,7 @@ class ModelManager(ABC):
             batch_loss = self.loss_fn(y_pred=(pred_frames, pred_indices), y_true=(lidar_frames, lidar_frame_indices), data_buffer=self.data_buffer)
             self.apply_metrics(y_pred=(pred_frames, pred_indices), y_true=(lidar_frames, lidar_frame_indices), data_buffer=self.data_buffer, mode=mode)
 
-            epoch_loss += batch_loss.item()
+            epoch_loss += batch_loss.detach().item()
             batch_loss = batch_loss / len(radar_frames)
 
             self.optimizer.zero_grad(set_to_none=True)
