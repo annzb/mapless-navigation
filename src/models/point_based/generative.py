@@ -39,5 +39,5 @@ class Baseline(RadarOccupancyModel):
         self.check_gradient(probs, "Final probabilities")
 
         if debug:
-            return pred_clouds, probs, predicted_flat_indices
+            return pred_clouds, predicted_log_odds_flat, probs, predicted_flat_indices
         return probs, predicted_flat_indices

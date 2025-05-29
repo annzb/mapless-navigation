@@ -28,17 +28,30 @@ class PointModelManager(ModelManager):
 
 
 def run():
-    SHUFFLE_RUNS = True
     RANDOM_SEEED = 42
     SESSION_NAME = 'generative_baseline'
-    LOSS_SPATIAL_WEIGHT = 1.0
-    LOSS_PROBABILITY_WEIGHT = 1.0
-    UNMATCHED_WEIGHT = 10.0
+
+    # Dataset
+    RADAR_POINT_INTENSITY_THRESHOLD = 5000
+    SHUFFLE_RUNS = True
+    
+    # Loss
+    SPATIAL_WEIGHT = 1.0
+    OCCUPANCY_WEIGHT = 1.0
+    UNMATCHED_WEIGHT = 1.0
+    UNMATCHED_FN_FP_WEIGHT = 1.0
+    UNMATCHED_FN_WEIGHT = 1.0
+    UNMATCHED_FP_WEIGHT = 1.0
+
+    # Evaluation
+    # Evaluation parameters
     OCCUPANCY_THRESHOLD = 0.6
     EVAL_OVER_OCCUPIED_POINTS_ONLY = True
-    MAX_POINT_DISTANCE = 2
+    MAX_POINT_DISTANCE = 1
+
+    # Training parameters
     LEARNING_RATE = 0.001
-    RADAR_POINT_INTENSITY_THRESHOLD = 5000
+    
 
     local_params = get_local_params()
 
@@ -48,8 +61,9 @@ def run():
         shuffle_dataset_runs=SHUFFLE_RUNS, random_state=RANDOM_SEEED,
         learning_rate=LEARNING_RATE,
         occupancy_threshold=OCCUPANCY_THRESHOLD, evaluate_over_occupied_points_only=EVAL_OVER_OCCUPIED_POINTS_ONLY,
-        loss_spatial_weight=LOSS_SPATIAL_WEIGHT, loss_probability_weight=LOSS_PROBABILITY_WEIGHT,
+        loss_spatial_weight=SPATIAL_WEIGHT, loss_probability_weight=OCCUPANCY_WEIGHT,
         session_name=SESSION_NAME, loss_unmatched_weight=UNMATCHED_WEIGHT,
+        loss_unmatched_fn_fp_weight=UNMATCHED_FN_FP_WEIGHT, loss_unmatched_fn_weight=UNMATCHED_FN_WEIGHT, loss_unmatched_fp_weight=UNMATCHED_FP_WEIGHT,
         **local_params
     )
     mm.train()

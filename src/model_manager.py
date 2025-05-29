@@ -33,6 +33,7 @@ class ModelManager(ABC):
             # ...
             # loss
             loss_spatial_weight=1.0, loss_probability_weight=1.0, loss_unmatched_weight=1.0,
+            loss_unmatched_fn_fp_weight=1.0, loss_unmatched_fn_weight=1.0, loss_unmatched_fp_weight=1.0,
             # loss, metrics
             occupancy_threshold=0.5, evaluate_over_occupied_points_only=False,
             # metrics
@@ -68,7 +69,10 @@ class ModelManager(ABC):
             spatial_weight=loss_spatial_weight,
             probability_weight=loss_probability_weight,
             unmatched_weight=loss_unmatched_weight,
-            grid_resolution=grid_voxel_size
+            grid_resolution=grid_voxel_size,
+            fn_fp_weight=loss_unmatched_fn_fp_weight,
+            fn_weight=loss_unmatched_fn_weight,
+            fp_weight=loss_unmatched_fp_weight
         )
         self.init_metrics(
             batch_size=batch_size,
