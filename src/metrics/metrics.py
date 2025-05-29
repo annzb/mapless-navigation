@@ -33,23 +33,41 @@ class MatchedPointRatio(PointcloudOccupancyMetric):
         return matched_ratios.mean()
     
 
-class NegativeUnmatchedLoss(PointcloudOccupancyMetric):
+class UnmatchedLoss(PointcloudOccupancyMetric):
     def _calc(self, y_pred, y_true, data_buffer=None, *args, **kwargs):
         (y_pred_values, y_pred_batch_indices), (y_true_values, y_true_batch_indices) = y_pred, y_true
-        
         target_masks = self._calc_unmatched_masks(y_pred_batch_indices, y_true_batch_indices, data_buffer)
-        unmatched_ratios = self._calc_matching_ratios(y_pred_batch_indices, y_true_batch_indices, data_buffer, target_masks)
+        unmatched_ratios = self._calc_matching_ratios_soft(y_pred, y_true, data_buffer, target_masks)
+        if self.occupied_only:
+            pred_occ_mask, true_occ_mask = data_buffer.occupied_mask()
+        else:
+            pred_occ_mask, true_occ_mask = torch.ones_like(y_pred_batch_indices, dtype=torch.bool, device=self.device), torch.ones_like(y_true_batch_indices, dtype=torch.bool, device=self.device)
         unmatched_losses = []
-        
-        for b in range(self._batch_size):
-            unmatched_loss = unmatched_ratios[b] * self.max_distance
-            gradient_anchor = y_pred_values[:, 3].mean()
-            unmatched_losses.append(unmatched_loss + gradient_anchor * 0.0)
 
-        return -torch.stack(unmatched_losses).mean()
+        for b in range(self._batch_size):
+            pred_mask, true_mask = target_masks[b]
+            pred_unmatched, true_unmatched = y_pred_values[pred_mask], y_true_values[true_mask]
+            pred_all, true_all = y_pred_values[(y_pred_batch_indices == b) & pred_occ_mask], y_true_values[(y_true_batch_indices == b) & true_occ_mask]
+
+            if pred_unmatched.size(0) > 0 and true_unmatched.size(0) > 0:  # FPs and FNs
+                dist_loss = torch.cdist(pred_unmatched[:, :3], true_unmatched[:, :3]).mean() * self.fn_fp_weight
+
+            elif true_unmatched.size(0) > 0 and pred_all.size(0) > 0:  # FNs only
+                dist_loss = torch.cdist(pred_all[:, :3], true_unmatched[:, :3]).mean() * self.fn_weight
+
+            elif pred_unmatched.size(0) > 0 and true_all.size(0) > 0:  # FPs only
+                dist_loss = torch.cdist(pred_unmatched[:, :3], true_all[:, :3]).mean() * self.fp_weight
+            
+            else: # no unmatched points
+                dist_loss = y_pred_values[:, :3].mean() * 0.0
+
+            unmatched_loss = unmatched_ratios[b] * dist_loss
+            unmatched_losses.append(unmatched_loss)
+
+        return torch.stack(unmatched_losses).mean()
     
 
-class NegativeSpatialLoss(PointcloudOccupancyMetric):
+class SpatialLoss(PointcloudOccupancyMetric):
     def _calc(self, y_pred, y_true, data_buffer=None, *args, **kwargs):
         (y_pred_values, y_pred_batch_indices), (y_true_values, y_true_batch_indices) = y_pred, y_true
         
@@ -76,10 +94,10 @@ class NegativeSpatialLoss(PointcloudOccupancyMetric):
             spatial_loss = torch.norm(pred_b[:, :3] - true_b[:, :3], dim=1).mean()
             spatial_losses.append(spatial_loss)
             
-        return -torch.stack(spatial_losses).mean()
+        return torch.stack(spatial_losses).mean()
 
 
-class NegativeOccupancyLoss(PointcloudOccupancyMetric):
+class OccupancyLoss(PointcloudOccupancyMetric):
     def _calc(self, y_pred, y_true, data_buffer=None, *args, **kwargs):
         (y_pred_values, y_pred_batch_indices), (y_true_values, y_true_batch_indices) = y_pred, y_true
         
@@ -106,7 +124,7 @@ class NegativeOccupancyLoss(PointcloudOccupancyMetric):
             prob_loss = torch.norm(pred_b[:, 3:4] - true_b[:, 3:4], dim=1).mean()
             prob_losses.append(prob_loss)
             
-        return -torch.stack(prob_losses).mean()
+        return torch.stack(prob_losses).mean()
 
     
 

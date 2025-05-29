@@ -21,9 +21,9 @@ class PointModelManager(ModelManager):
         self._loss_type = PointLoss
         self._metric_types = (
             metric_defs.MatchedPointRatio,
-            metric_defs.NegativeOccupancyLoss,
-            metric_defs.NegativeSpatialLoss,
-            metric_defs.NegativeUnmatchedLoss
+            metric_defs.OccupancyLoss,
+            metric_defs.SpatialLoss,
+            metric_defs.UnmatchedLoss
         )
 
 

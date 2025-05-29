@@ -77,7 +77,10 @@ class ModelManager(ABC):
         self.init_metrics(
             batch_size=batch_size,
             occupied_only=evaluate_over_occupied_points_only,
-            max_point_distance=max_point_distance
+            max_point_distance=max_point_distance,
+            fn_fp_weight=loss_unmatched_fn_fp_weight,
+            fn_weight=loss_unmatched_fn_weight,
+            fp_weight=loss_unmatched_fp_weight
         )
         self.init_optimizer(learning_rate=learning_rate)
 

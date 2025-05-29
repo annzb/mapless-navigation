@@ -5,11 +5,14 @@ from metrics.data_buffer import OccupancyDataBuffer, PointOccupancyDataBuffer, M
 
 
 class BaseCriteria:
-    def __init__(self, batch_size=0, device=None, **kwargs):
+    def __init__(self, batch_size=0, device=None, fn_fp_weight=1.0, fn_weight=1.0, fp_weight=1.0, **kwargs):
         super().__init__()
         self.default_value = 0.0
         self._batch_size = batch_size
         self.device = device
+        self.fn_fp_weight = fn_fp_weight
+        self.fn_weight = fn_weight
+        self.fp_weight = fp_weight
 
     def _validate_input(self, y_pred, y_true, *args, **kwargs):
         return len(y_pred) != 0 or len(y_true) != 0, 'Empty inputs.'
