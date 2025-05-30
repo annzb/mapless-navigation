@@ -1,6 +1,7 @@
 import os.path
 from abc import ABC, abstractmethod
 from datetime import datetime
+from typing import Any, Dict
 
 import numpy as np
 import torch
@@ -18,33 +19,33 @@ class ModelManager(ABC):
     _modes = 'train', 'val', 'test'
 
     def __init__(
-            self, dataset_path, *args, # data_mode,
-            # static params
-            grid_voxel_size=1.0,
-            batch_size=4,
-            dataset_part=1.0,
-            radar_point_intensity_threshold=0.0,
-            shuffle_dataset_runs=True,
+            self, 
+            model_save_directory='.',
+            session_name=None,
             device_name='cpu',
             logger=Logger(),
-            random_state=42,
+
+            n_epochs=10,
+            batch_size=1,
+
+            dataset_params: Dict[str, Any] = {},
+            loss_params: Dict[str, Any] = {},
+            metric_params: Dict[str, Any] = {},
+            optimizer_params: Dict[str, Any] = {},
 
             # overridable params
             # ...
             # loss
-            loss_spatial_weight=1.0, loss_probability_weight=1.0,
-            loss_unmatched_pred_weight=1.0, loss_unmatched_true_weight=1.0,
-            # loss, metrics
-            occupancy_threshold=0.5, evaluate_over_occupied_points_only=False,
-            # metrics
-            max_point_distance=1.0,
-            # optimizer
-            learning_rate=0.01,
+            # loss_spatial_weight=1.0, loss_probability_weight=1.0,
+            # loss_unmatched_pred_weight=1.0, loss_unmatched_true_weight=1.0,
+            # # loss, metrics
+            # occupancy_threshold=0.5, evaluate_over_occupied_points_only=False,
+            # # metrics
+            # max_point_distance=1.0,
+            # # optimizer
+            # learning_rate=0.01,
             # train loop
-            n_epochs=10,
             
-            model_save_directory='.',
-            session_name=None,
             **kwargs
     ):
         self.logger = logger
@@ -52,32 +53,31 @@ class ModelManager(ABC):
         self._define_types()
         self._init_device(device_name)
 
-        self.init_data_buffer(occupancy_threshold=occupancy_threshold, match_occupied_only=evaluate_over_occupied_points_only)
+        self.init_data_buffer(**loss_params)
         self.train_loader, self.val_loader, self.test_loader, self.radar_config = get_dataset(
-            dataset_file_path=dataset_path, dataset_type=self._dataset_type,
-            batch_size=batch_size, partial=dataset_part, shuffle_runs=shuffle_dataset_runs,
-            grid_voxel_size=grid_voxel_size, random_state=random_state,
-            data_buffer=self.data_buffer, device=self.device, 
-            intensity_threshold=radar_point_intensity_threshold
+            dataset_type=self._dataset_type, data_buffer=self.data_buffer, 
+            device=self.device, batch_size=self.batch_size, 
+            **dataset_params
+            # dataset_file_path=dataset_path,
+            # partial=dataset_part, shuffle_runs=shuffle_dataset_runs,
+            # grid_voxel_size=grid_voxel_size, random_state=random_state,
+            # intensity_threshold=radar_point_intensity_threshold
         )
         self.init_model()
-        self.init_loss_function(
-            device=self.device,
-            batch_size=batch_size,
-            occupied_only=evaluate_over_occupied_points_only,
-            max_point_distance=max_point_distance,
-            spatial_weight=loss_spatial_weight,
-            probability_weight=loss_probability_weight,
-            unmatched_pred_weight=loss_unmatched_pred_weight,
-            unmatched_true_weight=loss_unmatched_true_weight,
-            grid_resolution=grid_voxel_size
+        self.init_loss_function(device=self.device, batch_size=batch_size, **loss_params
+            # occupied_only=evaluate_over_occupied_points_only,
+            # max_point_distance=max_point_distance,
+            # spatial_weight=loss_spatial_weight,
+            # probability_weight=loss_probability_weight,
+            # unmatched_pred_weight=loss_unmatched_pred_weight,
+            # unmatched_true_weight=loss_unmatched_true_weight,
+            # grid_resolution=grid_voxel_size
         )
-        self.init_metrics(
-            batch_size=batch_size,
-            occupied_only=evaluate_over_occupied_points_only,
-            max_point_distance=max_point_distance
+        self.init_metrics(batch_size=batch_size, **metric_params
+            # occupied_only=evaluate_over_occupied_points_only,
+            # max_point_distance=max_point_distance
         )
-        self.init_optimizer(learning_rate=learning_rate)
+        self.init_optimizer(**optimizer_params)  # learning_rate=learning_rate)
 
         self.session_name = datetime.now().strftime("%d%B%y").lower()  # current date as DDmonthYY
         if session_name:
@@ -88,20 +88,19 @@ class ModelManager(ABC):
         self.logger.init(
             project="radar-occupancy",
             config={
-                "dataset": os.path.basename(dataset_path),
                 "model": self.model.name,
-                "learning_rate": learning_rate,
-                "epochs": n_epochs,
-                "dataset_part": dataset_part,
-                "batch_size": batch_size,
-                "occupancy_threshold": occupancy_threshold,
-                "point_match_radius": max_point_distance,
+                'dataset': dataset_params,
+                'training_params': {
+                    "epochs": n_epochs,
+                    "batch_size": batch_size
+                },
+                'optimizer': optimizer_params,
                 "loss": {
                     "name": self.loss_fn.__class__.__name__,
                     "point_mapping_method": self.data_buffer.__class__.__name__,
-                    "spatial_weight": loss_spatial_weight,
-                    "probability_weight": loss_probability_weight
-                }
+                    **loss_params
+                },
+                'metrics': metric_params
             }
         )
         self._saved_models = set()

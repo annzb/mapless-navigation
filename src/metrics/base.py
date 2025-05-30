@@ -8,7 +8,7 @@ class BaseCriteria:
     def __init__(self, batch_size=0, device=None, **kwargs):
         super().__init__()
         self.default_value = 0.0
-        self._batch_size = batch_size
+        self.batch_size = batch_size
         self.device = device
 
     def _validate_input(self, y_pred, y_true, *args, **kwargs):
@@ -31,11 +31,12 @@ class BaseLoss(BaseCriteria, nn.Module):
 
 
 class BaseMetric(BaseCriteria):
-    def __init__(self, name='', **kwargs):
+    def __init__(self, name='', negative=False, **kwargs):
         super().__init__(**kwargs)
         self.total_score = 0.0
         self.best_score = 0.0
         self.name = (f'{name}_' if name else '') + self.__class__.__name__.lower()
+        self.negative = negative
         self._scaled = False
 
     def reset_epoch(self):
@@ -51,7 +52,8 @@ class BaseMetric(BaseCriteria):
             raise RuntimeError(f'Metric {self.name} already scaled')
         self.total_score /= n_samples
         self._scaled = True
-        if self.total_score > self.best_score:
+        save_condition = (self.total_score < self.best_score) if self.negative else (self.total_score > self.best_score)
+        if save_condition:
             self.best_score = self.total_score
 
     def __call__(self, y_pred, y_true, *args, **kwargs):
@@ -99,7 +101,7 @@ class PointcloudOccupancyCriteria(OccupancyCriteria):
         pred_occ_mask, true_occ_mask = data_buffer.occupied_mask()
         masks = []
         
-        for b in range(self._batch_size):
+        for b in range(self.batch_size):
             pred_mask = (y_pred_batch_indices == b) & mapped_mask
             true_mask = (y_true_batch_indices == b) & mapped_mask_other
             if data_buffer._match_occupied_only:
@@ -114,7 +116,7 @@ class PointcloudOccupancyCriteria(OccupancyCriteria):
         pred_occ_mask, true_occ_mask = data_buffer.occupied_mask()
         masks = []
         
-        for b in range(self._batch_size):
+        for b in range(self.batch_size):
             pred_mask = (y_pred_batch_indices == b) & ~mapped_mask
             true_mask = (y_true_batch_indices == b) & ~mapped_mask_other
             if data_buffer._match_occupied_only:
@@ -128,7 +130,7 @@ class PointcloudOccupancyCriteria(OccupancyCriteria):
         pred_occ_mask, true_occ_mask = data_buffer.occupied_mask()
         ratios = []
         
-        for b in range(self._batch_size):
+        for b in range(self.batch_size):
             pred_mask, true_mask = target_masks[b]
             n_target_pred = pred_mask.sum().float()
             n_target_true = true_mask.sum().float()

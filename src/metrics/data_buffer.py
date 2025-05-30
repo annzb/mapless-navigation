@@ -5,8 +5,6 @@ import torch
 class OccupancyDataBuffer(ABC):
     def __init__(self, occupancy_threshold=0.5, **kwargs):
         self._occupancy_threshold = occupancy_threshold
-        for k, v in kwargs.items():
-            setattr(self, k, v)
         self._occupied_mask = None
 
     def occupancy_threshold(self) -> float:
@@ -96,7 +94,7 @@ class MappedPointOccupancyDataBuffer(PointOccupancyDataBuffer):
         _match_occupied_only (bool): Whether to only match occupied points.
     """
     
-    def __init__(self, match_occupied_only: bool = False, **kwargs):
+    def __init__(self, occupied_only: bool = False, **kwargs):
         """Initialize the buffer.
         
         Args:
@@ -104,12 +102,15 @@ class MappedPointOccupancyDataBuffer(PointOccupancyDataBuffer):
             **kwargs: Additional arguments passed to parent class.
         """
         super().__init__(**kwargs)
+        self._occupied_only = occupied_only
         self._mapped_mask = None
         self._occupied_mapped_mask = None
         self._mapping = None
         self._occupied_mapping = None
-        self._match_occupied_only = match_occupied_only
         self._soft_assignment = None
+
+    def occupied_only(self) -> float:
+        return self._occupied_only
 
     def _validate_input(self, y, y_other=None, **kwargs):
         """Validate input data.
@@ -323,181 +324,181 @@ class ChamferPointDataBuffer(MappedPointOccupancyDataBuffer):
         return torch.cat(all_matches, dim=0)
 
 
-class SinkhornPointDataBuffer(MappedPointOccupancyDataBuffer):
-    """Buffer that uses Sinkhorn algorithm for soft point matching.
+class SinkhornPointDataBuffer(MappedPointOccupancyDataBuffer): pass
+    # """Buffer that uses Sinkhorn algorithm for soft point matching.
     
-    This buffer implements soft matching between points using the Sinkhorn algorithm.
-    It computes a doubly stochastic matrix that represents the soft assignment
-    between points in the two clouds. Points are only matched within the same batch.
-    """
+    # This buffer implements soft matching between points using the Sinkhorn algorithm.
+    # It computes a doubly stochastic matrix that represents the soft assignment
+    # between points in the two clouds. Points are only matched within the same batch.
+    # """
     
-    def __init__(self, temperature=0.1, n_iters=20, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self._soft_assignment = None
-        self._mapping = None
-        self.temperature = temperature
-        self._num_iterations = n_iters
+    # def __init__(self, temperature=0.1, n_iters=20, *args, **kwargs):
+    #     super().__init__(*args, **kwargs)
+    #     self._soft_assignment = None
+    #     self._mapping = None
+    #     self.temperature = temperature
+    #     self._num_iterations = n_iters
 
-    def soft_assignment(self):
-        """Get the soft assignment matrix.
+    # def soft_assignment(self):
+    #     """Get the soft assignment matrix.
         
-        Returns:
-            Tensor of shape (N1, N2) containing the soft assignment weights
-            between points in the two clouds.
-        """
-        return self._soft_assignment
+    #     Returns:
+    #         Tensor of shape (N1, N2) containing the soft assignment weights
+    #         between points in the two clouds.
+    #     """
+    #     return self._soft_assignment
 
-    def match_points(self, y_values, y_batch_indices, y_values_other, y_batch_indices_other):
-        """Match points between two point clouds using Sinkhorn algorithm.
+    # def match_points(self, y_values, y_batch_indices, y_values_other, y_batch_indices_other):
+    #     """Match points between two point clouds using Sinkhorn algorithm.
         
-        Args:
-            y_values: Points from first cloud.
-            y_batch_indices: Batch indices for first cloud.
-            y_values_other: Points from second cloud.
-            y_batch_indices_other: Batch indices for second cloud.
+    #     Args:
+    #         y_values: Points from first cloud.
+    #         y_batch_indices: Batch indices for first cloud.
+    #         y_values_other: Points from second cloud.
+    #         y_batch_indices_other: Batch indices for second cloud.
             
-        Returns:
-            Tensor of shape (N, 3) containing indices of matched points and their soft weights.
-        """
-        if y_values.shape[0] == 0 or y_values_other.shape[0] == 0:
-            return torch.zeros((0, 3), device=y_values.device)
+    #     Returns:
+    #         Tensor of shape (N, 3) containing indices of matched points and their soft weights.
+    #     """
+    #     if y_values.shape[0] == 0 or y_values_other.shape[0] == 0:
+    #         return torch.zeros((0, 3), device=y_values.device)
             
-        # Get unique batch indices
-        unique_batches = torch.unique(y_batch_indices)
-        all_matches = []
+    #     # Get unique batch indices
+    #     unique_batches = torch.unique(y_batch_indices)
+    #     all_matches = []
         
-        # Process each batch separately
-        for batch_idx in unique_batches:
-            # Get points for this batch
-            mask1 = (y_batch_indices == batch_idx)
-            mask2 = (y_batch_indices_other == batch_idx)
+    #     # Process each batch separately
+    #     for batch_idx in unique_batches:
+    #         # Get points for this batch
+    #         mask1 = (y_batch_indices == batch_idx)
+    #         mask2 = (y_batch_indices_other == batch_idx)
             
-            if not (mask1.any() and mask2.any()):
-                continue
+    #         if not (mask1.any() and mask2.any()):
+    #             continue
                 
-            # Get points for this batch
-            batch_points1 = y_values[mask1]
-            batch_points2 = y_values_other[mask2]
+    #         # Get points for this batch
+    #         batch_points1 = y_values[mask1]
+    #         batch_points2 = y_values_other[mask2]
             
-            # Compute pairwise distances for this batch
-            distances = torch.cdist(batch_points1[:, :3], batch_points2[:, :3])
+    #         # Compute pairwise distances for this batch
+    #         distances = torch.cdist(batch_points1[:, :3], batch_points2[:, :3])
             
-            # Initialize soft assignment matrix for this batch
-            soft_assignment = torch.exp(-distances / self.temperature)
+    #         # Initialize soft assignment matrix for this batch
+    #         soft_assignment = torch.exp(-distances / self.temperature)
             
-            # Apply Sinkhorn algorithm
-            for _ in range(self._num_iterations):
-                # Row normalization
-                row_sum = soft_assignment.sum(dim=1, keepdim=True)
-                row_sum = torch.where(row_sum == 0, torch.ones_like(row_sum), row_sum)
-                soft_assignment = soft_assignment / row_sum
+    #         # Apply Sinkhorn algorithm
+    #         for _ in range(self._num_iterations):
+    #             # Row normalization
+    #             row_sum = soft_assignment.sum(dim=1, keepdim=True)
+    #             row_sum = torch.where(row_sum == 0, torch.ones_like(row_sum), row_sum)
+    #             soft_assignment = soft_assignment / row_sum
                 
-                # Column normalization
-                col_sum = soft_assignment.sum(dim=0, keepdim=True)
-                col_sum = torch.where(col_sum == 0, torch.ones_like(col_sum), col_sum)
-                soft_assignment = soft_assignment / col_sum
+    #             # Column normalization
+    #             col_sum = soft_assignment.sum(dim=0, keepdim=True)
+    #             col_sum = torch.where(col_sum == 0, torch.ones_like(col_sum), col_sum)
+    #             soft_assignment = soft_assignment / col_sum
             
-            # Store soft assignment for this batch
-            if self._soft_assignment is None:
-                self._soft_assignment = torch.zeros((y_values.shape[0], y_values_other.shape[0]), 
-                                                  device=y_values.device)
+    #         # Store soft assignment for this batch
+    #         if self._soft_assignment is None:
+    #             self._soft_assignment = torch.zeros((y_values.shape[0], y_values_other.shape[0]), 
+    #                                               device=y_values.device)
             
-            # Convert batch-relative indices to global indices
-            global_idx1 = torch.nonzero(mask1).squeeze(1)
-            global_idx2 = torch.nonzero(mask2).squeeze(1)
+    #         # Convert batch-relative indices to global indices
+    #         global_idx1 = torch.nonzero(mask1).squeeze(1)
+    #         global_idx2 = torch.nonzero(mask2).squeeze(1)
             
-            # Update the full soft assignment matrix for this batch
-            for i, gi1 in enumerate(global_idx1):
-                for j, gi2 in enumerate(global_idx2):
-                    self._soft_assignment[gi1, gi2] = soft_assignment[i, j]
+    #         # Update the full soft assignment matrix for this batch
+    #         for i, gi1 in enumerate(global_idx1):
+    #             for j, gi2 in enumerate(global_idx2):
+    #                 self._soft_assignment[gi1, gi2] = soft_assignment[i, j]
             
-            # Find mutual nearest neighbors based on distances
-            best_12 = torch.argmin(distances, dim=1)  # For each point in cloud 1, closest in cloud 2
-            best_21 = torch.argmin(distances, dim=0)  # For each point in cloud 2, closest in cloud 1
+    #         # Find mutual nearest neighbors based on distances
+    #         best_12 = torch.argmin(distances, dim=1)  # For each point in cloud 1, closest in cloud 2
+    #         best_21 = torch.argmin(distances, dim=0)  # For each point in cloud 2, closest in cloud 1
             
-            # Find mutual matches
-            idx1 = torch.arange(batch_points1.shape[0], device=y_values.device)
-            mutual_mask = (best_21[best_12] == idx1)
+    #         # Find mutual matches
+    #         idx1 = torch.arange(batch_points1.shape[0], device=y_values.device)
+    #         mutual_mask = (best_21[best_12] == idx1)
             
-            if not mutual_mask.any():
-                continue
+    #         if not mutual_mask.any():
+    #             continue
             
-            # Get matched indices
-            matched_idx1 = idx1[mutual_mask]
-            matched_idx2 = best_12[mutual_mask]
+    #         # Get matched indices
+    #         matched_idx1 = idx1[mutual_mask]
+    #         matched_idx2 = best_12[mutual_mask]
             
-            # Get soft weights for the matches
-            soft_weights = soft_assignment[matched_idx1, matched_idx2]
+    #         # Get soft weights for the matches
+    #         soft_weights = soft_assignment[matched_idx1, matched_idx2]
             
-            # Convert to global indices and add to matches with soft weights
-            batch_matches = torch.stack([
-                global_idx1[matched_idx1],
-                global_idx2[matched_idx2],
-                soft_weights
-            ], dim=1)
-            all_matches.append(batch_matches)
+    #         # Convert to global indices and add to matches with soft weights
+    #         batch_matches = torch.stack([
+    #             global_idx1[matched_idx1],
+    #             global_idx2[matched_idx2],
+    #             soft_weights
+    #         ], dim=1)
+    #         all_matches.append(batch_matches)
         
-        if not all_matches:
-            return torch.zeros((0, 3), device=y_values.device)
+    #     if not all_matches:
+    #         return torch.zeros((0, 3), device=y_values.device)
             
-        return torch.cat(all_matches, dim=0)
+    #     return torch.cat(all_matches, dim=0)
 
-    def create_masks(self, y, y_other=None, **kwargs):
-        """Create all necessary masks for the input clouds.
+    # def create_masks(self, y, y_other=None, **kwargs):
+    #     """Create all necessary masks for the input clouds.
         
-        Args:
-            y: Tuple of (points, batch_indices) for first cloud.
-            y_other: Tuple of (points, batch_indices) for second cloud.
-            **kwargs: Additional arguments.
-        """
-        self._validate_input(y, y_other=y_other, **kwargs)
-        super().create_masks(y, y_other=y_other, **kwargs)
+    #     Args:
+    #         y: Tuple of (points, batch_indices) for first cloud.
+    #         y_other: Tuple of (points, batch_indices) for second cloud.
+    #         **kwargs: Additional arguments.
+    #     """
+    #     self._validate_input(y, y_other=y_other, **kwargs)
+    #     super().create_masks(y, y_other=y_other, **kwargs)
             
-        (y_values, y_batch_indices), (y_values_other, y_batch_indices_other) = y, y_other
-        occupied_mask, occupied_mask_other = self._occupied_mask
-        mapped_mask = torch.zeros_like(occupied_mask, dtype=torch.bool)
-        mapped_mask_other = torch.zeros_like(occupied_mask_other, dtype=torch.bool)
+    #     (y_values, y_batch_indices), (y_values_other, y_batch_indices_other) = y, y_other
+    #     occupied_mask, occupied_mask_other = self._occupied_mask
+    #     mapped_mask = torch.zeros_like(occupied_mask, dtype=torch.bool)
+    #     mapped_mask_other = torch.zeros_like(occupied_mask_other, dtype=torch.bool)
         
-        # Initialize empty mapping
-        self._mapping = torch.zeros((0, 3), device=y_values.device)
+    #     # Initialize empty mapping
+    #     self._mapping = torch.zeros((0, 3), device=y_values.device)
     
-        if self._match_occupied_only:
-            # When matching only occupied points, filter inputs
-            y_values_masked = y_values[occupied_mask]
-            y_values_other_masked = y_values_other[occupied_mask_other]
-            y_batch_indices_masked = y_batch_indices[occupied_mask]
-            y_batch_indices_other_masked = y_batch_indices_other[occupied_mask_other]
+    #     if self._match_occupied_only:
+    #         # When matching only occupied points, filter inputs
+    #         y_values_masked = y_values[occupied_mask]
+    #         y_values_other_masked = y_values_other[occupied_mask_other]
+    #         y_batch_indices_masked = y_batch_indices[occupied_mask]
+    #         y_batch_indices_other_masked = y_batch_indices_other[occupied_mask_other]
             
-            # Store indices for mapping back to original tensors
-            occupied_indices = torch.nonzero(occupied_mask).squeeze(1)
-            occupied_indices_other = torch.nonzero(occupied_mask_other).squeeze(1)
+    #         # Store indices for mapping back to original tensors
+    #         occupied_indices = torch.nonzero(occupied_mask).squeeze(1)
+    #         occupied_indices_other = torch.nonzero(occupied_mask_other).squeeze(1)
             
-            # Get mapping for filtered points
-            filtered_mapping = self.match_points(
-                y_values_masked, y_batch_indices_masked,
-                y_values_other_masked, y_batch_indices_other_masked
-            )
+    #         # Get mapping for filtered points
+    #         filtered_mapping = self.match_points(
+    #             y_values_masked, y_batch_indices_masked,
+    #             y_values_other_masked, y_batch_indices_other_masked
+    #         )
             
-            if filtered_mapping.numel() > 0:
-                # Convert filtered indices back to original indices
-                self._mapping = torch.stack([
-                    occupied_indices[filtered_mapping[:, 0]],
-                    occupied_indices_other[filtered_mapping[:, 1]],
-                    filtered_mapping[:, 2]  # Keep soft weights
-                ], dim=1)
+    #         if filtered_mapping.numel() > 0:
+    #             # Convert filtered indices back to original indices
+    #             self._mapping = torch.stack([
+    #                 occupied_indices[filtered_mapping[:, 0]],
+    #                 occupied_indices_other[filtered_mapping[:, 1]],
+    #                 filtered_mapping[:, 2]  # Keep soft weights
+    #             ], dim=1)
                 
-                # Update mapped masks
-                mapped_mask[self._mapping[:, 0].long()] = True
-                mapped_mask_other[self._mapping[:, 1].long()] = True
-        else:
-            mapping = self.match_points(
-                y_values, y_batch_indices,
-                y_values_other, y_batch_indices_other
-            )
+    #             # Update mapped masks
+    #             mapped_mask[self._mapping[:, 0].long()] = True
+    #             mapped_mask_other[self._mapping[:, 1].long()] = True
+    #     else:
+    #         mapping = self.match_points(
+    #             y_values, y_batch_indices,
+    #             y_values_other, y_batch_indices_other
+    #         )
             
-            if mapping.numel() > 0:
-                self._mapping = mapping
-                mapped_mask[mapping[:, 0].long()] = True
-                mapped_mask_other[mapping[:, 1].long()] = True
+    #         if mapping.numel() > 0:
+    #             self._mapping = mapping
+    #             mapped_mask[mapping[:, 0].long()] = True
+    #             mapped_mask_other[mapping[:, 1].long()] = True
                     
-        self._mapped_mask = (mapped_mask, mapped_mask_other)
+    #     self._mapped_mask = (mapped_mask, mapped_mask_other)

@@ -9,7 +9,6 @@ import torch.nn.functional as F
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
 from metrics.base import PointcloudOccupancyLoss
-from metrics.data_buffer import ChamferPointDataBuffer
 
 
 class MsePointLoss(PointcloudOccupancyLoss):
