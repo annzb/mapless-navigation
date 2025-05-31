@@ -24,6 +24,7 @@ class ModelManager(ABC):
             session_name=None,
             device_name='cpu',
             logger=Logger(),
+            random_seed=1,
 
             n_epochs=10,
             batch_size=1,
@@ -49,14 +50,14 @@ class ModelManager(ABC):
             **kwargs
     ):
         self.logger = logger
-        self.n_epochs, self.batch_size = n_epochs, batch_size
+        self.random_seed, self.n_epochs, self.batch_size = random_seed, n_epochs, batch_size
         self._define_types()
         self._init_device(device_name)
 
         self.init_data_buffer(**loss_params)
         self.train_loader, self.val_loader, self.test_loader, self.radar_config = get_dataset(
             dataset_type=self._dataset_type, data_buffer=self.data_buffer, 
-            device=self.device, batch_size=self.batch_size, 
+            logger=self.logger, device=self.device, random_seed=random_seed, batch_size=self.batch_size, 
             **dataset_params
             # dataset_file_path=dataset_path,
             # partial=dataset_part, shuffle_runs=shuffle_dataset_runs,

@@ -253,8 +253,9 @@ class RadarDataset(Dataset):
 
 def get_dataset(
         dataset_file_path, dataset_type,
-        partial=1.0, batch_size=16, shuffle_runs=True, random_state=42, grid_voxel_size=1.0,
-        device=None, logger=None, intensity_threshold=0.0, **kwargs
+        device=None, logger=None, random_seed=1, batch_size=1,
+        partial=1.0, shuffle_runs=True, grid_voxel_size=1.0,
+        intensity_threshold=0.0, **kwargs
 ):
     data_dict, radar_config = read_h5_dataset(dataset_file_path)
     radar_frames = data_dict['cascade_heatmaps']
@@ -286,7 +287,7 @@ def get_dataset(
         # orig_radar_frames_train, orig_radar_frames_temp
     ) = train_test_split(
         radar_frames, lidar_frames, poses, # orig_radar_frames, 
-        test_size=0.5, random_state=random_state
+        test_size=0.5, random_seed=random_seed
     )
     (
         radar_val, radar_test,
@@ -295,7 +296,7 @@ def get_dataset(
         # orig_radar_frames_val, orig_radar_frames_test
     ) = train_test_split(
         radar_temp, lidar_temp, poses_temp, # orig_radar_frames_temp, 
-        test_size=0.6, random_state=random_state
+        test_size=0.6, random_seed=random_seed
     )
     print(f"Finished splitting dataset.")
     # dataset_class = RadarDatasetGrid if grid else RadarDataset

@@ -42,6 +42,12 @@ def run():
     LEARNING_RATE = 0.01
     RADAR_POINT_INTENSITY_THRESHOLD = 5000
 
+    dataset_params = {
+        # 'dataset_file_path': 
+        partial=1.0, shuffle_runs=True, random_state=42, grid_voxel_size=1.0,
+        intensity_threshold=0.0
+    }
+
     local_params = get_local_params()
 
     mm = PointModelManager(
