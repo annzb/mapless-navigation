@@ -3,7 +3,6 @@ from abc import ABC, abstractmethod
 from datetime import datetime
 from typing import Any, Dict
 
-import numpy as np
 import torch
 
 torch.autograd.set_detect_anomaly(True)
@@ -33,19 +32,6 @@ class ModelManager(ABC):
             loss_params: Dict[str, Any] = {},
             metric_params: Dict[str, Any] = {},
             optimizer_params: Dict[str, Any] = {},
-
-            # overridable params
-            # ...
-            # loss
-            # loss_spatial_weight=1.0, loss_probability_weight=1.0,
-            # loss_unmatched_pred_weight=1.0, loss_unmatched_true_weight=1.0,
-            # # loss, metrics
-            # occupancy_threshold=0.5, evaluate_over_occupied_points_only=False,
-            # # metrics
-            # max_point_distance=1.0,
-            # # optimizer
-            # learning_rate=0.01,
-            # train loop
             
             **kwargs
     ):
@@ -198,7 +184,7 @@ class ModelManager(ABC):
                 batch_loss = self.loss_fn(y_pred=(pred_frames, pred_indices), y_true=(lidar_frames, lidar_frame_indices), data_buffer=self.data_buffer)
                 self.apply_metrics(y_pred=(pred_frames, pred_indices), y_true=(lidar_frames, lidar_frame_indices), data_buffer=self.data_buffer, mode=mode)
 
-                eval_loss += batch_loss.item()
+                eval_loss += batch_loss.detach().item()
 
             eval_loss /= len(data_loader)
             self.scale_metrics(n_samples=len(data_loader), mode=mode)
@@ -223,7 +209,7 @@ class ModelManager(ABC):
             batch_loss = self.loss_fn(y_pred=(pred_frames, pred_indices), y_true=(lidar_frames, lidar_frame_indices), data_buffer=self.data_buffer)
             self.apply_metrics(y_pred=(pred_frames, pred_indices), y_true=(lidar_frames, lidar_frame_indices), data_buffer=self.data_buffer, mode=mode)
 
-            epoch_loss += batch_loss.item()
+            epoch_loss += batch_loss.detach().item()
             batch_loss = batch_loss / len(radar_frames)
 
             self.optimizer.zero_grad(set_to_none=True)

@@ -21,6 +21,8 @@ class Baseline(RadarOccupancyModel):
         encoded_clouds = []
         for sample_idx in range(self.batch_size):
             cloud = flat_pts[batch_idx == sample_idx]
+            if cloud.shape[0] == 0: break  # last batch may not be full
+
             encoded = self.encoder(cloud)
             pooled_mean = encoded.mean(dim=0, keepdim=True)
             pooled_max = encoded.max(dim=0, keepdim=True).values
@@ -37,5 +39,5 @@ class Baseline(RadarOccupancyModel):
         self.check_gradient(probs, "Final probabilities")
 
         if debug:
-            return pred_clouds, probs, predicted_flat_indices
+            return pred_clouds, predicted_log_odds_flat, probs, predicted_flat_indices
         return probs, predicted_flat_indices

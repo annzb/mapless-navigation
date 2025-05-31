@@ -5,11 +5,14 @@ from metrics.data_buffer import OccupancyDataBuffer, PointOccupancyDataBuffer, M
 
 
 class BaseCriteria:
-    def __init__(self, batch_size=0, device=None, **kwargs):
+    def __init__(self, batch_size=0, device=None, fn_fp_weight=1.0, fn_weight=1.0, fp_weight=1.0, **kwargs):
         super().__init__()
         self.default_value = 0.0
         self.batch_size = batch_size
         self.device = device
+        self.fn_fp_weight = fn_fp_weight
+        self.fn_weight = fn_weight
+        self.fp_weight = fp_weight
 
     def _validate_input(self, y_pred, y_true, *args, **kwargs):
         return len(y_pred) != 0 or len(y_true) != 0, 'Empty inputs.'
@@ -31,13 +34,14 @@ class BaseLoss(BaseCriteria, nn.Module):
 
 
 class BaseMetric(BaseCriteria):
-    def __init__(self, name='', negative=False, **kwargs):
+    def __init__(self, name='', score_multiplier=1.0, negative=False, **kwargs):
         super().__init__(**kwargs)
         self.total_score = 0.0
         self.best_score = 0.0
         self.name = (f'{name}_' if name else '') + self.__class__.__name__.lower()
         self.negative = negative
         self._scaled = False
+        self.score_multiplier = score_multiplier
 
     def reset_epoch(self):
         self.total_score = 0.0
@@ -57,9 +61,9 @@ class BaseMetric(BaseCriteria):
             self.best_score = self.total_score
 
     def __call__(self, y_pred, y_true, *args, **kwargs):
-        score = self.forward(y_pred, y_true, *args, **kwargs)
+        score = self.forward(y_pred, y_true, *args, **kwargs) * self.score_multiplier
         self.total_score += score
-        return score
+        return score.detach().item()
 
 
 class OccupancyCriteria(BaseCriteria):
@@ -132,8 +136,7 @@ class PointcloudOccupancyCriteria(OccupancyCriteria):
         
         for b in range(self.batch_size):
             pred_mask, true_mask = target_masks[b]
-            n_target_pred = pred_mask.sum().float()
-            n_target_true = true_mask.sum().float()
+            n_target_pred, n_target_true = pred_mask.sum(), true_mask.sum()
 
             if self.occupied_only:
                 n_pred, n_true = ((y_pred_batch_indices == b) & pred_occ_mask).sum(), ((y_true_batch_indices == b) & true_occ_mask).sum()
@@ -145,6 +148,60 @@ class PointcloudOccupancyCriteria(OccupancyCriteria):
             ratios.append(ratio)
 
         return torch.stack(ratios)
+    
+    def _calc_matching_ratios_soft(self, y_pred, y_true, data_buffer, target_masks):
+        (y_pred_values, y_pred_batch_indices), (y_true_values, y_true_batch_indices) = y_pred, y_true
+        mapped_mask_pred, mapped_mask_true = data_buffer.mapped_mask()
+        pred_occ_mask, true_occ_mask = data_buffer.occupied_mask()
+        
+        ratios = []
+
+        for b in range(self._batch_size):
+            pred_mask, true_mask = target_masks[b]
+            pred_vals, true_vals = y_pred_values[pred_mask], y_true_values[true_mask]
+
+            if self.occupied_only:
+                full_pred = y_pred_values[(y_pred_batch_indices == b) & pred_occ_mask]
+                full_true = y_true_values[(y_true_batch_indices == b) & true_occ_mask]
+            else:
+                full_pred = y_pred_values[y_pred_batch_indices == b]
+                full_true = y_true_values[y_true_batch_indices == b]
+
+            total_conf_pred, total_conf_true = full_pred[:, 3].sum(), full_true[:, 3].sum()
+            target_conf_pred, target_conf_true = pred_vals[:, 3].sum(), true_vals[:, 3].sum()
+
+            ratio = (target_conf_pred + target_conf_true) / (total_conf_pred + total_conf_true + 1e-6)
+            ratios.append(ratio)
+
+        return torch.stack(ratios)
+
+    # def _calc_matching_ratios_soft(self, y_pred, y_true, data_buffer, target_masks):
+    #     (y_pred_values, y_pred_batch_indices), (y_true_values, y_true_batch_indices) = y_pred, y_true
+    #     mapped_mask_pred, mapped_mask_true = data_buffer.mapped_mask()
+    #     pred_occ_mask, true_occ_mask = data_buffer.occupied_mask()
+        
+    #     target_occupancy_pred, target_occupancy_true, total_occupancy_pred, total_occupancy_true = [], [], [], []
+
+    #     for b in range(self._batch_size):
+    #         pred_mask, true_mask = target_masks[b]
+    #         pred_vals, true_vals = y_pred_values[pred_mask], y_true_values[true_mask]
+
+    #         if self.occupied_only:
+    #             full_pred = y_pred_values[(y_pred_batch_indices == b) & pred_occ_mask]
+    #             full_true = y_true_values[(y_true_batch_indices == b) & true_occ_mask]
+    #         else:
+    #             full_pred = y_pred_values[y_pred_batch_indices == b]
+    #             full_true = y_true_values[y_true_batch_indices == b]
+
+    #         total_conf_pred, total_conf_true = full_pred[:, 3].sum(), full_true[:, 3].sum()
+    #         target_conf_pred, target_conf_true = pred_vals[:, 3].sum(), true_vals[:, 3].sum()
+
+    #         target_occupancy_pred.append(target_conf_pred)
+    #         target_occupancy_true.append(target_conf_true)
+    #         total_occupancy_pred.append(total_conf_pred)
+    #         total_occupancy_true.append(total_conf_true)
+
+    #     return torch.stack(target_occupancy_pred), torch.stack(target_occupancy_true), torch.stack(total_occupancy_pred), torch.stack(total_occupancy_true)
 
 
 class GridOccupancyCriteria(OccupancyCriteria): pass
