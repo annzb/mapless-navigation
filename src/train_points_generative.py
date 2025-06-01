@@ -31,6 +31,7 @@ def run():
     SESSION_NAME = 'generative_overfit'
 
     params = get_params()
+    params['n_epochs'] = 5
     params['loss_params']['unmatched_weight'] = 1.0
     params['loss_params']['fn_fp_weight'] = 1.0
     params['loss_params']['fn_weight'] = 1.0

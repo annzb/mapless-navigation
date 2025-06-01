@@ -163,46 +163,44 @@ class PointLoss2(PointLoss):
 
         return torch.stack(unmatched_losses).mean()
     
-    # def _calc_matched_loss(self, y_pred, y_true, data_buffer):
-    #     (y_pred_values, y_pred_batch_indices), (y_true_values, y_true_batch_indices) = y_pred, y_true
-    #     mapping = data_buffer.mapping()
+    def _calc_matched_loss(self, y_pred, y_true, data_buffer):
+        (y_pred_values, y_pred_batch_indices), (y_true_values, y_true_batch_indices) = y_pred, y_true
+        if self.occupied_only:
+            pred_occ_mask, true_occ_mask = data_buffer.occupied_mask()
+        else:
+            pred_occ_mask, true_occ_mask = torch.ones_like(y_pred_batch_indices, dtype=torch.bool, device=self._device), torch.ones_like(y_true_batch_indices, dtype=torch.bool, device=self._device)
 
-    #     batch_spatial_losses, batch_prob_losses = [], []
+        mapping = data_buffer.mapping()
+        if mapping.numel() == 0:
+            spatial_loss = torch.cdist(y_pred_values[pred_occ_mask][:, :3], y_true_values[true_occ_mask][:, :3]).mean() * self.max_distance
+            prob_loss = y_pred_values[pred_occ_mask][:, 3].mean()
+            return spatial_loss, prob_loss
+        
+        pred_matched = y_pred_values[mapping[:, 0]]
+        true_matched = y_true_values[mapping[:, 1]]
+        batch_indices = y_pred_batch_indices[mapping[:, 0]]
+        spatial_losses, prob_losses = [], []
 
-    #     for b in range(self._batch_size):
-    #         pred_b = y_pred_values[y_pred_batch_indices == b]
-    #         true_b = y_true_values[y_true_batch_indices == b]
-    #         total_count = pred_b.size(0) + true_b.size(0)
+        for b in range(self._batch_size):
+            batch_mask = batch_indices == b
+            pred_b = pred_matched[batch_mask]
+            true_b = true_matched[batch_mask]
+            pred_all, true_all = y_pred_values[(y_pred_batch_indices == b) & pred_occ_mask], y_true_values[(y_true_batch_indices == b) & true_occ_mask]
+            
+            if pred_b.size(0) == 0:  # no matches in this batch
+                spatial_loss = torch.cdist(pred_all[:, :3], true_all[:, :3]).mean() * self.max_distance
+                prob_loss = pred_all[:, 3].mean()
+                spatial_losses.append(spatial_loss)
+                prob_losses.append(prob_loss)
+                continue
+                
+            spatial_loss = torch.norm(pred_b[:, :3] - true_b[:, :3], dim=1).mean()
+            prob_loss = torch.norm(pred_b[:, 3:4] - true_b[:, 3:4], dim=1).mean()
 
-    #         if total_count == 0:
-    #             # Nothing to do; skip
-    #             continue
-
-    #         if mapping.numel() > 0:
-    #             # Select only matched pairs for this batch
-    #             batch_mask = (y_pred_batch_indices[mapping[:, 0]] == b)
-    #             matched_pred = y_pred_values[mapping[batch_mask, 0]]
-    #             matched_true = y_true_values[mapping[batch_mask, 1]]
-    #         else:
-    #             matched_pred = matched_true = None
-
-    #         if matched_pred is None or matched_pred.size(0) == 0:
-    #             # No matches in this batch → penalize with a default large loss using actual predictions
-    #             # This ensures a gradient path and trains the model to increase matches
-    #             spatial_loss = pred_b[:, :3].pow(2).sum(dim=1).mean()
-    #             prob_loss = pred_b[:, 3].pow(2).mean()
-    #         else:
-    #             # Compute mean error across matched pairs, but scale by total number of points
-    #             spatial_error = torch.norm(matched_pred[:, :3] - matched_true[:, :3], dim=1).sum()
-    #             prob_error = torch.norm(matched_pred[:, 3:4] - matched_true[:, 3:4], dim=1).sum()
-
-    #             spatial_loss = spatial_error / (total_count + 1e-6)
-    #             prob_loss = prob_error / (total_count + 1e-6)
-
-    #         batch_spatial_losses.append(spatial_loss)
-    #         batch_prob_losses.append(prob_loss)
-
-    #     return torch.stack(batch_spatial_losses).mean(), torch.stack(batch_prob_losses).mean()
+            spatial_losses.append(spatial_loss)
+            prob_losses.append(prob_loss)
+            
+        return torch.stack(spatial_losses).mean(), torch.stack(prob_losses).mean()
         
 
 class RegressionPointLoss(PointcloudOccupancyLoss):

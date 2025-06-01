@@ -10,6 +10,11 @@ from src.metrics.data_buffer import ChamferPointDataBuffer
 
 
 MAX_DISTANCE = 10
+LOSS_WEIGHTS = {
+    'spatial_weight': 1.0,
+    'occupancy_weight': 1.0,
+    'unmatched_weight': 1.0
+}
 
 
 @pytest.fixture
@@ -209,12 +214,12 @@ def test_loss(device, example_clouds, match_occupied_only, test_case):
     example = example_clouds[test_case]
     
     # Create buffer and loss
-    buffer = ChamferPointDataBuffer(occupancy_threshold=0.5, match_occupied_only=match_occupied_only)
+    buffer = ChamferPointDataBuffer(occupancy_threshold=0.5, occupied_only=match_occupied_only, max_point_distance=MAX_DISTANCE)
     buffer.create_masks(
         (example['points1'], example['batch_indices1']),
         (example['points2'], example['batch_indices2'])
     )
-    loss_fn = PointLoss(batch_size=example['batch_size'], device=device, max_distance=MAX_DISTANCE, occupied_only=match_occupied_only)
+    loss_fn = PointLoss(batch_size=example['batch_size'], device=device, max_point_distance=MAX_DISTANCE, occupied_only=match_occupied_only, **LOSS_WEIGHTS)
     loss_fn.to(device)
     
     # Calculate losses

@@ -16,6 +16,9 @@ from src.metrics.data_buffer import (
 )
 
 
+MAX_POINT_DISTANCE = 10.0
+
+
 @pytest.fixture
 def device():
     return torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -31,7 +34,7 @@ def test_point_occupancy_buffer():
     batch_indices = torch.tensor([0, 0, 0], dtype=torch.int)
     
     # Create buffer
-    buffer = PointOccupancyDataBuffer(occupancy_threshold=0.5)
+    buffer = PointOccupancyDataBuffer(occupancy_threshold=0.5, max_point_distance=MAX_POINT_DISTANCE)
     buffer.create_masks((points, batch_indices))
     
     # Check occupied mask
@@ -58,7 +61,7 @@ def test_basic_matching(device):
     batch_indices2 = torch.tensor([0, 0, 0], device=device, dtype=torch.int)
     
     # Create buffer
-    buffer = ChamferPointDataBuffer(occupancy_threshold=0.5)
+    buffer = ChamferPointDataBuffer(occupancy_threshold=0.5, occupied_only=False, max_point_distance=MAX_POINT_DISTANCE)
     buffer.create_masks((points1, batch_indices1), (points2, batch_indices2))
 
     occupied_mask, occupied_mask_other = buffer.occupied_mask()
@@ -77,7 +80,7 @@ def test_basic_matching(device):
     assert torch.equal(mapped_mask, expected_mapped_mask), f"Expected mapped_mask to be {expected_mapped_mask}, got {mapped_mask}"
     assert torch.equal(mapped_mask_other, expected_mapped_mask_other), f"Expected mapped_mask_other to be {expected_mapped_mask_other}, got {mapped_mask_other}"
 
-    buffer_occ_only = ChamferPointDataBuffer(occupancy_threshold=0.5, match_occupied_only=True)
+    buffer_occ_only = ChamferPointDataBuffer(occupancy_threshold=0.5, occupied_only=True, max_point_distance=MAX_POINT_DISTANCE)
     buffer_occ_only.create_masks((points1, batch_indices1), (points2, batch_indices2))
 
     occupied_mask, occupied_mask_other = buffer_occ_only.occupied_mask()
@@ -109,7 +112,7 @@ def test_empty_mapping(device):
     batch_indices2 = torch.tensor([0, 0], device=device, dtype=torch.int)
     
     # Test regular matching
-    buffer = ChamferPointDataBuffer(occupancy_threshold=0.5)
+    buffer = ChamferPointDataBuffer(occupancy_threshold=0.5, occupied_only=False, max_point_distance=MAX_POINT_DISTANCE)
     buffer.create_masks((points1, batch_indices1), (points2, batch_indices2))
     
     # Check empty mapping
@@ -125,7 +128,7 @@ def test_empty_mapping(device):
     assert torch.equal(mapped_mask_other, expected_mapped_mask_other), f"Expected mapped_mask_other to be {expected_mapped_mask_other}, got {mapped_mask_other}"
     
     # Test occupied-only matching
-    buffer_occ_only = ChamferPointDataBuffer(occupancy_threshold=0.5, match_occupied_only=True)
+    buffer_occ_only = ChamferPointDataBuffer(occupancy_threshold=0.5, occupied_only=True, max_point_distance=MAX_POINT_DISTANCE)
     buffer_occ_only.create_masks((points1, batch_indices1), (points2, batch_indices2))
     
     # Check empty mapping for occupied-only buffer
@@ -157,7 +160,7 @@ def test_batch_aware_matching(device):
     batch_indices1 = torch.tensor([0, 1, 1], device=device, dtype=torch.int)
     batch_indices2 = torch.tensor([0, 0, 1, 1], device=device, dtype=torch.int)
     
-    buffer = ChamferPointDataBuffer(occupancy_threshold=0.5)
+    buffer = ChamferPointDataBuffer(occupancy_threshold=0.5, occupied_only=False, max_point_distance=MAX_POINT_DISTANCE)
     buffer.create_masks((points1, batch_indices1), (points2, batch_indices2))
     
     # Check occupied masks
@@ -180,7 +183,7 @@ def test_batch_aware_matching(device):
     assert torch.equal(mapped_mask_other, expected_mapped_mask_other), f"Expected mapped_mask_other to be {expected_mapped_mask_other}, got {mapped_mask_other}"
 
     # Test with occupied-only matching
-    buffer_occ_only = ChamferPointDataBuffer(occupancy_threshold=0.5, match_occupied_only=True)
+    buffer_occ_only = ChamferPointDataBuffer(occupancy_threshold=0.5, occupied_only=True, max_point_distance=MAX_POINT_DISTANCE)
     buffer_occ_only.create_masks((points1, batch_indices1), (points2, batch_indices2))
     
     # Check occupied masks
@@ -211,7 +214,7 @@ def test_single_point_matching(device):
     batch_indices2 = torch.tensor([0], device=device)
     
     # Test regular matching
-    buffer = ChamferPointDataBuffer(occupancy_threshold=0.5)
+    buffer = ChamferPointDataBuffer(occupancy_threshold=0.5, occupied_only=False, max_point_distance=MAX_POINT_DISTANCE)
     buffer.create_masks((points1, batch_indices1), (points2, batch_indices2))
     
     # Check single point mapping
@@ -228,7 +231,7 @@ def test_single_point_matching(device):
     
     # Test with unoccupied point
     points1_unocc = torch.tensor([[0.0, 0.0, 0.0, 0.3]], device=device)
-    buffer_unocc = ChamferPointDataBuffer(occupancy_threshold=0.5)
+    buffer_unocc = ChamferPointDataBuffer(occupancy_threshold=0.5, occupied_only=False, max_point_distance=MAX_POINT_DISTANCE)
     buffer_unocc.create_masks((points1_unocc, batch_indices1), (points2, batch_indices2))
     
     # Check mapping still exists
@@ -237,7 +240,7 @@ def test_single_point_matching(device):
     assert torch.equal(mapping_unocc, expected_mapping_unocc), f"Expected mapping to be {expected_mapping_unocc}, got {mapping_unocc}"
 
     # Test with occupied-only matching
-    buffer_occ_only = ChamferPointDataBuffer(occupancy_threshold=0.5, match_occupied_only=True)
+    buffer_occ_only = ChamferPointDataBuffer(occupancy_threshold=0.5, occupied_only=True, max_point_distance=MAX_POINT_DISTANCE)
     buffer_occ_only.create_masks((points1_unocc, batch_indices1), (points2, batch_indices2))
     
     # Check no mapping exists for unoccupied point
@@ -274,7 +277,7 @@ def test_mixed_occupancy_matching(device):
     batch_indices2 = torch.tensor([0, 0, 0, 1, 1], device=device)
     
     # Test with regular matching (not occupied-only)
-    buffer = ChamferPointDataBuffer(occupancy_threshold=0.5)
+    buffer = ChamferPointDataBuffer(occupancy_threshold=0.5, occupied_only=False, max_point_distance=MAX_POINT_DISTANCE)
     buffer.create_masks((points1, batch_indices1), (points2, batch_indices2))
     
     # Check occupied masks
@@ -295,7 +298,7 @@ def test_mixed_occupancy_matching(device):
     assert torch.equal(mapped_mask_other, expected_mapped_mask_other)
     
     # Test with occupied-only matching
-    buffer_occ_only = ChamferPointDataBuffer(occupancy_threshold=0.5, match_occupied_only=True)
+    buffer_occ_only = ChamferPointDataBuffer(occupancy_threshold=0.5, occupied_only=True, max_point_distance=MAX_POINT_DISTANCE)
     buffer_occ_only.create_masks((points1, batch_indices1), (points2, batch_indices2))
 
     occupied_mask, occupied_mask_other = buffer_occ_only.occupied_mask()

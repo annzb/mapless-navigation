@@ -10,6 +10,14 @@ from src.metrics.data_buffer import ChamferPointDataBuffer
 
 
 MAX_DISTANCE = 1
+LOSS_WEIGHTS = {
+    'spatial_weight': 1.0,
+    'occupancy_weight': 1.0,
+    'unmatched_weight': 1.0,
+    'fn_fp_weight': 1.0,
+    'fn_weight': 1.0,
+    'fp_weight': 1.0
+}
 
 
 @pytest.fixture
@@ -49,12 +57,12 @@ def example_clouds(device):
             'batch_size': 1,
             'batch_indices1': torch.tensor([0], device=device),
             'batch_indices2': torch.tensor([0], device=device),
-            'expected_spatial_loss': 0.0,  # sqrt(0.03) ≈ 0.1732
-            'expected_prob_loss': 0.0,  # Perfect match
-            'expected_unmatched_loss': 10.0, 
-            'expected_spatial_loss_occupied': 0.0,  # Same as above since all occupied points match
-            'expected_prob_loss_occupied': 0.0,  # Same as above
-            'expected_unmatched_loss_occupied': 10.0,  # Same as above
+            'expected_spatial_loss': 10.0,
+            'expected_prob_loss': 1.0,
+            'expected_unmatched_loss': 10.0,
+            'expected_spatial_loss_occupied': 10.0,
+            'expected_prob_loss_occupied': 1.0,
+            'expected_unmatched_loss_occupied': 10.0,
         },
         'simple_match': {
             'points1': torch.tensor([
@@ -127,12 +135,12 @@ def test_loss(device, example_clouds, match_occupied_only, test_case):
     example = example_clouds[test_case]
     
     # Create buffer and loss
-    buffer = ChamferPointDataBuffer(occupancy_threshold=0.5, match_occupied_only=match_occupied_only, max_point_distance=MAX_DISTANCE)
+    buffer = ChamferPointDataBuffer(occupancy_threshold=0.5, occupied_only=match_occupied_only, max_point_distance=MAX_DISTANCE)
     buffer.create_masks(
         (example['points1'], example['batch_indices1']),
         (example['points2'], example['batch_indices2'])
     )
-    loss_fn = PointLoss2(batch_size=example['batch_size'], device=device, max_distance=MAX_DISTANCE, occupied_only=match_occupied_only)
+    loss_fn = PointLoss2(batch_size=example['batch_size'], device=device, max_point_distance=MAX_DISTANCE, occupied_only=match_occupied_only, **LOSS_WEIGHTS)
     loss_fn.to(device)
     
     # Calculate losses

@@ -6,6 +6,7 @@ from utils.logger import Logger
 
 
 def get_params():
+    host = 'lab_pc'
     logger = Logger(print_log=True)
     device_name = 'cpu'
     model_save_directory = '.'
@@ -43,6 +44,7 @@ def get_params():
     metric_params = {}
 
     if os.path.isdir('/media/giantdrive'):
+        host = 'brute'
         logger = Logger(print_log=True, loggers=(wandb, ))
         device_name = 'cuda:1'
         model_save_directory = '/home/annz/mapping/models'
@@ -55,7 +57,8 @@ def get_params():
         model_params['encoder_batch_norm'] = False
 
     elif platform.system() == "Darwin":
-        logger = Logger(print_log=True, loggers=(wandb, ))
+        host = 'mac'
+        logger = Logger(print_log=True)
         device_name = 'mps'
         model_save_directory = '/Users/anna/data/coloradar/models'
         n_epochs = 1000
@@ -73,6 +76,7 @@ def get_params():
         dataset_params['partial'] = 0.1
 
     return {
+        'host': host,
         'logger': logger,
         'device_name': device_name,
         'model_save_directory': model_save_directory,

@@ -19,6 +19,7 @@ class ModelManager(ABC):
 
     def __init__(
             self, 
+            host_name='unspecified',
             model_save_directory='.',
             session_name=None,
             device_name='cpu',
@@ -61,6 +62,7 @@ class ModelManager(ABC):
         
         self.logger.init(
             project="radar-occupancy",
+            host=host_name,
             config={
                 "model": {
                     "name": self.model.name,
