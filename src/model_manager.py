@@ -29,6 +29,7 @@ class ModelManager(ABC):
             batch_size=1,
 
             dataset_params: Dict[str, Any] = {},
+            model_params: Dict[str, Any] = {},
             loss_params: Dict[str, Any] = {},
             metric_params: Dict[str, Any] = {},
             optimizer_params: Dict[str, Any] = {},
@@ -39,43 +40,32 @@ class ModelManager(ABC):
         self.random_seed, self.n_epochs, self.batch_size = random_seed, n_epochs, batch_size
         self._define_types()
         self._init_device(device_name)
+        self.model_params = model_params
 
-        self.init_data_buffer(**loss_params)
+        self.init_data_buffer(**loss_params, **metric_params)
         self.train_loader, self.val_loader, self.test_loader, self.radar_config = get_dataset(
             dataset_type=self._dataset_type, data_buffer=self.data_buffer, 
             logger=self.logger, device=self.device, random_seed=random_seed, batch_size=self.batch_size, 
             **dataset_params
-            # dataset_file_path=dataset_path,
-            # partial=dataset_part, shuffle_runs=shuffle_dataset_runs,
-            # grid_voxel_size=grid_voxel_size, random_state=random_state,
-            # intensity_threshold=radar_point_intensity_threshold
         )
         self.init_model()
-        self.init_loss_function(device=self.device, batch_size=batch_size, **loss_params
-            # occupied_only=evaluate_over_occupied_points_only,
-            # max_point_distance=max_point_distance,
-            # spatial_weight=loss_spatial_weight,
-            # probability_weight=loss_probability_weight,
-            # unmatched_pred_weight=loss_unmatched_pred_weight,
-            # unmatched_true_weight=loss_unmatched_true_weight,
-            # grid_resolution=grid_voxel_size
-        )
-        self.init_metrics(batch_size=batch_size, **metric_params
-            # occupied_only=evaluate_over_occupied_points_only,
-            # max_point_distance=max_point_distance
-        )
-        self.init_optimizer(**optimizer_params)  # learning_rate=learning_rate)
+        self.init_loss_function(device=self.device, batch_size=batch_size, **loss_params)
+        self.init_metrics(device=self.device, batch_size=batch_size, **loss_params, **metric_params)
+        self.init_optimizer(**optimizer_params)
 
         self.session_name = datetime.now().strftime("%d%B%y").lower()  # current date as DDmonthYY
         if session_name:
-            session_name = f'{self.session_name}_{session_name}'
-        self.model_save_directory = os.path.join(model_save_directory, session_name)
+            self.session_name = f'{self.session_name}_{session_name}'
+        self.model_save_directory = os.path.join(model_save_directory, self.session_name)
         os.makedirs(self.model_save_directory, exist_ok=True)
         
         self.logger.init(
             project="radar-occupancy",
             config={
-                "model": self.model.name,
+                "model": {
+                    "name": self.model.name,
+                    **model_params
+                },
                 'dataset': dataset_params,
                 'training_params': {
                     "epochs": n_epochs,
@@ -107,7 +97,7 @@ class ModelManager(ABC):
         print('Using device:', device_name)
 
     def init_model(self, model_path=None):
-        model = self._model_type(radar_config=self.radar_config, batch_size=self.batch_size)
+        model = self._model_type(radar_config=self.radar_config, batch_size=self.batch_size, **self.model_params)
         model.to(self.device)
         if model_path is not None:
             model.load_state_dict(torch.load(model_path, map_location=self.device))

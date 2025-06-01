@@ -5,14 +5,24 @@ from metrics.data_buffer import OccupancyDataBuffer, PointOccupancyDataBuffer, M
 
 
 class BaseCriteria:
-    def __init__(self, batch_size=0, device=None, fn_fp_weight=1.0, fn_weight=1.0, fp_weight=1.0, **kwargs):
+    def __init__(self, batch_size, device, **kwargs):
         super().__init__()
+        if not isinstance(batch_size, int):
+            raise ValueError('batch_size must be an integer')
+        if batch_size <= 0:
+            raise ValueError('batch_size must be positive')
+        if not isinstance(device, torch.device):
+            raise ValueError('device must be a torch.device')
+        
         self.default_value = 0.0
-        self.batch_size = batch_size
-        self.device = device
-        self.fn_fp_weight = fn_fp_weight
-        self.fn_weight = fn_weight
-        self.fp_weight = fp_weight
+        self._batch_size = batch_size
+        self._device = device
+
+    def batch_size(self) -> int:
+        return self._batch_size
+    
+    def device(self) -> torch.device:
+        return self._device
 
     def _validate_input(self, y_pred, y_true, *args, **kwargs):
         return len(y_pred) != 0 or len(y_true) != 0, 'Empty inputs.'
@@ -30,18 +40,25 @@ class BaseCriteria:
 class BaseLoss(BaseCriteria, nn.Module):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        self.default_value = torch.tensor(float('inf'), device=self.device, requires_grad=True)
+        self.default_value = torch.tensor(float('inf'), device=self._device, requires_grad=True)
 
 
 class BaseMetric(BaseCriteria):
     def __init__(self, name='', score_multiplier=1.0, negative=False, **kwargs):
         super().__init__(**kwargs)
+        if not isinstance(name, str):
+            raise ValueError('Metric name must be a string')
+        if not isinstance(score_multiplier, (int, float)):
+            raise ValueError('Metric score_multiplier must be a number')
+        if not isinstance(negative, bool):
+            raise ValueError('Metric `negative` flag must be a boolean')
+        
         self.total_score = 0.0
         self.best_score = 0.0
-        self.name = (f'{name}_' if name else '') + self.__class__.__name__.lower()
+        self.name = (f'{name}_' if name else '') + 'metric_' + self.__class__.__name__.lower()
         self.negative = negative
-        self._scaled = False
         self.score_multiplier = score_multiplier
+        self._scaled = False
 
     def reset_epoch(self):
         self.total_score = 0.0
@@ -52,6 +69,11 @@ class BaseMetric(BaseCriteria):
         self.best_score = 0.0
 
     def scale_score(self, n_samples):
+        if not isinstance(n_samples, int):
+            raise ValueError('n_samples must be an integer')
+        if n_samples <= 0:
+            raise ValueError('n_samples must be positive')
+        
         if self._scaled:
             raise RuntimeError(f'Metric {self.name} already scaled')
         self.total_score /= n_samples
@@ -67,8 +89,10 @@ class BaseMetric(BaseCriteria):
 
 
 class OccupancyCriteria(BaseCriteria):
-    def __init__(self, occupied_only=False, **kwargs):
+    def __init__(self, occupied_only, **kwargs):
         super().__init__(**kwargs)
+        if not isinstance(occupied_only, bool):
+            raise ValueError('occupied_only must be a boolean')
         self.occupied_only = occupied_only
 
     def _validate_input(self, y_pred, y_true, data_buffer=None, *args, **kwargs):
@@ -83,8 +107,12 @@ class OccupancyCriteria(BaseCriteria):
 
 
 class PointcloudOccupancyCriteria(OccupancyCriteria):
-    def __init__(self, max_point_distance=10, **kwargs):
+    def __init__(self, max_point_distance, **kwargs):
         super().__init__(**kwargs)
+        if not isinstance(max_point_distance, (int, float)):
+            raise ValueError('max_point_distance must be a number')
+        if max_point_distance <= 0:
+            raise ValueError('max_point_distance must be positive')
         self.max_distance = max_point_distance
 
     def _validate_input(self, y_pred, y_true, data_buffer=None, *args, **kwargs):
@@ -105,10 +133,10 @@ class PointcloudOccupancyCriteria(OccupancyCriteria):
         pred_occ_mask, true_occ_mask = data_buffer.occupied_mask()
         masks = []
         
-        for b in range(self.batch_size):
+        for b in range(self._batch_size):
             pred_mask = (y_pred_batch_indices == b) & mapped_mask
             true_mask = (y_true_batch_indices == b) & mapped_mask_other
-            if data_buffer._match_occupied_only:
+            if data_buffer._occupied_only:
                 pred_mask &= pred_occ_mask
                 true_mask &= true_occ_mask
             masks.append((pred_mask, true_mask))
@@ -120,10 +148,10 @@ class PointcloudOccupancyCriteria(OccupancyCriteria):
         pred_occ_mask, true_occ_mask = data_buffer.occupied_mask()
         masks = []
         
-        for b in range(self.batch_size):
+        for b in range(self._batch_size):
             pred_mask = (y_pred_batch_indices == b) & ~mapped_mask
             true_mask = (y_true_batch_indices == b) & ~mapped_mask_other
-            if data_buffer._match_occupied_only:
+            if data_buffer._occupied_only:
                 pred_mask &= pred_occ_mask
                 true_mask &= true_occ_mask
             masks.append((pred_mask, true_mask))
@@ -134,7 +162,7 @@ class PointcloudOccupancyCriteria(OccupancyCriteria):
         pred_occ_mask, true_occ_mask = data_buffer.occupied_mask()
         ratios = []
         
-        for b in range(self.batch_size):
+        for b in range(self._batch_size):
             pred_mask, true_mask = target_masks[b]
             n_target_pred, n_target_true = pred_mask.sum(), true_mask.sum()
 

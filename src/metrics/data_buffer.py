@@ -3,7 +3,12 @@ import torch
 
 
 class OccupancyDataBuffer(ABC):
-    def __init__(self, occupancy_threshold=0.5, **kwargs):
+    def __init__(self, occupancy_threshold: float, **kwargs):
+        if not isinstance(occupancy_threshold, (int, float)):
+            raise ValueError('occupancy_threshold must be a number')
+        if occupancy_threshold < 0 or occupancy_threshold > 1:
+            raise ValueError('occupancy_threshold must be between 0 and 1')
+        
         self._occupancy_threshold = occupancy_threshold
         self._occupied_mask = None
 
@@ -52,9 +57,17 @@ class OccupancyDataBuffer(ABC):
 
 
 class PointOccupancyDataBuffer(OccupancyDataBuffer):
-    def __init__(self, max_point_distance=10.0, **kwargs):
+    def __init__(self, max_point_distance: float, **kwargs):
         super().__init__(**kwargs)
-        self.max_point_distance = max_point_distance
+        if not isinstance(max_point_distance, (int, float)):
+            raise ValueError('max_point_distance must be a number')
+        if max_point_distance <= 0:
+            raise ValueError('max_point_distance must be positive')
+        
+        self._max_point_distance = max_point_distance
+
+    def max_point_distance(self) -> float:
+        return self._max_point_distance
 
     def _validate_input(self, y, y_other=None, **kwargs):
         """Validate input data.
@@ -95,10 +108,10 @@ class MappedPointOccupancyDataBuffer(PointOccupancyDataBuffer):
             in the other cloud.
         _mapping (torch.Tensor): Soft mapping weights between points (N_matches, 2).
         _occupied_mapping (torch.Tensor): Soft mapping weights between occupied points.
-        _match_occupied_only (bool): Whether to only match occupied points.
+        _occupied_only (bool): Whether to only match occupied points.
     """
     
-    def __init__(self, occupied_only: bool = False, **kwargs):
+    def __init__(self, occupied_only: bool, **kwargs):
         """Initialize the buffer.
         
         Args:
@@ -106,6 +119,9 @@ class MappedPointOccupancyDataBuffer(PointOccupancyDataBuffer):
             **kwargs: Additional arguments passed to parent class.
         """
         super().__init__(**kwargs)
+        if not isinstance(occupied_only, bool):
+            raise ValueError('occupied_only must be a boolean')
+        
         self._occupied_only = occupied_only
         self._mapped_mask = None
         self._occupied_mapped_mask = None
@@ -170,7 +186,7 @@ class MappedPointOccupancyDataBuffer(PointOccupancyDataBuffer):
         # Initialize empty mapping
         self._mapping = torch.zeros((0, 2), device=y_values.device, dtype=torch.long)
     
-        if self._match_occupied_only:
+        if self._occupied_only:
             # When matching only occupied points, filter inputs
             y_values_masked = y_values[occupied_mask]
             y_values_other_masked = y_values_other[occupied_mask_other]
@@ -307,7 +323,7 @@ class ChamferPointDataBuffer(MappedPointOccupancyDataBuffer):
             matched_idx2 = best_12[mutual_mask]
             
             # Filter by distance threshold efficiently
-            valid_dist_mask = dists[matched_idx1, matched_idx2] <= self.max_point_distance
+            valid_dist_mask = dists[matched_idx1, matched_idx2] <= self._max_point_distance
             matched_idx1 = matched_idx1[valid_dist_mask]
             matched_idx2 = matched_idx2[valid_dist_mask]
             
@@ -465,7 +481,7 @@ class SinkhornPointDataBuffer(MappedPointOccupancyDataBuffer): pass
     #     # Initialize empty mapping
     #     self._mapping = torch.zeros((0, 3), device=y_values.device)
     
-    #     if self._match_occupied_only:
+    #     if self._occupied_only:
     #         # When matching only occupied points, filter inputs
     #         y_values_masked = y_values[occupied_mask]
     #         y_values_other_masked = y_values_other[occupied_mask_other]

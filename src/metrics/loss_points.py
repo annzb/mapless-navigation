@@ -31,13 +31,27 @@ class MsePointLoss(PointcloudOccupancyLoss):
 
 
 class PointLoss(PointcloudOccupancyLoss):
-    def __init__(self, spatial_weight=1.0, probability_weight=1.0, unmatched_weight=1.0, unmatched_pred_weight=1.0, unmatched_true_weight=1.0, **kwargs):
+    def __init__(self, spatial_weight, occupancy_weight, unmatched_weight, **kwargs):
         super().__init__(**kwargs)
-        self.spatial_weight = spatial_weight
-        self.probability_weight = probability_weight
-        self.unmatched_weight = unmatched_weight
-        self.unmatched_pred_weight = unmatched_pred_weight
-        self.unmatched_true_weight = unmatched_true_weight
+        if not isinstance(spatial_weight, (int, float)):
+            raise ValueError('spatial_weight must be a number')
+        if not isinstance(occupancy_weight, (int, float)):
+            raise ValueError('occupancy_weight must be a number')
+        if not isinstance(unmatched_weight, (int, float)):
+            raise ValueError('unmatched_weight must be a number')
+        
+        self._spatial_weight = spatial_weight
+        self._occupancy_weight = occupancy_weight
+        self._unmatched_weight = unmatched_weight
+
+    def spatial_weight(self) -> float:
+        return self._spatial_weight
+    
+    def occupancy_weight(self) -> float:
+        return self._occupancy_weight
+    
+    def unmatched_weight(self) -> float:
+        return self._unmatched_weight
 
     def _calc_matched_loss(self, y_pred, y_true, data_buffer):
         (y_pred_values, y_pred_batch_indices), (y_true_values, y_true_batch_indices) = y_pred, y_true
@@ -90,16 +104,32 @@ class PointLoss(PointcloudOccupancyLoss):
     def _calc(self, y_pred, y_true, data_buffer=None, *args, **kwargs):
         spatial_loss, probability_loss = self._calc_matched_loss(y_pred, y_true, data_buffer)
         unmatched_loss = self._calc_unmatched_loss(y_pred, y_true, data_buffer)
-        total_loss = self.spatial_weight * spatial_loss + self.probability_weight * probability_loss + self.unmatched_weight * unmatched_loss
+        total_loss = self._spatial_weight * spatial_loss + self._occupancy_weight * probability_loss + self._unmatched_weight * unmatched_loss
         return total_loss
 
 
 class PointLoss2(PointLoss):
-    def __init__(self, fn_fp_weight=1.0, fn_weight=1.0, fp_weight=1.0, **kwargs):
+    def __init__(self, fn_fp_weight, fn_weight, fp_weight, **kwargs):
         super().__init__(**kwargs)
-        self.fn_fp_weight = fn_fp_weight
-        self.fn_weight = fn_weight
-        self.fp_weight = fp_weight
+        if not isinstance(fn_fp_weight, (int, float)):
+            raise ValueError('fn_fp_weight must be a number')
+        if not isinstance(fn_weight, (int, float)):
+            raise ValueError('fn_weight must be a number')
+        if not isinstance(fp_weight, (int, float)):
+            raise ValueError('fp_weight must be a number')
+        
+        self._fn_fp_weight = fn_fp_weight
+        self._fn_weight = fn_weight
+        self._fp_weight = fp_weight
+    
+    def fn_fp_weight(self) -> float:
+        return self._fn_fp_weight
+    
+    def fn_weight(self) -> float:
+        return self._fn_weight
+    
+    def fp_weight(self) -> float:
+        return self._fp_weight
     
     def _calc_unmatched_loss(self, y_pred, y_true, data_buffer):
         (y_pred_values, y_pred_batch_indices), (y_true_values, y_true_batch_indices) = y_pred, y_true
@@ -108,7 +138,7 @@ class PointLoss2(PointLoss):
         if self.occupied_only:
             pred_occ_mask, true_occ_mask = data_buffer.occupied_mask()
         else:
-            pred_occ_mask, true_occ_mask = torch.ones_like(y_pred_batch_indices, dtype=torch.bool, device=self.device), torch.ones_like(y_true_batch_indices, dtype=torch.bool, device=self.device)
+            pred_occ_mask, true_occ_mask = torch.ones_like(y_pred_batch_indices, dtype=torch.bool, device=self._device), torch.ones_like(y_true_batch_indices, dtype=torch.bool, device=self._device)
         unmatched_losses = []
 
         for b in range(self._batch_size):
@@ -117,13 +147,13 @@ class PointLoss2(PointLoss):
             pred_all, true_all = y_pred_values[(y_pred_batch_indices == b) & pred_occ_mask], y_true_values[(y_true_batch_indices == b) & true_occ_mask]
 
             if pred_unmatched.size(0) > 0 and true_unmatched.size(0) > 0:  # FPs and FNs
-                dist_loss = torch.cdist(pred_unmatched[:, :3], true_unmatched[:, :3]).mean() * self.fn_fp_weight
+                dist_loss = torch.cdist(pred_unmatched[:, :3], true_unmatched[:, :3]).mean() * self._fn_fp_weight
 
             elif true_unmatched.size(0) > 0 and pred_all.size(0) > 0:  # FNs only
-                dist_loss = torch.cdist(pred_all[:, :3], true_unmatched[:, :3]).mean() * self.fn_weight
+                dist_loss = torch.cdist(pred_all[:, :3], true_unmatched[:, :3]).mean() * self._fn_weight
 
             elif pred_unmatched.size(0) > 0 and true_all.size(0) > 0:  # FPs only
-                dist_loss = torch.cdist(pred_unmatched[:, :3], true_all[:, :3]).mean() * self.fp_weight
+                dist_loss = torch.cdist(pred_unmatched[:, :3], true_all[:, :3]).mean() * self._fp_weight
             
             else: # no unmatched points
                 dist_loss = y_pred_values[:, :3].mean() * 0.0
@@ -199,17 +229,17 @@ class RegressionPointLoss(PointcloudOccupancyLoss):
         self.support_coords = torch.stack((x, y, z), dim=-1).reshape(-1, 3)
 
     def _points_to_grid(self, points: torch.Tensor, batch_idx: torch.Tensor) -> torch.Tensor:
-        support_coords = self.support_coords.to(self.device)
+        support_coords = self.support_coords.to(self._device)
         points_xyz = points[:, :3]
         points_p = points[:, 3]
 
         support_voxels = torch.round(support_coords / self.grid_resolution).to(dtype=torch.int32)
         point_voxels = torch.round(points_xyz / self.grid_resolution).to(dtype=torch.int32)
-        coeffs = torch.tensor([1_000_000, 1_000, 1], device=self.device, dtype=torch.int32)
+        coeffs = torch.tensor([1_000_000, 1_000, 1], device=self._device, dtype=torch.int32)
         flat_support = (support_voxels * coeffs).sum(dim=1)
         flat_points = (point_voxels * coeffs).sum(dim=1)
         support_index_map = dict(zip(flat_support.tolist(), range(support_coords.shape[0])))
-        output = torch.zeros(support_coords.shape[0], dtype=torch.float16, device=self.device)
+        output = torch.zeros(support_coords.shape[0], dtype=torch.float16, device=self._device)
 
         for i in range(points.shape[0]):
             key = flat_points[i].item()

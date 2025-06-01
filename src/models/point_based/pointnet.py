@@ -1,3 +1,5 @@
+from typing import Optional
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -180,8 +182,23 @@ class PointNet2Spatial(nn.Module):
 
 
 class SinglePointEncoder(nn.Module):
-    def __init__(self, output_size=1024, output_dim=16):
+    def __init__(self, output_size=1024, output_dim=16, batch_norm: bool = True, dropout: Optional[float] = None, **kwargs):
         super().__init__()
+        if not isinstance(output_size, int):
+            raise ValueError('output_size must be an integer')
+        if output_size <= 0:
+            raise ValueError('output_size must be positive')
+        if not isinstance(output_dim, int):
+            raise ValueError('output_dim must be an integer')
+        if output_dim <= 0:
+            raise ValueError('output_dim must be positive')
+        if not isinstance(batch_norm, bool):
+            raise ValueError('batch_norm must be a boolean')
+        if dropout is not None and not isinstance(dropout, float):
+            raise ValueError('dropout must be a float')
+        if dropout is not None and (dropout < 0.0 or dropout > 1.0):
+            raise ValueError('dropout must be between 0.0 and 1.0')
+
         self.output_size = output_size
         self.output_dim = output_dim
 
@@ -193,14 +210,15 @@ class SinglePointEncoder(nn.Module):
             npoint=output_size, radius=0.8, nsample=32,
             in_channel=64 + 3, mlp=[64, 64, 256], group_all=False
         )
-        self.project = nn.Sequential(
-            nn.Conv1d(256, 128, 1),
-            nn.BatchNorm1d(128),
-            nn.ReLU(),
-            nn.Dropout(p=0.2),
-            
-            nn.Conv1d(128, output_dim, 1)
-        )
+
+        layers = [nn.Conv1d(256, 128, 1)]
+        if batch_norm:
+            layers.append(nn.BatchNorm1d(128))
+        layers.append(nn.ReLU())
+        if dropout is not None:
+            layers.append(nn.Dropout(p=dropout))
+        layers.append(nn.Conv1d(128, output_dim, 1))
+        self.project = nn.Sequential(*layers)
 
     def forward(self, cloud):
         cloud = cloud.unsqueeze(0).permute(0, 2, 1)    # (N, 4) -> (1, 4, N)

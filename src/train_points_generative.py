@@ -6,7 +6,7 @@ from utils.dataset import RadarDataset
 from metrics import PointLoss2 as PointLoss, ChamferPointDataBuffer as PointDataBuffer
 from models import GenerativeBaseline as PointModel
 from model_manager import ModelManager
-from utils import get_local_params
+from utils.params import get_params
 
 
 class PointModelManager(ModelManager):
@@ -21,57 +21,24 @@ class PointModelManager(ModelManager):
         self._loss_type = PointLoss
         self._metric_types = (
             metric_defs.MatchedPointRatio,
-            metric_defs.OccupancyLoss,
-            metric_defs.SpatialLoss,
-            metric_defs.UnmatchedLoss
+            metric_defs.OccupancyLossMetric,
+            metric_defs.SpatialLossMetric,
+            metric_defs.UnmatchedLossMetric
         )
 
 
 def run():
-    RANDOM_SEEED = 42
-    SESSION_NAME = 'generative_baseline'
+    SESSION_NAME = 'generative_overfit'
 
-    # Dataset
-    RADAR_POINT_INTENSITY_THRESHOLD = 5000
-    SHUFFLE_RUNS = True
-    
-    # Loss
-    SPATIAL_WEIGHT = 1.0
-    OCCUPANCY_WEIGHT = 1.0
-    UNMATCHED_WEIGHT = 1.0
-    UNMATCHED_FN_FP_WEIGHT = 1.0
-    UNMATCHED_FN_WEIGHT = 1.0
-    UNMATCHED_FP_WEIGHT = 1.0
+    params = get_params()
+    params['loss_params']['unmatched_weight'] = 1.0
+    params['loss_params']['fn_fp_weight'] = 1.0
+    params['loss_params']['fn_weight'] = 1.0
+    params['loss_params']['fp_weight'] = 1.0
+    params['loss_params']['spatial_weight'] = 1.0
+    params['loss_params']['occupancy_weight'] = 1.0
 
-    # Evaluation
-    # Evaluation parameters
-    OCCUPANCY_THRESHOLD = 0.6
-    EVAL_OVER_OCCUPIED_POINTS_ONLY = True
-    MAX_POINT_DISTANCE = 1
-
-    # Training parameters
-    LEARNING_RATE = 0.001
-    
-
-    dataset_params = {
-        # 'dataset_file_path': 
-        partial=1.0, shuffle_runs=True, random_state=42, grid_voxel_size=1.0,
-        intensity_threshold=0.0
-    }
-
-    local_params = get_local_params()
-
-    mm = PointModelManager(
-        max_point_distance=MAX_POINT_DISTANCE,
-        radar_point_intensity_threshold=RADAR_POINT_INTENSITY_THRESHOLD,
-        shuffle_dataset_runs=SHUFFLE_RUNS, random_state=RANDOM_SEEED,
-        learning_rate=LEARNING_RATE,
-        occupancy_threshold=OCCUPANCY_THRESHOLD, evaluate_over_occupied_points_only=EVAL_OVER_OCCUPIED_POINTS_ONLY,
-        loss_spatial_weight=SPATIAL_WEIGHT, loss_probability_weight=OCCUPANCY_WEIGHT,
-        session_name=SESSION_NAME, loss_unmatched_weight=UNMATCHED_WEIGHT,
-        loss_unmatched_fn_fp_weight=UNMATCHED_FN_FP_WEIGHT, loss_unmatched_fn_weight=UNMATCHED_FN_WEIGHT, loss_unmatched_fp_weight=UNMATCHED_FP_WEIGHT,
-        **local_params
-    )
+    mm = PointModelManager(session_name=SESSION_NAME, **params)
     mm.train()
     mm.evaluate()
     mm.logger.finish()

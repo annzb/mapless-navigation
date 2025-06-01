@@ -1,3 +1,5 @@
+from typing import Optional
+
 import torch
 from models.base import RadarOccupancyModel
 from models.point_based.decoders import MlpDecoder
@@ -5,15 +7,19 @@ from models.point_based.pointnet import SinglePointEncoder
 
 
 class Baseline(RadarOccupancyModel):
-    def __init__(self, **kwargs):
+    def __init__(
+            self, 
+            encoder_cloud_size: int,
+            encoder_num_features: int, 
+            encoder_batch_norm: bool, 
+            encoder_dropout: Optional[float], 
+            predicted_cloud_size: int,
+            **kwargs
+        ):
         super().__init__(**kwargs)
         self.name = 'generative_baseline_v1.0'
-        num_features = 128
-        encoded_cloud_size = 1024
-        final_cloud_size = 4096
-        
-        self.encoder = SinglePointEncoder(output_size=encoded_cloud_size, output_dim=num_features)
-        self.decoder = MlpDecoder(latent_dim=num_features * 2, output_size=final_cloud_size, output_dim=4)
+        self.encoder = SinglePointEncoder(output_size=encoder_cloud_size, output_dim=encoder_num_features, batch_norm=encoder_batch_norm, dropout=encoder_dropout)
+        self.decoder = MlpDecoder(latent_dim=encoder_num_features * 2, output_size=predicted_cloud_size, output_dim=4)
 
     def forward(self, X, debug=False, **kwargs):
         flat_pts, batch_idx = X

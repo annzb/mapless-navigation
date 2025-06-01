@@ -5,7 +5,6 @@ import psutil
 import gc
 import sys
 from collections.abc import Mapping, Iterable
-import tracemalloc
 from tqdm import tqdm
 
 import torch
@@ -257,6 +256,33 @@ def get_dataset(
         partial=1.0, shuffle_runs=True, grid_voxel_size=1.0,
         intensity_threshold=0.0, **kwargs
 ):
+    if not isinstance(dataset_file_path, str):
+        raise ValueError('dataset_file_path must be a string')
+    if not issubclass(dataset_type, Dataset):
+        raise ValueError('dataset_type must be a Dataset object')
+    if not isinstance(device, torch.device):
+        raise ValueError('device must be a torch.device')
+    if not isinstance(random_seed, int):
+        raise ValueError('random_seed must be an integer')
+    if not isinstance(batch_size, int):
+        raise ValueError('batch_size must be an integer')
+    if batch_size <= 0:
+        raise ValueError('batch_size must be positive')
+    if not isinstance(partial, (int, float)):
+        raise ValueError('partial must be a number')
+    if partial <= 0 or partial > 1:
+        raise ValueError('partial must be between 0 and 1')
+    if not isinstance(shuffle_runs, bool):
+        raise ValueError('shuffle_runs must be a boolean')
+    if not isinstance(grid_voxel_size, (int, float)):
+        raise ValueError('grid_voxel_size must be a number')
+    if grid_voxel_size <= 0:
+        raise ValueError('grid_voxel_size must be positive')
+    if not isinstance(intensity_threshold, (int, float)):
+        raise ValueError('intensity_threshold must be a number')
+    if intensity_threshold < 0:
+        raise ValueError('intensity_threshold must be non-negative')
+
     data_dict, radar_config = read_h5_dataset(dataset_file_path)
     radar_frames = data_dict['cascade_heatmaps']
     lidar_frames = data_dict['lidar_map_samples']
@@ -287,7 +313,7 @@ def get_dataset(
         # orig_radar_frames_train, orig_radar_frames_temp
     ) = train_test_split(
         radar_frames, lidar_frames, poses, # orig_radar_frames, 
-        test_size=0.5, random_seed=random_seed
+        test_size=0.5, random_state=random_seed
     )
     (
         radar_val, radar_test,
@@ -296,7 +322,7 @@ def get_dataset(
         # orig_radar_frames_val, orig_radar_frames_test
     ) = train_test_split(
         radar_temp, lidar_temp, poses_temp, # orig_radar_frames_temp, 
-        test_size=0.6, random_seed=random_seed
+        test_size=0.6, random_state=random_seed
     )
     print(f"Finished splitting dataset.")
     # dataset_class = RadarDatasetGrid if grid else RadarDataset

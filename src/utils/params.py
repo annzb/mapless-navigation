@@ -16,8 +16,15 @@ def get_params():
         'dataset_file_path': None,
         'partial': 1.0, 
         'shuffle_runs': True,
-        'intensity_threshold': 0.0,
+        'intensity_threshold': 5000.0,
         'grid_voxel_size': 1.0
+    }
+    model_params = {
+        'encoder_cloud_size': 1024,
+        'encoder_num_features': 128,
+        'encoder_batch_norm': True,
+        'encoder_dropout': 0.2,
+        'predicted_cloud_size': 4096
     }
     optimizer_params = {
         'learning_rate': 1e-3
@@ -33,10 +40,7 @@ def get_params():
         'spatial_weight': 1.0,
         'occupancy_weight': 1.0
     }
-    metric_params = {
-
-    }
-        
+    metric_params = {}
 
     if os.path.isdir('/media/giantdrive'):
         logger = Logger(print_log=True, loggers=(wandb, ))
@@ -47,15 +51,18 @@ def get_params():
 
         dataset_params['dataset_file_path'] = '/media/giantdrive/coloradar/dataset_may2_all.h5'
         dataset_params['partial'] = 0.4
+        model_params['encoder_dropout'] = None
+        model_params['encoder_batch_norm'] = False
 
     elif platform.system() == "Darwin":
+        logger = Logger(print_log=True, loggers=(wandb, ))
         device_name = 'mps'
         model_save_directory = '/Users/anna/data/coloradar/models'
-        n_epochs = 3
-        batch_size = 4
+        n_epochs = 1000
+        batch_size = 2
 
         dataset_params['dataset_file_path'] = '/Users/anna/data/coloradar/dataset_may2_one.h5'
-        dataset_params['partial'] = 0.1
+        dataset_params['partial'] = 0.01
     
     else:
         model_save_directory = '/home/arpg/projects/mapless-navigation/trained_models'
@@ -72,6 +79,7 @@ def get_params():
         'random_seed': random_seed,
         'n_epochs': n_epochs,
         'batch_size': batch_size,
+        'model_params': model_params,
         'dataset_params': dataset_params,
         'optimizer_params': optimizer_params,
         'loss_params': loss_params,
