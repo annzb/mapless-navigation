@@ -99,12 +99,12 @@ class PointLoss(PointcloudOccupancyLoss):
             gradient_anchor = y_pred_values[:, 3].mean()
             unmatched_losses.append(unmatched_loss + gradient_anchor * 0.0)  # maintains gradient flow
 
-        return torch.stack(unmatched_losses).mean()
+        return torch.stack(unmatched_losses).mean(), None
         
     def _calc(self, y_pred, y_true, data_buffer=None, *args, **kwargs):
         spatial_loss, probability_loss = self._calc_matched_loss(y_pred, y_true, data_buffer)
-        unmatched_loss = self._calc_unmatched_loss(y_pred, y_true, data_buffer)
-        total_loss = self._spatial_weight * spatial_loss + self._occupancy_weight * probability_loss + self._unmatched_weight * unmatched_loss
+        unmatched_loss, _ = self._calc_unmatched_loss(y_pred, y_true, data_buffer)
+        total_loss = self._spatial_weight * spatial_loss + self._occupancy_weight * probability_loss + self._unmatched_weight * unmatched_loss.mean()
         return total_loss
 
 
@@ -139,7 +139,7 @@ class PointLoss2(PointLoss):
             pred_occ_mask, true_occ_mask = data_buffer.occupied_mask()
         else:
             pred_occ_mask, true_occ_mask = torch.ones_like(y_pred_batch_indices, dtype=torch.bool, device=self._device), torch.ones_like(y_true_batch_indices, dtype=torch.bool, device=self._device)
-        unmatched_losses = []
+        unmatched_losses, subloss_type = [], []
 
         for b in range(self._batch_size):
             pred_mask, true_mask = target_masks[b]
@@ -148,20 +148,24 @@ class PointLoss2(PointLoss):
 
             if pred_unmatched.size(0) > 0 and true_unmatched.size(0) > 0:  # FPs and FNs
                 dist_loss = torch.cdist(pred_unmatched[:, :3], true_unmatched[:, :3]).mean() * self._fn_fp_weight
+                subloss_type.append(1)
 
             elif true_unmatched.size(0) > 0 and pred_all.size(0) > 0:  # FNs only
                 dist_loss = torch.cdist(pred_all[:, :3], true_unmatched[:, :3]).mean() * self._fn_weight
+                subloss_type.append(2)
 
             elif pred_unmatched.size(0) > 0 and true_all.size(0) > 0:  # FPs only
                 dist_loss = torch.cdist(pred_unmatched[:, :3], true_all[:, :3]).mean() * self._fp_weight
+                subloss_type.append(3)
             
             else: # no unmatched points
                 dist_loss = y_pred_values[:, :3].mean() * 0.0
+                subloss_type.append(0)
 
             unmatched_loss = unmatched_ratios[b] * dist_loss
             unmatched_losses.append(unmatched_loss)
 
-        return torch.stack(unmatched_losses).mean()
+        return torch.stack(unmatched_losses), torch.tensor(subloss_type, device=self._device)
     
     def _calc_matched_loss(self, y_pred, y_true, data_buffer):
         (y_pred_values, y_pred_batch_indices), (y_true_values, y_true_batch_indices) = y_pred, y_true

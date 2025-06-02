@@ -83,9 +83,15 @@ class BaseMetric(BaseCriteria):
             self.best_score = self.total_score
 
     def __call__(self, y_pred, y_true, *args, **kwargs):
-        score = self.forward(y_pred, y_true, *args, **kwargs) * self.score_multiplier
+        calc_result = self.forward(y_pred, y_true, *args, **kwargs) 
+        if calc_result is None:
+            return None
+        
+        score = calc_result * self.score_multiplier
         self.total_score += score
-        return score.detach().item()
+        if torch.is_tensor(score):
+            return score.detach().item()
+        return score
 
 
 class OccupancyCriteria(BaseCriteria):

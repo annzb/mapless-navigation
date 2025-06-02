@@ -13,22 +13,52 @@ class MatchedPointRatio(PointcloudOccupancyMetric):
         return matched_ratios.mean()
     
 
+class UnmatchedLossFpFnMetric(PointcloudOccupancyMetric, PointLoss2):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self._subloss_type = 1  # fn + fp
+
+    def _calc(self, y_pred, y_true, data_buffer=None, *args, **kwargs):
+        unmatched_loss, subloss_type = self._calc_unmatched_loss(y_pred, y_true, data_buffer, *args, **kwargs)
+        if self._subloss_type in subloss_type:
+            return unmatched_loss[subloss_type == self._subloss_type].mean()
+        return None
+    
+class UnmatchedLossFnMetric(UnmatchedLossFpFnMetric):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self._subloss_type = 2  # fn
+
+class UnmatchedLossFpMetric(UnmatchedLossFpFnMetric):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self._subloss_type = 3  # fp
+
+
 class UnmatchedLossMetric(PointcloudOccupancyMetric, PointLoss2):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.negative = True
+        self.score_multiplier = self._unmatched_weight
 
     def _calc(self, y_pred, y_true, data_buffer=None, *args, **kwargs):
-        return self._calc_unmatched_loss(y_pred, y_true, data_buffer, *args, **kwargs)
-    
+        unmatched_loss, _ = self._calc_unmatched_loss(y_pred, y_true, data_buffer, *args, **kwargs)
+        return unmatched_loss.mean()
 
 class SpatialLossMetric(UnmatchedLossMetric):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.score_multiplier = self._spatial_weight
+
     def _calc(self, y_pred, y_true, data_buffer=None, *args, **kwargs):
         spatial_loss, _ = self._calc_matched_loss(y_pred, y_true, data_buffer, *args, **kwargs)
         return spatial_loss
 
-
 class OccupancyLossMetric(UnmatchedLossMetric):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.score_multiplier = self._occupancy_weight
+
     def _calc(self, y_pred, y_true, data_buffer=None, *args, **kwargs):
         _, occupancy_loss = self._calc_matched_loss(y_pred, y_true, data_buffer, *args, **kwargs)
         return occupancy_loss

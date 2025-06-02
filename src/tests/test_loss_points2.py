@@ -41,11 +41,11 @@ def example_clouds(device):
             'batch_indices1': torch.tensor([0, 0], device=device),
             'batch_indices2': torch.tensor([0, 0], device=device),
             'expected_spatial_loss': 0.0, 
-            'expected_prob_loss': 0.0,  # Perfect match
-            'expected_unmatched_loss': 0.0,  # All points matched
-            'expected_spatial_loss_occupied': 0.0,  # Same as above since all occupied points match
-            'expected_prob_loss_occupied': 0.0,  # Same as above
-            'expected_unmatched_loss_occupied': 0.0,  # Same as above
+            'expected_prob_loss': 0.0,
+            'expected_unmatched_loss': 0.0,
+            'expected_spatial_loss_occupied': 0.0,
+            'expected_prob_loss_occupied': 0.0,
+            'expected_unmatched_loss_occupied': 0.0,
         },
         'no_matches': {
             'points1': torch.tensor([

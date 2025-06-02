@@ -23,7 +23,10 @@ class PointModelManager(ModelManager):
             metric_defs.MatchedPointRatio,
             metric_defs.OccupancyLossMetric,
             metric_defs.SpatialLossMetric,
-            metric_defs.UnmatchedLossMetric
+            metric_defs.UnmatchedLossMetric,
+            metric_defs.UnmatchedLossFpFnMetric,
+            metric_defs.UnmatchedLossFnMetric,
+            metric_defs.UnmatchedLossFpMetric
         )
 
 
@@ -33,11 +36,11 @@ def run():
     params = get_params()
     params['n_epochs'] = 5
     params['loss_params']['unmatched_weight'] = 1.0
-    params['loss_params']['fn_fp_weight'] = 1.0
-    params['loss_params']['fn_weight'] = 1.0
+    params['loss_params']['fn_fp_weight'] = 10.0
+    params['loss_params']['fn_weight'] = 5.0
     params['loss_params']['fp_weight'] = 1.0
-    params['loss_params']['spatial_weight'] = 1.0
-    params['loss_params']['occupancy_weight'] = 1.0
+    params['loss_params']['spatial_weight'] = 10.0
+    params['loss_params']['occupancy_weight'] = 10.0
 
     mm = PointModelManager(session_name=SESSION_NAME, **params)
     mm.train()
