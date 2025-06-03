@@ -149,7 +149,7 @@ def test_loss(device, example_clouds, match_occupied_only, test_case):
         (example['points2'], example['batch_indices2']),
         buffer
     )
-    unmatched_loss = loss_fn._calc_unmatched_loss(
+    unmatched_loss, _ = loss_fn._calc_unmatched_loss(
         (example['points1'], example['batch_indices1']),
         (example['points2'], example['batch_indices2']),
         buffer
