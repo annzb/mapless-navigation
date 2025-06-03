@@ -50,7 +50,7 @@ def get_params():
         logger = Logger(print_log=True, loggers=(wandb, ))
         device_name = 'cuda:1'
         model_save_directory = '/home/annz/mapping/models'
-        n_epochs = 1000
+        n_epochs = 100000
         batch_size = 2
 
         dataset_params['dataset_file_path'] = '/media/giantdrive/coloradar/dataset_may2_one.h5'
