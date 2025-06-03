@@ -180,11 +180,11 @@ class PointLoss2(PointLoss):
             batch_mask = batch_indices == b
             pred_b = pred_matched[batch_mask]
             true_b = true_matched[batch_mask]
-            pred_b, true_b = y_pred_values[y_pred_batch_indices == b], y_true_values[y_true_batch_indices == b]
             
             if pred_b.size(0) == 0:  # no matches in this batch
-                spatial_loss = torch.cdist(pred_b[:, :3], true_b[:, :3]).mean() * self.max_distance
-                prob_loss = pred_b[:, 3].mean()
+                pred_all, true_all = y_pred_values[y_pred_batch_indices == b], y_true_values[y_true_batch_indices == b]
+                spatial_loss = torch.cdist(pred_all[:, :3], true_all[:, :3]).mean() * self.max_distance
+                prob_loss = pred_all[:, 3].mean()
                 spatial_losses.append(spatial_loss)
                 prob_losses.append(prob_loss)
                 continue
