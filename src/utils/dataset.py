@@ -155,29 +155,6 @@ def prepare_point_data(X, Y, poses, data_transformer, dataset_part=1.0, intensit
             poses_processed.extend(poses_batch)
             if len(X_processed) >= target_num_samples:
                 break
-        
-        # Y, nonempty_lidar_idx = process_lidar_frames(Y)
-        # log_memory("processed lidar frames", {'X': X, 'Y': Y, 'poses': poses, 'nonempty_lidar_idx': nonempty_lidar_idx})
-
-        # tracemalloc.start()
-        # snap1 = tracemalloc.take_snapshot()
-        # X = data_transformer.polar_grid_to_cartesian_points(X[nonempty_lidar_idx])
-        # log_memory("cartesian points", {'X': X, 'Y': Y, 'poses': poses, 'nonempty_lidar_idx': nonempty_lidar_idx})
-        # snap2 = tracemalloc.take_snapshot()
-        # top_stats = snap2.compare_to(snap1, 'lineno')
-        # print("[ Top 5 Python allocs ]")
-        # for stat in top_stats[:5]:
-        #     print(stat)
-        
-        # X, nonempty_radar_idx = data_transformer.filter_point_intensity(points=X, threshold=0.09)
-        # log_memory("filtered points", {'X': X, 'Y': Y, 'poses': poses, 'nonempty_lidar_idx': nonempty_lidar_idx, 'nonempty_radar_idx': nonempty_radar_idx})
-        
-        # Y = [Y[i] for i in nonempty_radar_idx]
-        # log_memory("filtered Y", {'X': X, 'Y': Y, 'poses': poses, 'nonempty_lidar_idx': nonempty_lidar_idx, 'nonempty_radar_idx': nonempty_radar_idx})
-        
-        # poses = poses[nonempty_lidar_idx][nonempty_radar_idx]
-        # log_fn("Filtered", orig_size - len(X), "empty samples out of", orig_size, ".")
-        # log_memory("filtered poses", {'X': X, 'Y': Y, 'poses': poses, 'nonempty_lidar_idx': nonempty_lidar_idx, 'nonempty_radar_idx': nonempty_radar_idx})
 
         assert len(X_processed) == len(Y_processed) == len(poses_processed) != 0
         if dataset_part < 1:

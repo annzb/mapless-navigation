@@ -39,11 +39,9 @@ class RadarOccupancyModel(nn.Module):
         return pcl_batch_flat, batch_indices
     
     def check_gradient(self, tensor, name):
-        # tensor.register_hook(lambda g: print(g.norm()))
         if not self.training:
             return
         if not tensor.requires_grad:
             raise RuntimeError(f"{name} does not require gradients")
-        # Just check if the tensor is connected to the computation graph
         if tensor.grad_fn is None:
             raise RuntimeError(f"{name} is not connected to computation graph")

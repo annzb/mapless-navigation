@@ -25,7 +25,9 @@ def get_params():
         'encoder_num_features': 128,
         'encoder_batch_norm': True,
         'encoder_dropout': 0.2,
-        'predicted_cloud_size': 4096
+        'predicted_cloud_size': 4096,
+        'decoder_layer_norm': True,
+        'decoder_dropout': 0.2
     }
     optimizer_params = {
         'learning_rate': 1e-3
@@ -53,19 +55,25 @@ def get_params():
 
         dataset_params['dataset_file_path'] = '/media/giantdrive/coloradar/dataset_may2_one.h5'
         dataset_params['partial'] = 0.01
-        model_params['encoder_dropout'] = None
         model_params['encoder_batch_norm'] = False
+        model_params['decoder_layer_norm'] = False
+        model_params['encoder_dropout'] = None
+        model_params['decoder_dropout'] = None
 
     elif platform.system() == "Darwin":
         host = 'mac'
         logger = Logger(print_log=True)
         device_name = 'mps'
         model_save_directory = '/Users/anna/data/coloradar/models'
-        n_epochs = 1000
+        n_epochs = 2
         batch_size = 2
 
         dataset_params['dataset_file_path'] = '/Users/anna/data/coloradar/dataset_may2_one.h5'
         dataset_params['partial'] = 0.01
+        model_params['encoder_batch_norm'] = False
+        model_params['decoder_layer_norm'] = False
+        model_params['encoder_dropout'] = None
+        model_params['decoder_dropout'] = None
     
     else:
         model_save_directory = '/home/arpg/projects/mapless-navigation/trained_models'

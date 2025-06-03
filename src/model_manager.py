@@ -186,7 +186,7 @@ class ModelManager(ABC):
     def _train_epoch(self):
         mode = 'train'
         data_loader = self.train_loader
-        epoch_loss = 0.0
+        epoch_loss, epoch_grad_norm = 0.0, 0.0
         self.model.train()
         self.reset_metrics_epoch(mode=mode)
 
@@ -207,7 +207,14 @@ class ModelManager(ABC):
             self.optimizer.zero_grad(set_to_none=True)
             if torch.isnan(batch_loss).any() or torch.isinf(batch_loss).any():
                 raise RuntimeError("Detected NaN or Inf in batch_loss before backward!")
+            
             batch_loss.backward()
+            grad_norm = 0.0
+            for name, param in self.model.named_parameters():
+                if param.requires_grad and param.grad is not None:
+                    grad_norm += param.grad.norm().item()
+            epoch_grad_norm += grad_norm
+
             self.optimizer.step()
             for name, param in self.model.named_parameters():
                 if param.grad is None:
@@ -216,8 +223,9 @@ class ModelManager(ABC):
                     raise RuntimeError(f"NaN detected in gradient of {name}!")
 
         epoch_loss /= len(data_loader)
+        epoch_grad_norm /= len(data_loader)
         self.scale_metrics(n_samples=len(data_loader), mode=mode)
-        return epoch_loss
+        return epoch_loss, epoch_grad_norm
 
     def _save_model(self, filename):
         if not filename.endswith('.pth'):
@@ -235,7 +243,7 @@ class ModelManager(ABC):
 
         for epoch in range(n_epochs):
             self.logger.log(f"Epoch {epoch + 1}/{n_epochs}")
-            train_epoch_loss = self._train_epoch()
+            train_epoch_loss, train_grad_norm = self._train_epoch()
             val_epoch_loss = self._evaluate_current_model(mode = 'val', data_loader=self.val_loader)
 
             if train_epoch_loss < best_train_loss:
@@ -252,7 +260,7 @@ class ModelManager(ABC):
                         self._save_model(f'best_{metric.name}')
 
             log = {
-                "epoch": epoch,
+                "epoch": epoch, 'grad_norm': train_grad_norm,
                 "train_loss": train_epoch_loss, "best_train_loss": best_train_loss,
                 "valid_loss": val_epoch_loss, "best_valid_loss": best_val_loss
             }

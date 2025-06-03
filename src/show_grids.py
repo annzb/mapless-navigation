@@ -21,6 +21,10 @@ def run():
     params['loss_params']['occupancy_weight'] = 10.0
 
     mm = PointModelManager(session_name=SESSION_NAME, **params)
+    mm.train()
+    mm.evaluate()
+    mm.logger.finish()
+
     model_save_directory = params['model_save_directory']
     model_path=os.path.join(model_save_directory, SESSION_NAME, 'best_train_loss.pth')
     mm.init_model(model_path=model_path)

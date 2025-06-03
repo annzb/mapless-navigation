@@ -135,27 +135,23 @@ class PointLoss2(PointLoss):
         (y_pred_values, y_pred_batch_indices), (y_true_values, y_true_batch_indices) = y_pred, y_true
         target_masks = self._calc_unmatched_masks(y_pred_batch_indices, y_true_batch_indices, data_buffer)
         unmatched_ratios = self._calc_matching_ratios_soft(y_pred, y_true, data_buffer, target_masks)
-        if self.occupied_only:
-            pred_occ_mask, true_occ_mask = data_buffer.occupied_mask()
-        else:
-            pred_occ_mask, true_occ_mask = torch.ones_like(y_pred_batch_indices, dtype=torch.bool, device=self._device), torch.ones_like(y_true_batch_indices, dtype=torch.bool, device=self._device)
         unmatched_losses, subloss_type = [], []
 
         for b in range(self._batch_size):
             pred_mask, true_mask = target_masks[b]
             pred_unmatched, true_unmatched = y_pred_values[pred_mask], y_true_values[true_mask]
-            pred_all, true_all = y_pred_values[(y_pred_batch_indices == b) & pred_occ_mask], y_true_values[(y_true_batch_indices == b) & true_occ_mask]
+            pred_b, true_b = y_pred_values[y_pred_batch_indices == b], y_true_values[y_true_batch_indices == b]
 
             if pred_unmatched.size(0) > 0 and true_unmatched.size(0) > 0:  # FPs and FNs
                 dist_loss = torch.cdist(pred_unmatched[:, :3], true_unmatched[:, :3]).mean() * self._fn_fp_weight
                 subloss_type.append(1)
 
-            elif true_unmatched.size(0) > 0 and pred_all.size(0) > 0:  # FNs only
-                dist_loss = torch.cdist(pred_all[:, :3], true_unmatched[:, :3]).mean() * self._fn_weight
+            elif true_unmatched.size(0) > 0 and pred_b.size(0) > 0:  # FNs only
+                dist_loss = torch.cdist(pred_b[:, :3], true_unmatched[:, :3]).mean() * self._fn_weight
                 subloss_type.append(2)
 
-            elif pred_unmatched.size(0) > 0 and true_all.size(0) > 0:  # FPs only
-                dist_loss = torch.cdist(pred_unmatched[:, :3], true_all[:, :3]).mean() * self._fp_weight
+            elif pred_unmatched.size(0) > 0 and true_b.size(0) > 0:  # FPs only
+                dist_loss = torch.cdist(pred_unmatched[:, :3], true_b[:, :3]).mean() * self._fp_weight
                 subloss_type.append(3)
             
             else: # no unmatched points
@@ -169,15 +165,10 @@ class PointLoss2(PointLoss):
     
     def _calc_matched_loss(self, y_pred, y_true, data_buffer):
         (y_pred_values, y_pred_batch_indices), (y_true_values, y_true_batch_indices) = y_pred, y_true
-        if self.occupied_only:
-            pred_occ_mask, true_occ_mask = data_buffer.occupied_mask()
-        else:
-            pred_occ_mask, true_occ_mask = torch.ones_like(y_pred_batch_indices, dtype=torch.bool, device=self._device), torch.ones_like(y_true_batch_indices, dtype=torch.bool, device=self._device)
-
         mapping = data_buffer.mapping()
         if mapping.numel() == 0:
-            spatial_loss = torch.cdist(y_pred_values[pred_occ_mask][:, :3], y_true_values[true_occ_mask][:, :3]).mean() * self.max_distance
-            prob_loss = y_pred_values[pred_occ_mask][:, 3].mean()
+            spatial_loss = torch.cdist(y_pred_values[:, :3], y_true_values[:, :3]).mean() * self.max_distance
+            prob_loss = y_pred_values[:, 3].mean()
             return spatial_loss, prob_loss
         
         pred_matched = y_pred_values[mapping[:, 0]]
@@ -189,11 +180,11 @@ class PointLoss2(PointLoss):
             batch_mask = batch_indices == b
             pred_b = pred_matched[batch_mask]
             true_b = true_matched[batch_mask]
-            pred_all, true_all = y_pred_values[(y_pred_batch_indices == b) & pred_occ_mask], y_true_values[(y_true_batch_indices == b) & true_occ_mask]
+            pred_b, true_b = y_pred_values[y_pred_batch_indices == b], y_true_values[y_true_batch_indices == b]
             
             if pred_b.size(0) == 0:  # no matches in this batch
-                spatial_loss = torch.cdist(pred_all[:, :3], true_all[:, :3]).mean() * self.max_distance
-                prob_loss = pred_all[:, 3].mean()
+                spatial_loss = torch.cdist(pred_b[:, :3], true_b[:, :3]).mean() * self.max_distance
+                prob_loss = pred_b[:, 3].mean()
                 spatial_losses.append(spatial_loss)
                 prob_losses.append(prob_loss)
                 continue

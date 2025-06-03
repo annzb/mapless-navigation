@@ -65,7 +65,29 @@ class NumpyDataTransform:
                 
         # always return a list of clouds to support different sizes
         return samples, multiple
+    
+    def polar_grid_to_cartesian_grid(self, samples, **kwargs):
+        samples, multiple = self.process_grid_input(samples, **kwargs)
+        B = samples.shape[0]
+        x_min, x_max, y_min, y_max, z_min, z_max = self.radar_config.point_range
         
+        voxel_indices = np.floor(((self.cartesian_coords - np.array([x_min, y_min, z_min])) / self.radar_config.grid_resolution)).astype(np.int32)  # shape (N_voxels, 3)
+        valid_mask = (
+            (voxel_indices[:, 0] >= 0) & (voxel_indices[:, 0] < self.radar_config.grid_size[0]) &
+            (voxel_indices[:, 1] >= 0) & (voxel_indices[:, 1] < self.radar_config.grid_size[1]) &
+            (voxel_indices[:, 2] >= 0) & (voxel_indices[:, 2] < self.radar_config.grid_size[2])
+        )
+        valid_indices = voxel_indices[valid_mask]
+        sample_indices = np.nonzero(valid_mask)[0]
+
+        cartesian_grid = np.zeros((B, *self.radar_config.grid_size), dtype=samples.dtype)
+        for b in range(B):
+            flat_sample = samples[b].reshape(-1)
+            valid_values = flat_sample[sample_indices]
+            xi, yi, zi = valid_indices[:, 0], valid_indices[:, 1], valid_indices[:, 2]
+            cartesian_grid[b, xi, yi, zi] = valid_values
+
+        return cartesian_grid if multiple else cartesian_grid[0]
 
     def polar_grid_to_cartesian_points(self, samples, **kwargs):
         samples, multiple = self.process_grid_input(samples, **kwargs)
