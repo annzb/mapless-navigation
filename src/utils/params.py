@@ -51,7 +51,7 @@ def get_params():
         device_name = 'cuda:1'
         model_save_directory = '/home/annz/mapping/models'
         n_epochs = 100000
-        batch_size = 2
+        batch_size = 1
 
         dataset_params['dataset_file_path'] = '/media/giantdrive/coloradar/dataset_may2_one.h5'
         dataset_params['partial'] = 0.009
