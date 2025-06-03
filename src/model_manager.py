@@ -62,8 +62,8 @@ class ModelManager(ABC):
         
         self.logger.init(
             project="radar-occupancy",
-            host=host_name,
             config={
+                "host": host_name,
                 "model": {
                     "name": self.model.name,
                     **model_params
