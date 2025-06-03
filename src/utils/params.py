@@ -54,7 +54,7 @@ def get_params():
         batch_size = 2
 
         dataset_params['dataset_file_path'] = '/media/giantdrive/coloradar/dataset_may2_one.h5'
-        dataset_params['partial'] = 0.01
+        dataset_params['partial'] = 0.009
         model_params['encoder_batch_norm'] = False
         model_params['decoder_layer_norm'] = False
         model_params['encoder_dropout'] = None

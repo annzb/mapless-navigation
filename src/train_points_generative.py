@@ -35,11 +35,11 @@ def run():
 
     params = get_params()
     params['loss_params']['unmatched_weight'] = 1.0
-    params['loss_params']['fn_fp_weight'] = 10.0
-    params['loss_params']['fn_weight'] = 5.0
+    params['loss_params']['fn_fp_weight'] = 5.0
+    params['loss_params']['fn_weight'] = 2.0
     params['loss_params']['fp_weight'] = 1.0
-    params['loss_params']['spatial_weight'] = 10.0
-    params['loss_params']['occupancy_weight'] = 10.0
+    params['loss_params']['spatial_weight'] = 1.0
+    params['loss_params']['occupancy_weight'] = 1.0
 
     mm = PointModelManager(session_name=SESSION_NAME, **params)
     mm.train()

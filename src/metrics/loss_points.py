@@ -168,7 +168,7 @@ class PointLoss2(PointLoss):
         mapping = data_buffer.mapping()
         if mapping.numel() == 0:
             spatial_loss = torch.cdist(y_pred_values[:, :3], y_true_values[:, :3]).mean() * self.max_distance
-            prob_loss = y_pred_values[:, 3].mean()
+            prob_loss = 1 - y_pred_values[:, 3].mean()
             return spatial_loss, prob_loss
         
         pred_matched = y_pred_values[mapping[:, 0]]
@@ -184,7 +184,7 @@ class PointLoss2(PointLoss):
             if pred_b.size(0) == 0:  # no matches in this batch
                 pred_all, true_all = y_pred_values[y_pred_batch_indices == b], y_true_values[y_true_batch_indices == b]
                 spatial_loss = torch.cdist(pred_all[:, :3], true_all[:, :3]).mean() * self.max_distance
-                prob_loss = pred_all[:, 3].mean()
+                prob_loss = 1 - pred_all[:, 3].mean()
                 spatial_losses.append(spatial_loss)
                 prob_losses.append(prob_loss)
                 continue
