@@ -2,7 +2,7 @@ import torch
 import torch.nn.functional as F
 
 from metrics.base import PointcloudOccupancyMetric
-from metrics.loss_points import PointLoss2
+from metrics.loss_points import DistanceLoss, PointLoss2
 
 
 class MatchedPointRatio(PointcloudOccupancyMetric):
@@ -12,6 +12,28 @@ class MatchedPointRatio(PointcloudOccupancyMetric):
         matched_ratios = self._calc_matching_ratios(y_pred_batch_indices, y_true_batch_indices, data_buffer, target_masks)
         return matched_ratios.mean()
     
+
+class DistanceLossFpFnMetric(DistanceLoss, PointcloudOccupancyMetric):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self._subloss_type = 1  # fn + fp
+
+    def _calc(self, y_pred, y_true, data_buffer=None, *args, **kwargs):
+        losses, loss_types = super()._calc(y_pred, y_true, data_buffer, verbose_return=True)
+        if self._subloss_type in loss_types:
+            return losses[loss_types == self._subloss_type].mean()
+        return None
+    
+class DistanceLossFnMetric(DistanceLossFpFnMetric):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self._subloss_type = 2  # fn
+
+class DistanceLossFpMetric(DistanceLossFpFnMetric):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self._subloss_type = 3  # fp
+
 
 class UnmatchedLossFpFnMetric(PointcloudOccupancyMetric, PointLoss2):
     def __init__(self, **kwargs):

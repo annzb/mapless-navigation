@@ -83,14 +83,14 @@ class BaseMetric(BaseCriteria):
             self.best_score = self.total_score
 
     def __call__(self, y_pred, y_true, *args, **kwargs):
-        calc_result = self.forward(y_pred, y_true, *args, **kwargs) 
-        if calc_result is None:
+        score = self.forward(y_pred, y_true, *args, **kwargs) 
+        if score is None:
             return None
         
-        score = calc_result * self.score_multiplier
-        self.total_score += score
         if torch.is_tensor(score):
-            return score.detach().item()
+            score = score.detach().item()
+        score *= self.score_multiplier
+        self.total_score += score
         return score
 
 

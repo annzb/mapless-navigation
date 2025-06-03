@@ -3,23 +3,19 @@ import os
 import torch
 torch.autograd.set_detect_anomaly(True)
 
-from utils import get_params
+from utils.params import get_params
 from train_points_generative import PointModelManager
 from visualize.points import show_radar_clouds
 
 
 def run():
-    SESSION_NAME = '28may25_generative_baseline'
+    SESSION_NAME = '02june25_generative_overfit'
 
     params = get_params()
-    params['n_epochs'] = 1000
-    params['loss_params']['unmatched_weight'] = 1.0
-    params['loss_params']['fn_fp_weight'] = 10.0
-    params['loss_params']['fn_weight'] = 5.0
-    params['loss_params']['fp_weight'] = 1.0
-    params['loss_params']['spatial_weight'] = 10.0
-    params['loss_params']['occupancy_weight'] = 10.0
-
+    params['model_params']['encoder_batch_norm'] = False
+    params['model_params']['decoder_layer_norm'] = False
+    params['model_params']['encoder_dropout'] = None
+    params['model_params']['decoder_dropout'] = None
     mm = PointModelManager(session_name=SESSION_NAME, **params)
     model_save_directory = params['model_save_directory']
     model_path=os.path.join(model_save_directory, SESSION_NAME, 'best_train_loss.pth')
@@ -66,18 +62,18 @@ def run():
     #     titles=['input_cloud', 'gt_cloud'],
     #     window_name=title
     # )
-    # show_radar_clouds(
-    #     clouds=[predicted_log_odds.numpy(), probs, gt_cloud_occupied],
-    #     prob_flags=[False, True, True],
-    #     titles=['predicted_log_odds', 'probs', 'gt_cloud_occupied'],
-    #     window_name=title
-    # )
     show_radar_clouds(
-        clouds=[embeddings[0].numpy(), predicted_log_odds.numpy(), probs],
-        prob_flags=[False, False, True],
-        titles=['embeddings', 'predicted_log_odds', 'probs'],
+        clouds=[predicted_log_odds.numpy(), probs, gt_cloud_occupied],
+        prob_flags=[False, True, True],
+        titles=['predicted_log_odds', 'probs', 'gt_cloud_occupied'],
         window_name=title
     )
+    # show_radar_clouds(
+    #     clouds=[embeddings[0].numpy(), predicted_log_odds.numpy(), probs],
+    #     prob_flags=[False, False, True],
+    #     titles=['embeddings', 'predicted_log_odds', 'probs'],
+    #     window_name=title
+    # )
 
     mm.logger.finish()
 

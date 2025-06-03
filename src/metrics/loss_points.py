@@ -28,6 +28,79 @@ class MsePointLoss(PointcloudOccupancyLoss):
             losses.append(loss)
 
         return torch.stack(losses).mean()
+    
+
+class DistanceLoss(PointcloudOccupancyLoss):
+    def __init__(self, fn_fp_weight, fn_weight, fp_weight, **kwargs):
+        super().__init__(**kwargs)
+        if not isinstance(fn_fp_weight, (int, float)):
+            raise ValueError('fn_fp_weight must be a number')
+        if not isinstance(fn_weight, (int, float)):
+            raise ValueError('fn_weight must be a number')
+        if not isinstance(fp_weight, (int, float)):
+            raise ValueError('fp_weight must be a number')
+        
+        self._fn_fp_weight = fn_fp_weight
+        self._fn_weight = fn_weight
+        self._fp_weight = fp_weight
+    
+    def fn_fp_weight(self) -> float:
+        return self._fn_fp_weight
+    
+    def fn_weight(self) -> float:
+        return self._fn_weight
+    
+    def fp_weight(self) -> float:
+        return self._fp_weight
+    
+    def _calc_weighted_distance_loss(self, pred_values, true_values):
+        dist_matrix = torch.cdist(pred_values[:, :3], true_values[:, :3])
+
+        d_pred_to_true, idx_pred = dist_matrix.min(dim=1)
+        true_conf_at_match = true_values[idx_pred, 3]
+        loss_pred = (d_pred_to_true * true_conf_at_match).mean()
+
+        d_true_to_pred, idx_true = dist_matrix.min(dim=0)
+        pred_conf_at_match = pred_values[idx_true, 3]
+        loss_true = (d_true_to_pred * pred_conf_at_match).mean()
+
+        return loss_pred + loss_true
+
+    def _calc(self, y_pred, y_true, data_buffer=None, verbose_return=False, *args, **kwargs):
+        (y_pred_values, y_pred_batch_indices), (y_true_values, y_true_batch_indices) = y_pred, y_true
+        pred_occ_mask, true_occ_mask = data_buffer.occupied_mask()
+        if not self.occupied_only:
+            pred_occ_mask, true_occ_mask = torch.ones_like(pred_occ_mask, device=self._device, dtype=torch.bool), torch.ones_like(true_occ_mask, device=self._device, dtype=torch.bool)
+
+        losses, loss_types = [], []
+        for b in range(self._batch_size):
+            pred_batch_mask, true_batch_mask = y_pred_batch_indices == b, y_true_batch_indices == b
+            pred_b, true_b = y_pred_values[pred_batch_mask], y_true_values[true_batch_mask]
+            pred_b_filtered, true_b_filtered = y_pred_values[pred_batch_mask & pred_occ_mask], y_true_values[true_batch_mask & true_occ_mask]
+
+            if pred_b_filtered.size(0) > 0 and true_b_filtered.size(0) > 0:  # promote matching points
+                loss = self._calc_weighted_distance_loss(pred_b_filtered, true_b_filtered) * self._fn_fp_weight
+                loss_types.append(1)
+
+            elif true_b_filtered.size(0) > 0:  # encourage higher prediction confidence while scaling with true confidence
+                # loss = (1 - y_pred_values[y_pred_batch_indices == b][:, 3]).mean() * true_b[:, 3].mean() * self._fn_weight
+                loss = self._calc_weighted_distance_loss(pred_b, true_b_filtered) * self._fn_weight
+                loss_types.append(2)
+
+            elif pred_b_filtered.size(0) > 0:  # encourage lower prediction confidence
+                # loss = pred_b[:, 3].mean() * self._fp_weight
+                loss = self._calc_weighted_distance_loss(pred_b_filtered, true_b) * self._fp_weight
+                loss_types.append(3)
+
+            else:
+                loss = (pred_b[:, 3].mean() + true_b[:, 3].mean()) * 0.0
+                loss_types.append(0)
+
+            losses.append(loss)
+
+        if verbose_return:
+            return torch.stack(losses), torch.tensor(loss_types, device=self._device)
+        return torch.stack(losses).mean()
 
 
 class PointLoss(PointcloudOccupancyLoss):
@@ -108,29 +181,7 @@ class PointLoss(PointcloudOccupancyLoss):
         return total_loss
 
 
-class PointLoss2(PointLoss):
-    def __init__(self, fn_fp_weight, fn_weight, fp_weight, **kwargs):
-        super().__init__(**kwargs)
-        if not isinstance(fn_fp_weight, (int, float)):
-            raise ValueError('fn_fp_weight must be a number')
-        if not isinstance(fn_weight, (int, float)):
-            raise ValueError('fn_weight must be a number')
-        if not isinstance(fp_weight, (int, float)):
-            raise ValueError('fp_weight must be a number')
-        
-        self._fn_fp_weight = fn_fp_weight
-        self._fn_weight = fn_weight
-        self._fp_weight = fp_weight
-    
-    def fn_fp_weight(self) -> float:
-        return self._fn_fp_weight
-    
-    def fn_weight(self) -> float:
-        return self._fn_weight
-    
-    def fp_weight(self) -> float:
-        return self._fp_weight
-    
+class PointLoss2(PointLoss, DistanceLoss):
     def _calc_unmatched_loss(self, y_pred, y_true, data_buffer):
         (y_pred_values, y_pred_batch_indices), (y_true_values, y_true_batch_indices) = y_pred, y_true
         target_masks = self._calc_unmatched_masks(y_pred_batch_indices, y_true_batch_indices, data_buffer)

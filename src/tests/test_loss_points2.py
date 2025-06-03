@@ -58,10 +58,10 @@ def example_clouds(device):
             'batch_indices1': torch.tensor([0], device=device),
             'batch_indices2': torch.tensor([0], device=device),
             'expected_spatial_loss': 10.0,
-            'expected_prob_loss': 1.0,
+            'expected_prob_loss': 0.0,
             'expected_unmatched_loss': 10.0,
             'expected_spatial_loss_occupied': 10.0,
-            'expected_prob_loss_occupied': 1.0,
+            'expected_prob_loss_occupied': 0.0,
             'expected_unmatched_loss_occupied': 10.0,
         },
         'simple_match': {

@@ -3,7 +3,7 @@ torch.autograd.set_detect_anomaly(True)
 
 from metrics import metrics as metric_defs
 from utils.dataset import RadarDataset
-from metrics import PointLoss2 as PointLoss, ChamferPointDataBuffer as PointDataBuffer
+from metrics import DistanceLoss as PointLoss, ChamferPointDataBuffer as PointDataBuffer
 from models import GenerativeBaseline as PointModel
 from model_manager import ModelManager
 from utils.params import get_params
@@ -21,12 +21,15 @@ class PointModelManager(ModelManager):
         self._loss_type = PointLoss
         self._metric_types = (
             metric_defs.MatchedPointRatio,
-            metric_defs.OccupancyLossMetric,
-            metric_defs.SpatialLossMetric,
-            metric_defs.UnmatchedLossMetric,
-            metric_defs.UnmatchedLossFpFnMetric,
-            metric_defs.UnmatchedLossFnMetric,
-            metric_defs.UnmatchedLossFpMetric
+            metric_defs.DistanceLossFpFnMetric,
+            metric_defs.DistanceLossFpMetric,
+            metric_defs.DistanceLossFnMetric
+            # metric_defs.OccupancyLossMetric,
+            # metric_defs.SpatialLossMetric,
+            # metric_defs.UnmatchedLossMetric,
+            # metric_defs.UnmatchedLossFpFnMetric,
+            # metric_defs.UnmatchedLossFnMetric,
+            # metric_defs.UnmatchedLossFpMetric
         )
 
 
@@ -34,12 +37,15 @@ def run():
     SESSION_NAME = 'generative_overfit'
 
     params = get_params()
-    params['loss_params']['unmatched_weight'] = 1.0
-    params['loss_params']['fn_fp_weight'] = 5.0
-    params['loss_params']['fn_weight'] = 2.0
+    params['n_epochs'], params['batch_size'] = 1000, 1
+    
+    # params['loss_params']['spatial_weight'] = 1.0
+    # params['loss_params']['occupancy_weight'] = 1.0
+    # params['loss_params']['unmatched_weight'] = 1.0
+    params['loss_params']['fn_fp_weight'] = 1.0
+    params['loss_params']['fn_weight'] = 1.0
     params['loss_params']['fp_weight'] = 1.0
-    params['loss_params']['spatial_weight'] = 1.0
-    params['loss_params']['occupancy_weight'] = 1.0
+
 
     mm = PointModelManager(session_name=SESSION_NAME, **params)
     mm.train()
