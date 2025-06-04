@@ -50,14 +50,14 @@ def get_params():
         device_name = 'cuda:1'
         model_save_directory = '/home/annz/mapping/models'
         n_epochs = 1000
-        batch_size = 1
+        batch_size = 8
 
         dataset_params['dataset_file_path'] = '/media/giantdrive/coloradar/dataset_may2_one.h5'
-        dataset_params['partial'] = 0.009
-        model_params['encoder_batch_norm'] = False
-        model_params['decoder_layer_norm'] = False
-        model_params['encoder_dropout'] = None
-        model_params['decoder_dropout'] = None
+        dataset_params['partial'] = 0.2
+        # model_params['encoder_batch_norm'] = False
+        # model_params['decoder_layer_norm'] = False
+        # model_params['encoder_dropout'] = None
+        # model_params['decoder_dropout'] = None
 
     elif platform.system() == "Darwin":
         host_name = 'mac'

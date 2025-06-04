@@ -34,7 +34,7 @@ class PointModelManager(ModelManager):
 
 
 def run():
-    SESSION_NAME = 'generative_overfit_dloss1'
+    SESSION_NAME = 'generative_dloss1'
 
     params = get_params()
     params['loss_params']['fn_fp_weight'] = 1.0
