@@ -122,51 +122,95 @@ def log_memory(stage, arrays=None, log_fn=print):
     log_fn(f"  UNTRACKED MEMORY: {rss - total_gb:.2f} GB")
 
 
-def prepare_point_data(X, Y, poses, data_transformer, dataset_part=1.0, intensity_threshold=0.0, logger=None):
-        assert len(X) == len(Y) == len(poses)
-        assert 0.0 < dataset_part <= 1.0
-        log_fn = logger.log if logger is not None else print
-        orig_size = len(X)
-        target_num_samples = int(orig_size * dataset_part)
-        log_fn(f"Collecting {target_num_samples} samples out of {orig_size}.")
-        log_memory("start", {'X': X, 'Y': Y, 'poses': poses})
+def prepare_grid_data(X, Y, poses, data_transformer, dataset_part=1.0, logger=None, **kwargs):
+    """
+    Remove samples with empty GT, convert lidar clouds to grids, convert lidar occupancy to probability. Convert radar polar grids to cartesian grids.
+    X: polar grids
+    Y: cartesian clouds
+    poses: poses
+    """
+    assert len(X) == len(Y) == len(poses)
+    assert 0.0 < dataset_part <= 1.0
+    log_fn = logger.log if logger is not None else print
+    orig_size = len(X)
+    target_num_samples = int(orig_size * dataset_part)
+    log_fn(f"Collecting {target_num_samples} samples out of {orig_size}.")
+    log_memory("start", {'X': X, 'Y': Y, 'poses': poses})
 
-        batch_size = 100
-        n_iter = len(X) // batch_size + (1 if len(X) % batch_size != 0 else 0)
-        X_processed, Y_processed, poses_processed = [], [], []
-        for i in tqdm(range(n_iter)):
-            X_batch = X[i * batch_size:(i + 1) * batch_size]
-            Y_batch = Y[i * batch_size:(i + 1) * batch_size]
-            poses_batch = poses[i * batch_size:(i + 1) * batch_size]
-            
-            Y_batch, nonempty_lidar_idx = process_lidar_frames(Y_batch)
-            if len(Y_batch) == 0:
-                continue
+    X_processed, Y_processed, poses_processed = [], [], []
+    for i, (X_sample, Y_sample, pose_sample) in tqdm(enumerate(zip(X, Y, poses))):
+        nonempty_Y_sample = Y_sample[Y_sample[..., 3] > 0]
+        if len(nonempty_Y_sample) == 0:  # empty GT
+            continue
+        
+        Y_sample_grid = data_transformer.point_clouds_to_cartesian_grid(nonempty_Y_sample)
+        Y_sample_grid = 1 / (1 + np.exp(-Y_sample_grid))
+        X_sample_cartesian = data_transformer.polar_grid_to_cartesian_grid(X_sample)
 
-            X_batch = data_transformer.polar_grid_to_cartesian_points(X_batch[nonempty_lidar_idx])
-            X_batch, nonempty_radar_idx = data_transformer.filter_point_intensity(points=X_batch, threshold=intensity_threshold)
-            if len(X_batch) == 0:
-                continue
+        X_processed.append(X_sample_cartesian)
+        Y_processed.append(Y_sample_grid)
+        poses_processed.append(pose_sample)
+        if len(X_processed) >= target_num_samples:
+            break
 
-            Y_batch = [Y_batch[i] for i in nonempty_radar_idx]
-            poses_batch = poses_batch[nonempty_lidar_idx][nonempty_radar_idx]
-            X_processed.extend(X_batch)
-            Y_processed.extend(Y_batch)
-            poses_processed.extend(poses_batch)
-            if len(X_processed) >= target_num_samples:
-                break
+    X_processed, Y_processed, poses_processed = np.stack(X_processed), np.stack(Y_processed), np.stack(poses_processed)
+    assert len(X_processed) == len(Y_processed) == len(poses_processed) != 0
+    if dataset_part < 1:
+        X_processed = X_processed[:target_num_samples]
+        Y_processed = Y_processed[:target_num_samples]
+        poses_processed = poses_processed[:target_num_samples]
+    log_memory("sliced for dataset_part", {
+        'X': X, 'Y': Y, 'poses': poses, 
+        'X_processed': X_processed, 'Y_processed': Y_processed, 'poses_processed': poses_processed
+    })
+    return X_processed, Y_processed, poses_processed
 
-        assert len(X_processed) == len(Y_processed) == len(poses_processed) != 0
-        if dataset_part < 1:
-            X_processed = X_processed[:target_num_samples]
-            Y_processed = Y_processed[:target_num_samples]
-            poses_processed = poses_processed[:target_num_samples]
-        log_memory("sliced for dataset_part", {
-            'X': X, 'Y': Y, 'poses': poses, 
-            'X_processed': X_processed, 'Y_processed': Y_processed, 'poses_processed': poses_processed
-        })
-            
-        return X_processed, Y_processed, poses_processed
+
+def prepare_point_data(X, Y, poses, data_transformer, dataset_part=1.0, intensity_threshold=0.0, logger=None, **kwargs):
+    assert len(X) == len(Y) == len(poses)
+    assert 0.0 < dataset_part <= 1.0
+    log_fn = logger.log if logger is not None else print
+    orig_size = len(X)
+    target_num_samples = int(orig_size * dataset_part)
+    log_fn(f"Collecting {target_num_samples} samples out of {orig_size}.")
+    log_memory("start", {'X': X, 'Y': Y, 'poses': poses})
+
+    batch_size = 100
+    n_iter = len(X) // batch_size + (1 if len(X) % batch_size != 0 else 0)
+    X_processed, Y_processed, poses_processed = [], [], []
+    for i in tqdm(range(n_iter)):
+        X_batch = X[i * batch_size:(i + 1) * batch_size]
+        Y_batch = Y[i * batch_size:(i + 1) * batch_size]
+        poses_batch = poses[i * batch_size:(i + 1) * batch_size]
+        
+        Y_batch, nonempty_lidar_idx = process_lidar_frames(Y_batch)
+        if len(Y_batch) == 0:
+            continue
+
+        X_batch = data_transformer.polar_grid_to_cartesian_points(X_batch[nonempty_lidar_idx])
+        X_batch, nonempty_radar_idx = data_transformer.filter_point_intensity(points=X_batch, threshold=intensity_threshold)
+        if len(X_batch) == 0:
+            continue
+
+        Y_batch = [Y_batch[i] for i in nonempty_radar_idx]
+        poses_batch = poses_batch[nonempty_lidar_idx][nonempty_radar_idx]
+        X_processed.extend(X_batch)
+        Y_processed.extend(Y_batch)
+        poses_processed.extend(poses_batch)
+        if len(X_processed) >= target_num_samples:
+            break
+
+    assert len(X_processed) == len(Y_processed) == len(poses_processed) != 0
+    if dataset_part < 1:
+        X_processed = X_processed[:target_num_samples]
+        Y_processed = Y_processed[:target_num_samples]
+        poses_processed = poses_processed[:target_num_samples]
+    log_memory("sliced for dataset_part", {
+        'X': X, 'Y': Y, 'poses': poses, 
+        'X_processed': X_processed, 'Y_processed': Y_processed, 'poses_processed': poses_processed
+    })
+        
+    return X_processed, Y_processed, poses_processed
 
 
 class RadarDataset(Dataset):
@@ -197,6 +241,10 @@ class RadarDataset(Dataset):
         lidar_frame = self.Y[index]
         pose = self.poses[index]
         return radar_frame, lidar_frame, pose
+    
+    @staticmethod
+    def preprocess(*args, **kwargs):
+        return prepare_point_data(*args, **kwargs)
 
     @staticmethod
     def custom_collate_fn(batch):
@@ -225,6 +273,47 @@ class RadarDataset(Dataset):
         log_fn(f"Lidar (Y) points per sample: "
               f"min={Y_counts.min()}, max={Y_counts.max()}, "
               f"mean={Y_counts.mean():.1f}, median={np.median(Y_counts)}")
+
+
+class GridRadarDataset(RadarDataset):
+    def __init__(
+            self, 
+            radar_frames,  # polar grids
+            lidar_frames,  # cartesian clouds
+            poses, data_transformer,
+            intensity_mean=None, intensity_std=None,
+            name='dataset', logger=None, **kwargs
+    ):
+        self.X, self.intensity_mean, self.intensity_std = data_transformer.scale_grid_intensity(
+            grids=radar_frames, intensity_mean=intensity_mean, intensity_std=intensity_std
+        )
+        self.X = np.expand_dims(self.X.transpose(0, 3, 2, 1), axis=1)
+        self.Y = np.expand_dims(lidar_frames.transpose(0, 3, 2, 1), axis=1)
+        self.poses = poses
+        self.name = name.capitalize()
+        self.print_log(logger=logger)
+
+    def __len__(self):
+        return len(self.X)
+
+    def __getitem__(self, index):
+        radar_frame = self.X[index]
+        lidar_frame = self.Y[index]
+        pose = self.poses[index]
+        return radar_frame, lidar_frame, pose
+    
+    @staticmethod
+    def preprocess(*args, **kwargs):
+        return prepare_grid_data(*args, **kwargs)
+
+    @staticmethod
+    def custom_collate_fn(batch):
+        return default_collate(batch)
+
+    def print_log(self, logger=None):
+        log_fn = logger.log if logger is not None else print
+        log_fn(f"Radar (X) Shape: {self.X.shape}")
+        log_fn(f"Lidar (Y) Shape: {self.Y.shape}")
 
 
 def get_dataset(
@@ -278,7 +367,7 @@ def get_dataset(
 
     print(f"Preparing point data...")
     data_transformer = NumpyDataTransform(radar_config)
-    radar_frames, lidar_frames, poses = prepare_point_data(
+    radar_frames, lidar_frames, poses = dataset_type.preprocess(
         radar_frames, lidar_frames, poses,
         data_transformer=data_transformer, dataset_part=partial, logger=logger,
         intensity_threshold=intensity_threshold

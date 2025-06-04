@@ -17,7 +17,7 @@ def get_params():
         'partial': 1.0, 
         'shuffle_runs': True,
         'intensity_threshold': 5000.0,
-        'grid_voxel_size': 1.0
+        'grid_voxel_size': 0.25
     }
     model_params = {
         'encoder_cloud_size': 1024,
@@ -49,7 +49,7 @@ def get_params():
         logger = Logger(print_log=True, loggers=(wandb, ))
         device_name = 'cuda:1'
         model_save_directory = '/home/annz/mapping/models'
-        n_epochs = 100000
+        n_epochs = 1000
         batch_size = 1
 
         dataset_params['dataset_file_path'] = '/media/giantdrive/coloradar/dataset_may2_one.h5'
@@ -76,13 +76,17 @@ def get_params():
     
     else:
         host_name = 'lab_pc'
-        logger = Logger(print_log=True, loggers=(wandb, ))
+        logger = Logger(print_log=True)
         model_save_directory = '/home/arpg/projects/mapless-navigation/trained_models'
-        n_epochs = 5
-        batch_size = 4
+        n_epochs = 2
+        batch_size = 1
 
         dataset_params['dataset_file_path'] = '/home/arpg/coloradar/dataset_may2_one.h5'
         dataset_params['partial'] = 0.009
+        model_params['encoder_batch_norm'] = False
+        model_params['decoder_layer_norm'] = False
+        model_params['encoder_dropout'] = None
+        model_params['decoder_dropout'] = None
 
     return {
         'host_name': host_name,

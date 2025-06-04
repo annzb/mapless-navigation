@@ -34,24 +34,17 @@ class PointModelManager(ModelManager):
 
 
 def run():
-    SESSION_NAME = 'generative_overfit'
+    SESSION_NAME = 'generative_overfit_dloss1'
 
     params = get_params()
-    params['n_epochs'], params['batch_size'] = 1000, 1
-    
-    # params['loss_params']['spatial_weight'] = 1.0
-    # params['loss_params']['occupancy_weight'] = 1.0
-    # params['loss_params']['unmatched_weight'] = 1.0
     params['loss_params']['fn_fp_weight'] = 1.0
     params['loss_params']['fn_weight'] = 1.0
     params['loss_params']['fp_weight'] = 1.0
-
 
     mm = PointModelManager(session_name=SESSION_NAME, **params)
     mm.train()
     mm.evaluate()
     mm.logger.finish()
-
 
 if __name__ == '__main__':
     run()

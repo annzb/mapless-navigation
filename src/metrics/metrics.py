@@ -16,6 +16,7 @@ class MatchedPointRatio(PointcloudOccupancyMetric):
 class DistanceLossFpFnMetric(DistanceLoss, PointcloudOccupancyMetric):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
+        self.negative = True
         self._subloss_type = 1  # fn + fp
 
     def _calc(self, y_pred, y_true, data_buffer=None, *args, **kwargs):

@@ -9,18 +9,14 @@ from visualize.points import show_radar_clouds
 
 
 def run():
-    SESSION_NAME = '02june25_generative_overfit'
+    SESSION_NAME = '03june25_generative_overfit'
 
     params = get_params()
-    params['model_params']['encoder_batch_norm'] = False
-    params['model_params']['decoder_layer_norm'] = False
-    params['model_params']['encoder_dropout'] = None
-    params['model_params']['decoder_dropout'] = None
     mm = PointModelManager(session_name=SESSION_NAME, **params)
     model_save_directory = params['model_save_directory']
     model_path=os.path.join(model_save_directory, SESSION_NAME, 'best_train_loss.pth')
     mm.init_model(model_path=model_path)
-    idx = 1
+    idx = 2
 
     with torch.no_grad():
         input_cloud, gt_cloud, _ = mm.train_loader.dataset[idx]

@@ -16,23 +16,9 @@ class OccupancyDataBuffer(ABC):
         return self._occupancy_threshold
 
     def occupied_mask(self):
-        """
-        :returns: None or a Tensor of bool.
-        Size: N_points of the original point cloud.
-        """
         return self._occupied_mask
 
     def _validate_input(self, y, y_other=None, **kwargs):
-        """Validate input data.
-        
-        Args:
-            y: Tuple of (points, batch_indices).
-            y_other: Optional tuple of (points, batch_indices) for second cloud.
-            **kwargs: Additional arguments.
-            
-        Raises:
-            ValueError: If input is invalid.
-        """
         if y is None:
             raise ValueError('Input y cannot be None')
         if not isinstance(y, tuple) or len(y) != 2:
@@ -45,15 +31,22 @@ class OccupancyDataBuffer(ABC):
         raise NotImplementedError()
 
     def create_masks(self, y, y_other=None, **kwargs):
-        """Create masks for the input cloud(s).
-        
-        Args:
-            y: Tuple of (points, batch_indices).
-            y_other: Optional tuple of (points, batch_indices) for second cloud.
-            **kwargs: Additional arguments.
-        """
         self._validate_input(y, y_other=y_other, **kwargs)
         self._occupied_mask = self.filter_occupied(y, y_other=y_other, **kwargs)
+
+
+class GridOccupancyDataBuffer(OccupancyDataBuffer):
+    def _validate_input(self, y, y_other=None, **kwargs):
+        super()._validate_input(y, y_other=y_other, **kwargs)
+        if y.shape != y_other.shape:
+            raise ValueError(f"Grid shape mismatch: {y.shape} != {y_other.shape}")
+
+    def filter_occupied(self, y, y_other=None, **kwargs):
+        if y_other is None:
+            raise ValueError('y_other not provided')
+        mask = y >= self._occupancy_threshold
+        mask_other = y_other >= self._occupancy_threshold
+        return mask, mask_other
 
 
 class PointOccupancyDataBuffer(OccupancyDataBuffer):
@@ -70,16 +63,6 @@ class PointOccupancyDataBuffer(OccupancyDataBuffer):
         return self._max_point_distance
 
     def _validate_input(self, y, y_other=None, **kwargs):
-        """Validate input data.
-        
-        Args:
-            y: Tuple of (points, batch_indices).
-            y_other: Optional tuple of (points, batch_indices) for second cloud.
-            **kwargs: Additional arguments.
-            
-        Raises:
-            ValueError: If input is invalid.
-        """
         super()._validate_input(y, y_other=y_other, **kwargs)
         y_values, y_batch_indices = y
         if y_values.shape[0] != y_batch_indices.shape[0]:

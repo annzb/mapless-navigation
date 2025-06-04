@@ -36,7 +36,9 @@ class NumpyDataTransform:
             raise ValueError("Heatmap must be of shape (El, Az, R) or (B, El, Az, R)")
         N, El, Az, R = samples.shape
         if El != self.radar_config.num_elevation_bins or R != self.radar_config.num_range_bins or Az != self.radar_config.num_azimuth_bins:
-            raise ValueError("Heatmap shape does not match radar config's clipped bin dimensions.")
+            D, H, W = self.radar_config.grid_size
+            if El != D or Az != H or R != W:
+                raise ValueError("Heatmap shape does not match radar config's clipped bin dimensions or cartesian grid size.")
 
         return samples, multiple
     
@@ -98,6 +100,29 @@ class NumpyDataTransform:
         points_all[:, :, 3:4] = samples.reshape(B, -1)[..., None]
         return points_all if multiple else points_all[0]
     
+    def point_clouds_to_cartesian_grid(self, samples, **kwargs) -> np.ndarray:
+        samples, multiple = self.process_point_input(samples, **kwargs)
+        x_min, x_max, y_min, y_max, z_min, z_max = self.radar_config.point_range
+        res = self.radar_config.grid_resolution
+        gx, gy, gz = self.radar_config.grid_size
+
+        grids = []
+        for cloud in samples:
+            indices = np.floor((cloud[:, :3] - [x_min, y_min, z_min]) / res).astype(np.int32)
+            valid_mask = (
+                (indices[:, 0] >= 0) & (indices[:, 0] < gx) &
+                (indices[:, 1] >= 0) & (indices[:, 1] < gy) &
+                (indices[:, 2] >= 0) & (indices[:, 2] < gz)
+            )
+            indices = indices[valid_mask]
+            p_values = cloud[valid_mask, 3]
+            grid = np.zeros((gx, gy, gz), dtype=np.float32)
+            flat_indices = np.ravel_multi_index((indices[:, 0], indices[:, 1], indices[:, 2]), dims=grid.shape)
+            np.add.at(grid.ravel(), flat_indices, p_values)
+            grids.append(grid)
+
+        return np.stack(grids) if multiple else grids[0]
+    
     def filter_point_intensity(self, points, threshold=0.0, **kwargs):
         points, input_has_multiple_samples = self.process_point_input(points, **kwargs)
         filtered_clouds, nonempty_cloud_idx = [], []
@@ -133,6 +158,17 @@ class NumpyDataTransform:
         for cloud in points:
             cloud[:, :3] = (cloud[:, :3] - coord_means) / coord_stds
         return (points if input_has_multiple_samples else points[0]), coord_means, coord_stds
+    
+
+    def scale_grid_intensity(self, grids, intensity_mean=None, intensity_std=None, **kwargs):
+        if None in (intensity_mean, intensity_std) and intensity_mean != intensity_std:
+            raise ValueError("Both intensity_mean and intensity_std must be provided, or neither.")
+        grids, input_has_multiple_samples = self.process_grid_input(grids, **kwargs)
+        if intensity_mean is None:
+            intensity_mean = float(np.mean(grids))
+            intensity_std  = float(np.std(grids))
+        grids = (grids - intensity_mean) / intensity_std
+        return (grids if input_has_multiple_samples else grids[0]), intensity_mean, intensity_std
 
 
 # class TorchDataTransform:
