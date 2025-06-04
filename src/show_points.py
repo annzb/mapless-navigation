@@ -9,7 +9,7 @@ from visualize.points import show_radar_clouds
 
 
 def run():
-    SESSION_NAME = '03june25_generative_overfit'
+    SESSION_NAME = '03june25_generative_overfit_dloss1_remote'
 
     params = get_params()
     mm = PointModelManager(session_name=SESSION_NAME, **params)
