@@ -74,6 +74,9 @@ class DistanceLoss(PointcloudOccupancyLoss):
 
         losses, loss_types = [], []
         for b in range(self._batch_size):
+            if b not in y_pred_batch_indices:  # last batch may not be full
+                continue
+
             pred_batch_mask, true_batch_mask = y_pred_batch_indices == b, y_true_batch_indices == b
             pred_b, true_b = y_pred_values[pred_batch_mask], y_true_values[true_batch_mask]
             pred_b_filtered, true_b_filtered = y_pred_values[pred_batch_mask & pred_occ_mask], y_true_values[true_batch_mask & true_occ_mask]

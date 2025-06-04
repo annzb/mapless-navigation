@@ -78,15 +78,15 @@ def get_params():
         host_name = 'lab_pc'
         logger = Logger(print_log=True)
         model_save_directory = '/home/arpg/projects/mapless-navigation/trained_models'
-        n_epochs = 2
-        batch_size = 1
+        n_epochs = 10
+        batch_size = 4
 
         dataset_params['dataset_file_path'] = '/home/arpg/coloradar/dataset_may2_one.h5'
-        dataset_params['partial'] = 0.009
-        model_params['encoder_batch_norm'] = False
-        model_params['decoder_layer_norm'] = False
-        model_params['encoder_dropout'] = None
-        model_params['decoder_dropout'] = None
+        dataset_params['partial'] = 0.1
+        # model_params['encoder_batch_norm'] = False
+        # model_params['decoder_layer_norm'] = False
+        # model_params['encoder_dropout'] = None
+        # model_params['decoder_dropout'] = None
 
     return {
         'host_name': host_name,
