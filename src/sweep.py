@@ -40,7 +40,7 @@ def sweep():
             'optimizer_params.learning_rate': {
                 'min': 1e-6,
                 'max': 1e-2,
-                'distribution': 'log_uniform'
+                'distribution': 'log_uniform_values'
             },
 
             'loss_params.occupancy_threshold': {
@@ -54,17 +54,17 @@ def sweep():
             'loss_params.fn_fp_weight': {
                 'min': 0.1,
                 'max': 10.0,
-                'distribution': 'log_uniform'
+                'distribution': 'log_uniform_values'
             },
             'loss_params.fn_weight': {
                 'min': 0.1,
                 'max': 10.0,
-                'distribution': 'log_uniform'
+                'distribution': 'log_uniform_values'
             },
             'loss_params.fp_weight': {
                 'min': 0.1,
                 'max': 10.0,
-                'distribution': 'log_uniform'
+                'distribution': 'log_uniform_values'
             },
 
             'model_params.encoder_cloud_size': {
