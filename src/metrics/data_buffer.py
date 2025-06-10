@@ -1,5 +1,11 @@
-from abc import ABC, abstractmethod
+import numpy as np
 import torch
+
+from abc import ABC, abstractmethod
+from collections import defaultdict
+from sklearn.cluster import DBSCAN
+
+from utils import param_validation as validate
 
 
 class OccupancyDataBuffer(ABC):
@@ -75,73 +81,33 @@ class PointOccupancyDataBuffer(OccupancyDataBuffer):
 
 
 class MappedPointOccupancyDataBuffer(PointOccupancyDataBuffer):
-    """Buffer for handling mapped point clouds with occupancy information.
-    
-    This buffer extends PointOccupancyDataBuffer to handle pairs of point clouds
-    and their mappings. It provides functionality for:
-    - Filtering occupied points in both clouds
-    - Computing and storing point mappings between clouds
-    - Managing masks for mapped and occupied mapped points
-    
-    Attributes:
-        _mapped_mask (tuple[torch.Tensor, torch.Tensor]): Pair of boolean masks indicating
-            which points in each cloud are mapped to the other cloud.
-        _occupied_mapped_mask (tuple[torch.Tensor, torch.Tensor]): Pair of boolean masks
-            indicating which occupied points in each cloud are mapped to occupied points
-            in the other cloud.
-        _mapping (torch.Tensor): Soft mapping weights between points (N_matches, 2).
-        _occupied_mapping (torch.Tensor): Soft mapping weights between occupied points.
-        _occupied_only (bool): Whether to only match occupied points.
-    """
-    
-    def __init__(self, occupied_only: bool, **kwargs):
-        """Initialize the buffer.
-        
-        Args:
-            match_occupied_only: If True, only match occupied points between clouds.
-            **kwargs: Additional arguments passed to parent class.
-        """
+    def __init__(self, occupied_only: bool, same_point_distance_limit: float, **kwargs):
         super().__init__(**kwargs)
         if not isinstance(occupied_only, bool):
             raise ValueError('occupied_only must be a boolean')
-        
         self._occupied_only = occupied_only
+        self._same_point_distance_limit = validate.validate_positive_number(same_point_distance_limit, 'same_point_distance_limit')
+        
         self._mapped_mask = None
         self._occupied_mapped_mask = None
         self._mapping = None
         self._occupied_mapping = None
         self._soft_assignment = None
+        self._cluster_counts = None
 
     def occupied_only(self) -> float:
         return self._occupied_only
+    
+    def same_point_distance_limit(self) -> float:
+        return self._same_point_distance_limit
 
     def _validate_input(self, y, y_other=None, **kwargs):
-        """Validate input data.
-        
-        Args:
-            y: Tuple of (points, batch_indices) for first cloud.
-            y_other: Tuple of (points, batch_indices) for second cloud.
-            **kwargs: Additional arguments.
-            
-        Raises:
-            ValueError: If input is invalid.
-        """
         super()._validate_input(y, y_other=y_other, **kwargs)
         if y_other is None:
             raise ValueError('y_other not provided')
         super()._validate_input(y_other)
 
     def filter_occupied(self, y, y_other=None, **kwargs):
-        """Filter occupied points in both clouds.
-        
-        Args:
-            y: Tuple of (points, batch_indices) for first cloud.
-            y_other: Tuple of (points, batch_indices) for second cloud.
-            **kwargs: Additional arguments.
-            
-        Returns:
-            Tuple of (mask, mask_other) indicating occupied points in each cloud.
-        """
         if y_other is None:
             raise ValueError('y_other not provided.')
         y_values, _ = y
@@ -151,13 +117,6 @@ class MappedPointOccupancyDataBuffer(PointOccupancyDataBuffer):
         return mask, mask_other
 
     def create_masks(self, y, y_other=None, **kwargs):
-        """Create all necessary masks for the input clouds.
-        
-        Args:
-            y: Tuple of (points, batch_indices) for first cloud.
-            y_other: Tuple of (points, batch_indices) for second cloud.
-            **kwargs: Additional arguments.
-        """
         self._validate_input(y, y_other=y_other, **kwargs)
         super().create_masks(y, y_other=y_other, **kwargs)
             
@@ -208,7 +167,7 @@ class MappedPointOccupancyDataBuffer(PointOccupancyDataBuffer):
                 mapped_mask_other[self._mapping[:, 1]] = True
                     
         self._mapped_mask = (mapped_mask, mapped_mask_other)
-
+        self._cluster_clouds(y, y_other, **kwargs)
     def mapped_mask(self):
         """Get the pair of masks indicating mapped points.
         
@@ -240,29 +199,45 @@ class MappedPointOccupancyDataBuffer(PointOccupancyDataBuffer):
             Tensor of shape (N_matches, 2) containing the soft mapping weights between matched points.
         """
         raise NotImplementedError()
+    
+    def _cluster_clouds(self, y, y_other=None, **kwargs):       
+        (y_cloud, y_batch_indices), (y_cloud_other, y_batch_indices_other) = y, y_other
+        cluster_counts = []
+
+        for b in y_batch_indices.unique():
+            y_mask, y_other_mask = y_batch_indices == b, y_batch_indices_other == b
+            if self._occupied_only:
+                y_other_mask = y_other_mask & self._occupied_mask[1]   # current loss doesn't predict occupancy probability so no thresholding for predicted points
+            y_batch_cloud, y_other_batch_cloud = y_cloud[y_mask].detach().cpu().numpy(), y_cloud_other[y_other_mask].detach().cpu().numpy()
+
+            N_y, N_y_other = len(y_batch_cloud), len(y_other_batch_cloud)
+            if N_y_other == 0:  # No empty predictions expected but filtered ground truth cloud can be empty
+                merged_points = y_batch_cloud[:, :3]
+            else:
+                merged_points = np.vstack([y_batch_cloud[:, :3], y_other_batch_cloud[:, :3]])
+
+            labels = np.zeros(N_y + N_y_other, dtype=np.int32)
+            labels[N_y:] = 1
+            clustering = DBSCAN(eps=self._same_point_distance_limit, min_samples=1).fit(merged_points)
+            cluster_ids = clustering.labels_
+            num_clusters = cluster_ids.max() + 1
+            sample_counts = np.zeros((num_clusters, 2), dtype=np.int32)
+
+            for label in [0, 1]:
+                label_mask = labels == label
+                cluster_ids_label = cluster_ids[label_mask]
+                bincount = np.bincount(cluster_ids_label, minlength=num_clusters)
+                sample_counts[:, label] = bincount
+            cluster_counts.append(torch.from_numpy(sample_counts).to(y_cloud.device))
+
+        self._cluster_counts = cluster_counts
+
+    def cluster_counts(self):
+        return self._cluster_counts
 
 
 class ChamferPointDataBuffer(MappedPointOccupancyDataBuffer):
-    """Buffer that uses Chamfer distance for point matching.
-    
-    This buffer implements hard matching between points using Chamfer distance.
-    It matches each point to its nearest neighbor in the other cloud.
-    Points are only matched within the same batch.
-    """
-
     def match_points(self, cloud_values_1, batch_indices_1, cloud_values_2, batch_indices_2, **kwargs):
-        """Match points using Chamfer distance.
-        
-        Args:
-            cloud_values_1: Points from first cloud.
-            batch_indices_1: Batch indices for first cloud.
-            cloud_values_2: Points from second cloud.
-            batch_indices_2: Batch indices for second cloud.
-            **kwargs: Additional arguments.
-            
-        Returns:
-            Tensor of shape (N_matches, 2) containing the indices of matched points.
-        """
         # Handle empty input cases
         if cloud_values_1.size(0) == 0 or cloud_values_2.size(0) == 0:
             return torch.zeros((0, 2), device=cloud_values_1.device, dtype=torch.long)

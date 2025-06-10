@@ -39,6 +39,7 @@ def get_params():
         'occupied_only': True,
         'occupancy_threshold': 0.6,
         'max_point_distance': 1.0,
+        'same_point_distance_limit': 0.007,
         'unmatched_weight': 1.0,
         'fn_fp_weight': 1.0,
         'fn_weight': 1.0,
@@ -82,7 +83,7 @@ def get_params():
         host_name = 'lab_pc'
         logger = Logger(print_log=True)
         model_save_directory = '/home/arpg/projects/mapless-navigation/trained_models'
-        training_params['n_epochs'] = 10
+        training_params['n_epochs'] = 5
         training_params['batch_size'] = 4
 
         dataset_params['dataset_file_path'] = '/home/arpg/coloradar/dataset_may2_one.h5'

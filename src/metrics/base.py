@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 
 from metrics.data_buffer import OccupancyDataBuffer, PointOccupancyDataBuffer, MappedPointOccupancyDataBuffer
+from utils import param_validation as validate
 
 
 class BaseCriteria:
@@ -113,13 +114,10 @@ class OccupancyCriteria(BaseCriteria):
 
 
 class PointcloudOccupancyCriteria(OccupancyCriteria):
-    def __init__(self, max_point_distance, **kwargs):
+    def __init__(self, max_point_distance, same_point_distance_limit, **kwargs):
         super().__init__(**kwargs)
-        if not isinstance(max_point_distance, (int, float)):
-            raise ValueError('max_point_distance must be a number')
-        if max_point_distance <= 0:
-            raise ValueError('max_point_distance must be positive')
-        self.max_distance = max_point_distance
+        self.max_distance = validate.validate_positive_number(max_point_distance, 'max_point_distance')
+        self.same_point_distance_limit = validate.validate_positive_number(same_point_distance_limit, 'same_point_distance_limit')
 
     def _validate_input(self, y_pred, y_true, data_buffer=None, *args, **kwargs):
         valid, error = super()._validate_input(y_pred, y_true, data_buffer=data_buffer, *args, **kwargs)

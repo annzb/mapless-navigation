@@ -21,7 +21,11 @@ class PointModelManager(ModelManager):
         self._data_buffer_type = PointDataBuffer
         self._loss_type = PointLoss
         self._metric_types = (
-            metric_defs.MatchedPointRatio,
+            metric_defs.DbscanRecall,
+            metric_defs.DbscanPrecision,
+            metric_defs.DbscanF1,
+            metric_defs.DbscanPurity,
+            metric_defs.DbscanReduction,
             metric_defs.DistanceLossFpFnMetric,
             metric_defs.DistanceLossFpMetric,
             metric_defs.DistanceLossFnMetric

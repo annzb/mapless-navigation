@@ -271,7 +271,7 @@ class ModelManager(ABC):
             log = {
                 "epoch": epoch, 'grad_norm': train_grad_norm,
                 "train_loss": train_epoch_loss, "best_train_loss": best_train_loss,
-                "valid_loss": val_epoch_loss, "best_valid_loss": best_val_loss
+                "val_loss": val_epoch_loss, "best_val_loss": best_val_loss
             }
             log.update(self.report_metrics(mode='train'))
             log.update(self.report_metrics(mode='val'))

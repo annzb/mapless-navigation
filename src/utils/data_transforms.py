@@ -1,6 +1,58 @@
 import numpy as np
+import torch
+from sklearn.cluster import DBSCAN
 
 from utils.radar_config import RadarConfig
+
+
+def match_points(cloud1: torch.Tensor, cloud2: torch.Tensor):
+    diff = cloud1[:, None, :] - cloud2[None, :, :]
+    dists = torch.norm(diff, dim=2)
+    min_dists, indices = torch.min(dists, dim=1)
+    return indices, min_dists
+
+
+# def collapse_close_points(points: np.ndarray, d: float) -> np.ndarray:
+#     coords = points[:, :3]
+#     probs = points[:, 3]
+#     clustering = DBSCAN(eps=d, min_samples=1).fit(coords)
+#     labels = clustering.labels_
+#     reduced = []
+#     for label in np.unique(labels):
+#         mask = labels == label
+#         cluster_points = coords[mask]
+#         cluster_probs = probs[mask]
+#         center = cluster_points.mean(axis=0)
+#         total_prob = cluster_probs.sum()
+#         reduced.append(np.append(center, total_prob))
+
+#     points_collapsed = np.vstack(reduced)
+#     points_collapsed[:, 3] = np.clip(points_collapsed[:, 3], 0, 1)
+#     return points_collapsed
+
+
+def collapse_close_points(points: torch.Tensor, d: float) -> torch.Tensor:
+    if points.numel() == 0:
+        return points.clone()
+    
+    points_np = points.detach().cpu().numpy()
+    coords = points_np[:, :3]
+    probs = points_np[:, 3]
+    clustering = DBSCAN(eps=d, min_samples=1).fit(coords)
+    labels = clustering.labels_
+
+    reduced = []
+    for label in np.unique(labels):
+        mask = labels == label
+        cluster_coords = coords[mask]
+        cluster_probs = probs[mask]
+        center = cluster_coords.mean(axis=0)
+        total_prob = cluster_probs.sum()
+        reduced.append(np.append(center, total_prob))
+
+    collapsed_np = np.vstack(reduced)
+    collapsed_np[:, 3] = np.clip(collapsed_np[:, 3], 0.0, 1.0)
+    return torch.tensor(collapsed_np, dtype=points.dtype, device=points.device)
 
 
 class NumpyDataTransform:
