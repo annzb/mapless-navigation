@@ -9,7 +9,7 @@ torch.autograd.set_detect_anomaly(True)
 
 from metrics import BaseLoss, BaseMetric, OccupancyDataBuffer
 from models import RadarOccupancyModel
-from utils import Logger
+from utils import Logger, param_validation as validate
 from utils.dataset import get_dataset
 
 
@@ -50,8 +50,8 @@ class ModelManager(ABC):
             **dataset_params
         )
         self.init_model()
-        self.init_loss_function(device=self.device, batch_size=batch_size, **loss_params)
-        self.init_metrics(device=self.device, batch_size=batch_size, **loss_params, **metric_params)
+        self.init_loss_function(device=self.device, batch_size=self.batch_size, **loss_params)
+        self.init_metrics(device=self.device, batch_size=self.batch_size, **loss_params, **metric_params)
         self.init_optimizer(**optimizer_params)
 
         self.session_name = datetime.now().strftime("%d%B%y").lower()  # current date as DDmonthYY
@@ -91,14 +91,15 @@ class ModelManager(ABC):
         self._metric_types = (BaseMetric, )
         raise NotImplementedError()
     
-    def _vallidate_training_params(self, params: Dict[str, Any]):
+    def _validate_training_params(self, params: Dict[str, Any]):
         if 'n_epochs' in params:
-            
+            validate.validate_positive_int(params['n_epochs'], 'n_epochs')
         if 'checkpoint_interval' in params:
-            raise ValueError('checkpoint_interval is required')
+            validate.validate_positive_int(params['checkpoint_interval'], 'checkpoint_interval')
         if 'batch_size' in params:
-            raise ValueError('batch_size is required')
-
+            validate.validate_positive_int(params['batch_size'], 'batch_size')
+        return params
+    
     def _init_device(self, device_name):
         self.device = torch.device(device_name)
         print('Using device:', device_name)
@@ -252,7 +253,7 @@ class ModelManager(ABC):
             val_epoch_loss = self._evaluate_current_model(mode = 'val', data_loader=self.val_loader)
 
             if epoch % self.checkpoint_interval == 0:
-                self._save_model(f'epoch_{epoch}')
+                self._save_model(f'epoch_{epoch + 1}')
 
             if train_epoch_loss < best_train_loss:
                 best_train_loss = train_epoch_loss

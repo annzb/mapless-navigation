@@ -35,7 +35,7 @@ def run(
         optimizer_params: Optional[dict] = None, 
         loss_params: Optional[dict] = None
     ):
-    SESSION_NAME = 'generative_dloss1'
+    SESSION_NAME = 'test'
 
     params = get_params()
     if training_params:

@@ -13,7 +13,7 @@ def get_params():
     random_seed = 42
     training_params = {
         'n_epochs': 500,
-        'checkpoint_interval': 50,
+        'checkpoint_interval': 10,
         'batch_size': 8
     }
     dataset_params = {
@@ -86,7 +86,7 @@ def get_params():
         training_params['batch_size'] = 4
 
         dataset_params['dataset_file_path'] = '/home/arpg/coloradar/dataset_may2_one.h5'
-        dataset_params['partial'] = 0.1
+        dataset_params['partial'] = 0.01
         # model_params['encoder_batch_norm'] = False
         # model_params['decoder_layer_norm'] = False
         # model_params['encoder_dropout'] = None
