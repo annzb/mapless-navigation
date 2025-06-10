@@ -1,6 +1,7 @@
 import os
 import platform
 import wandb
+from typing import Optional
 
 from utils.logger import Logger
 
@@ -10,8 +11,11 @@ def get_params():
     device_name = 'cpu'
     model_save_directory = '.'
     random_seed = 42
-    n_epochs = 1
-    batch_size = 1
+    training_params = {
+        'n_epochs': 500,
+        'checkpoint_interval': 50,
+        'batch_size': 8
+    }
     dataset_params = {
         'dataset_file_path': None,
         'partial': 1.0, 
@@ -49,11 +53,11 @@ def get_params():
         logger = Logger(print_log=True, loggers=(wandb, ))
         device_name = 'cuda:1'
         model_save_directory = '/home/annz/mapping/models'
-        n_epochs = 1000
-        batch_size = 8
+        training_params['n_epochs'] = 1000
+        training_params['batch_size'] = 8
 
-        dataset_params['dataset_file_path'] = '/media/giantdrive/coloradar/dataset_may2_one.h5'
-        dataset_params['partial'] = 0.2
+        dataset_params['dataset_file_path'] = '/media/giantdrive/coloradar/dataset_may2_all.h5'
+        dataset_params['partial'] = 0.05
         # model_params['encoder_batch_norm'] = False
         # model_params['decoder_layer_norm'] = False
         # model_params['encoder_dropout'] = None
@@ -64,8 +68,8 @@ def get_params():
         logger = Logger(print_log=True)
         device_name = 'mps'
         model_save_directory = '/Users/anna/data/coloradar/models'
-        n_epochs = 2
-        batch_size = 2
+        training_params['n_epochs'] = 2
+        training_params['batch_size'] = 2
 
         dataset_params['dataset_file_path'] = '/Users/anna/data/coloradar/dataset_may2_one.h5'
         dataset_params['partial'] = 0.01
@@ -78,8 +82,8 @@ def get_params():
         host_name = 'lab_pc'
         logger = Logger(print_log=True)
         model_save_directory = '/home/arpg/projects/mapless-navigation/trained_models'
-        n_epochs = 10
-        batch_size = 4
+        training_params['n_epochs'] = 10
+        training_params['batch_size'] = 4
 
         dataset_params['dataset_file_path'] = '/home/arpg/coloradar/dataset_may2_one.h5'
         dataset_params['partial'] = 0.1
@@ -94,8 +98,7 @@ def get_params():
         'device_name': device_name,
         'model_save_directory': model_save_directory,
         'random_seed': random_seed,
-        'n_epochs': n_epochs,
-        'batch_size': batch_size,
+        'training_params': training_params,
         'model_params': model_params,
         'dataset_params': dataset_params,
         'optimizer_params': optimizer_params,

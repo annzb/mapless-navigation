@@ -26,9 +26,7 @@ class ModelManager(ABC):
             logger=Logger(),
             random_seed=1,
 
-            n_epochs=10,
-            batch_size=1,
-
+            training_params: Dict[str, Any] = {},
             dataset_params: Dict[str, Any] = {},
             model_params: Dict[str, Any] = {},
             loss_params: Dict[str, Any] = {},
@@ -37,8 +35,10 @@ class ModelManager(ABC):
             
             **kwargs
     ):
-        self.logger = logger
-        self.random_seed, self.n_epochs, self.batch_size = random_seed, n_epochs, batch_size
+        self.logger, self.random_seed = logger, random_seed
+        training_params = self._validate_training_params(training_params)
+        self.n_epochs, self.checkpoint_interval, self.batch_size = training_params['n_epochs'], training_params['checkpoint_interval'], training_params['batch_size']
+
         self._define_types()
         self._init_device(device_name)
         self.model_params = model_params
@@ -64,15 +64,12 @@ class ModelManager(ABC):
             project="radar-occupancy",
             config={
                 "host": host_name,
+                'training_params': training_params,
                 "model": {
                     "name": self.model.name,
                     **model_params
                 },
                 'dataset': dataset_params,
-                'training_params': {
-                    "epochs": n_epochs,
-                    "batch_size": batch_size
-                },
                 'optimizer': optimizer_params,
                 "loss": {
                     "name": self.loss_fn.__class__.__name__,
@@ -93,6 +90,14 @@ class ModelManager(ABC):
         self._loss_type = BaseLoss
         self._metric_types = (BaseMetric, )
         raise NotImplementedError()
+    
+    def _vallidate_training_params(self, params: Dict[str, Any]):
+        if 'n_epochs' in params:
+            
+        if 'checkpoint_interval' in params:
+            raise ValueError('checkpoint_interval is required')
+        if 'batch_size' in params:
+            raise ValueError('batch_size is required')
 
     def _init_device(self, device_name):
         self.device = torch.device(device_name)
@@ -245,6 +250,9 @@ class ModelManager(ABC):
             self.logger.log(f"Epoch {epoch + 1}/{n_epochs}")
             train_epoch_loss, train_grad_norm = self._train_epoch()
             val_epoch_loss = self._evaluate_current_model(mode = 'val', data_loader=self.val_loader)
+
+            if epoch % self.checkpoint_interval == 0:
+                self._save_model(f'epoch_{epoch}')
 
             if train_epoch_loss < best_train_loss:
                 best_train_loss = train_epoch_loss
