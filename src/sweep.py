@@ -31,7 +31,7 @@ def sweep():
         'project': 'radar-occupancy',
         'name': 'small-sample-param-search',
         'method': 'bayes',
-        'metric': {'name': 'val_metric_dbscanf1', 'goal': 'maximize'},
+        'metric': {'name': 'val_loss', 'goal': 'minimize'},
         'parameters': {
             'training_params.n_epochs': {
                 'values': [50, 100, 150, 200, 250, 300]

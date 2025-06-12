@@ -39,7 +39,7 @@ def get_params():
         'occupied_only': True,
         'occupancy_threshold': 0.6,
         'max_point_distance': 1.0,
-        'same_point_distance_limit': 0.007,
+        'same_point_distance_limit': 0.05,
         'unmatched_weight': 1.0,
         'fn_fp_weight': 1.0,
         'fn_weight': 1.0,
@@ -88,10 +88,10 @@ def get_params():
 
         dataset_params['dataset_file_path'] = '/home/arpg/coloradar/dataset_may2_one.h5'
         dataset_params['partial'] = 0.01
-        # model_params['encoder_batch_norm'] = False
-        # model_params['decoder_layer_norm'] = False
-        # model_params['encoder_dropout'] = None
-        # model_params['decoder_dropout'] = None
+        model_params['encoder_batch_norm'] = False
+        model_params['decoder_layer_norm'] = False
+        model_params['encoder_dropout'] = None
+        model_params['decoder_dropout'] = None
 
     return {
         'host_name': host_name,

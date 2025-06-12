@@ -223,7 +223,7 @@ class MappedPointOccupancyDataBuffer(PointOccupancyDataBuffer):
             num_clusters = cluster_ids.max() + 1
             sample_counts = np.zeros((num_clusters, 2), dtype=np.int32)
 
-            for label in [0, 1]:
+            for label in (0, 1):
                 label_mask = labels == label
                 cluster_ids_label = cluster_ids[label_mask]
                 bincount = np.bincount(cluster_ids_label, minlength=num_clusters)
