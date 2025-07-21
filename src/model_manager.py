@@ -1,6 +1,5 @@
 import os.path
 from abc import ABC, abstractmethod
-from datetime import datetime
 from typing import Any, Dict
 
 import torch
@@ -21,7 +20,6 @@ class ModelManager(ABC):
             self, 
             host_name='unspecified',
             model_save_directory='.',
-            session_name=None,
             device_name='cpu',
             logger=Logger(),
             random_seed=1,
@@ -53,13 +51,7 @@ class ModelManager(ABC):
         self.init_loss_function(device=self.device, batch_size=self.batch_size, **loss_params)
         self.init_metrics(device=self.device, batch_size=self.batch_size, **loss_params, **metric_params)
         self.init_optimizer(**optimizer_params)
-
-        self.session_name = datetime.now().strftime("%d%B%y").lower()  # current date as DDmonthYY
-        if session_name:
-            self.session_name = f'{self.session_name}_{session_name}'
-        self.model_save_directory = os.path.join(model_save_directory, self.session_name)
-        os.makedirs(self.model_save_directory, exist_ok=True)
-        
+ 
         self.logger.init(
             project="radar-occupancy",
             config={
@@ -79,6 +71,14 @@ class ModelManager(ABC):
                 'metrics': metric_params
             }
         )
+
+        if model_save_directory is None:
+            self.model_save_directory = None
+        else:
+            self.model_save_directory = os.path.join(model_save_directory, self.logger.run_name())
+            if os.path.exists(self.model_save_directory):
+                self.model_save_directory += "-new"
+            os.makedirs(self.model_save_directory, exist_ok=False)
         self._saved_models = set()
 
     @abstractmethod
@@ -234,6 +234,10 @@ class ModelManager(ABC):
         return epoch_loss, epoch_grad_norm
 
     def _save_model(self, filename):
+        if self.model_save_directory is None:
+            self.logger.log(f'Skipping model save for {filename}')
+            return
+
         if not filename.endswith('.pth'):
             filename += '.pth'
         save_path = os.path.join(self.model_save_directory, filename)

@@ -86,12 +86,10 @@ class DistanceLoss(PointcloudOccupancyLoss):
                 loss_types.append(1)
 
             elif true_b_filtered.size(0) > 0:  # encourage higher prediction confidence while scaling with true confidence
-                # loss = (1 - y_pred_values[y_pred_batch_indices == b][:, 3]).mean() * true_b[:, 3].mean() * self._fn_weight
                 loss = self._calc_weighted_distance_loss(pred_b, true_b_filtered) * self._fn_weight
                 loss_types.append(2)
 
             elif pred_b_filtered.size(0) > 0:  # encourage lower prediction confidence
-                # loss = pred_b[:, 3].mean() * self._fp_weight
                 loss = self._calc_weighted_distance_loss(pred_b_filtered, true_b) * self._fp_weight
                 loss_types.append(3)
 

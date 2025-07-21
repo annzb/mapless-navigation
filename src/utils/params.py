@@ -1,7 +1,6 @@
 import os
 import platform
 import wandb
-from typing import Optional
 
 from utils.logger import Logger
 
@@ -68,16 +67,29 @@ def get_params():
         host_name = 'mac'
         logger = Logger(print_log=True)
         device_name = 'mps'
-        model_save_directory = '/Users/anna/data/coloradar/models'
-        training_params['n_epochs'] = 2
-        training_params['batch_size'] = 2
+        model_save_directory = '/Users/anna/data/rmodels'
 
         dataset_params['dataset_file_path'] = '/Users/anna/data/coloradar/dataset_may2_one.h5'
-        dataset_params['partial'] = 0.01
+        dataset_params['partial'] = 0.05
+
+        training_params['n_epochs'] = 300
+        training_params['batch_size'] = 8
+        optimizer_params['learning_rate'] = 6e-3
+
+        loss_params['occupancy_threshold'] = 0.8
+        loss_params['max_point_distance'] = 4
+        loss_params['fn_fp_weight'] = 1
+        loss_params['fn_weight'] = 1
+        loss_params['fp_weight'] = 1
+
+        model_params['encoder_cloud_size'] = 1024
+        model_params['encoder_num_features'] = 512
         model_params['encoder_batch_norm'] = False
+        model_params['encoder_dropout'] = 0.2
+
+        model_params['predicted_cloud_size'] = 2048
+        model_params['decoder_dropout'] = 0.2
         model_params['decoder_layer_norm'] = False
-        model_params['encoder_dropout'] = None
-        model_params['decoder_dropout'] = None
     
     else:
         host_name = 'lab_pc'

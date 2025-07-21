@@ -77,17 +77,13 @@ def sweep():
                 'values': [True, False]
             },
             'model_params.encoder_dropout': {
-                'min': 0.0,
-                'max': 0.5,
-                'distribution': 'uniform'
+                'values': [0.1, 0.2, 0.3, 0.4, 0.5]
             },
             'model_params.predicted_cloud_size': {
                 'values': [2048, 4096, 8192]
             },
             'model_params.decoder_dropout': {
-                'min': 0.0,
-                'max': 0.5,
-                'distribution': 'uniform'
+                'values': [0.1, 0.2, 0.3, 0.4, 0.5]
             },
             'model_params.decoder_layer_norm': {
                 'values': [True, False]

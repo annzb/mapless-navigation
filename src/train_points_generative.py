@@ -39,8 +39,6 @@ def run(
         optimizer_params: Optional[dict] = None, 
         loss_params: Optional[dict] = None
     ):
-    SESSION_NAME = 'test'
-
     params = get_params()
     if training_params:
         params['training_params'].update(training_params)
@@ -50,6 +48,7 @@ def run(
         params['dataset_params'].update(dataset_params)
     if optimizer_params:
         params['optimizer_params'].update(optimizer_params)
+
     if loss_params:
         params['loss_params'].update(loss_params)
     else:
@@ -57,10 +56,11 @@ def run(
         params['loss_params']['fn_weight'] = 1.0
         params['loss_params']['fp_weight'] = 1.0
 
-    mm = PointModelManager(session_name=SESSION_NAME, **params)
+    mm = PointModelManager(**params)
     mm.train()
     mm.evaluate()
     mm.logger.finish()
+
 
 if __name__ == '__main__':
     run()

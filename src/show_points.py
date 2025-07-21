@@ -58,17 +58,20 @@ def merge_pred_gt(y, y_other):
 
 
 def run():
-    SESSION_NAME = '03june25_generative_overfit_dloss1_remote'
+    model_path = '/Users/anna/data/rmodels/sweep1/29_best_train_loss.pth'
 
     params = get_params()
-    mm = PointModelManager(session_name=SESSION_NAME, **params)
-    model_save_directory = params['model_save_directory']
-    model_path=os.path.join(model_save_directory, SESSION_NAME, 'best_train_loss.pth')
+
+    # run 29
+    # params['training_params']['batch_size'] = 8
+    # params['dataset_params']['partial'] = 0.005
+    
+    mm = PointModelManager(**params)
     mm.init_model(model_path=model_path)
 
     recall_metric, precision_metric, f1_metric = mm.metrics['test'][:3]
     # for idx in range(10):
-    idx = 2
+    idx = 10
 
     with torch.no_grad():
         input_cloud, gt_cloud, _ = mm.train_loader.dataset[idx]
@@ -79,17 +82,17 @@ def run():
         # probs_occupied = probs[probs[:, 3] >= params['loss_params']['occupancy_threshold']]
         gt_cloud_occupied = gt_cloud[gt_cloud[:, 3] >= params['loss_params']['occupancy_threshold']]
 
-    pred_cloud_reduced = probs # data_transforms.collapse_close_points(probs, d=0.007)
-    y_pred, y_true = (pred_cloud_reduced, torch.zeros(pred_cloud_reduced.shape[0])), (torch.from_numpy(gt_cloud_occupied), torch.zeros(gt_cloud_occupied.shape[0]))
-    merged_cloud = merge_pred_gt(y_pred, y_true)[0]
-    test_distance = 0.05
-    merged_cloud_reduced = data_transforms.collapse_close_points(merged_cloud, d=test_distance)
+    # pred_cloud_reduced = probs # data_transforms.collapse_close_points(probs, d=0.007)
+    # y_pred, y_true = (pred_cloud_reduced, torch.zeros(pred_cloud_reduced.shape[0])), (torch.from_numpy(gt_cloud_occupied), torch.zeros(gt_cloud_occupied.shape[0]))
+    # merged_cloud = merge_pred_gt(y_pred, y_true)[0]
+    # test_distance = 0.05
+    # merged_cloud_reduced = data_transforms.collapse_close_points(merged_cloud, d=test_distance)
 
-    mm.data_buffer._same_point_distance_limit = test_distance
-    mm.data_buffer.create_masks(y_pred, y_true)
-    recall = recall_metric._calc(y_pred, y_true, data_buffer=mm.data_buffer)
-    precision = precision_metric._calc(y_pred, y_true, data_buffer=mm.data_buffer)
-    f1 = f1_metric._calc(y_pred, y_true, data_buffer=mm.data_buffer)
+    # mm.data_buffer._same_point_distance_limit = test_distance
+    # mm.data_buffer.create_masks(y_pred, y_true)
+    # recall = recall_metric._calc(y_pred, y_true, data_buffer=mm.data_buffer)
+    # precision = precision_metric._calc(y_pred, y_true, data_buffer=mm.data_buffer)
+    # f1 = f1_metric._calc(y_pred, y_true, data_buffer=mm.data_buffer)
 
     # report = []
     # for eps in np.arange(start=0.001, stop=0.1, step=0.0001):
@@ -142,24 +145,26 @@ def run():
     #     titles=['input_cloud', 'gt_cloud'],
     #     window_name=title
     # )
-    # show_radar_clouds(
-    #     clouds=[predicted_log_odds.numpy(), probs.numpy(), gt_cloud_occupied],
-    #     prob_flags=[False, True, True],
-    #     titles=['predicted_log_odds', 'probs', 'gt_cloud_occupied'],
-    #     window_name=title
-    # )
+    show_radar_clouds(
+        clouds=[predicted_log_odds.numpy(), probs.numpy(), gt_cloud_occupied],
+        prob_flags=[False, True, True],
+        titles=['predicted_log_odds', 'probs', 'gt_cloud_occupied'],
+        window_name=title
+    )
     # show_radar_clouds(
     #     clouds=[embeddings[0].numpy(), predicted_log_odds.numpy(), probs],
     #     prob_flags=[False, False, True],
     #     titles=['embeddings', 'predicted_log_odds', 'probs'],
     #     window_name=title
     # )
-    show_radar_clouds(
-        clouds=[probs.numpy(), pred_cloud_reduced, gt_cloud_occupied, merged_cloud, merged_cloud_reduced],
-        prob_flags=[True, True, True, True, True],
-        titles=['probs', 'pred_cloud_reduced', 'gt_cloud_occupied', 'merged_cloud', 'merged_cloud_reduced'],
-        window_name=title
-    )
+
+    # With manual F1
+    # show_radar_clouds(
+    #     clouds=[probs.numpy(), pred_cloud_reduced, gt_cloud_occupied, merged_cloud, merged_cloud_reduced],
+    #     prob_flags=[True, True, True, True, True],
+    #     titles=['probs', 'pred_cloud_reduced', 'gt_cloud_occupied', 'merged_cloud', 'merged_cloud_reduced'],
+    #     window_name=title
+    # )
 
     mm.logger.finish()
 
