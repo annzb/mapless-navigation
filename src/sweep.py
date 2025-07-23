@@ -38,33 +38,23 @@ def sweep():
             },
 
             'optimizer_params.learning_rate': {
-                'min': 1e-6,
-                'max': 1e-2,
-                'distribution': 'log_uniform_values'
+                'values': [1e-2, 1e-3, 1e-4, 1e-5, 1e-6]
             },
 
             'loss_params.occupancy_threshold': {
-                'values': [0.5, 0.6, 0.7, 0.8]
+                'values': [0.5, 0.6, 0.7]
             },
             'loss_params.max_point_distance': {
-                'min': 0.1,
-                'max': 5.0,
-                'distribution': 'uniform'
+                'values': [0.1, 0.2, 0.5, 1.0, 1.5, 2.0, 2.5, 5.0]
             },
             'loss_params.fn_fp_weight': {
-                'min': 0.1,
-                'max': 10.0,
-                'distribution': 'log_uniform_values'
+                'values': [1, 2, 3, 4, 5, 10]
             },
             'loss_params.fn_weight': {
-                'min': 0.1,
-                'max': 10.0,
-                'distribution': 'log_uniform_values'
+                'values': [1, 2, 3, 4, 5, 10]
             },
             'loss_params.fp_weight': {
-                'min': 0.1,
-                'max': 10.0,
-                'distribution': 'log_uniform_values'
+                'values': [1, 2, 3, 4, 5, 10]
             },
 
             'model_params.encoder_cloud_size': {

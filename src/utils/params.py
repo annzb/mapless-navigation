@@ -20,7 +20,8 @@ def get_params():
         'partial': 1.0, 
         'shuffle_runs': True,
         'intensity_threshold': 5000.0,
-        'grid_voxel_size': 0.25
+        'grid_voxel_size': 0.25,
+        'gt_cloud_min_num_points': 100
     }
     model_params = {
         'encoder_cloud_size': 1024,
@@ -70,13 +71,13 @@ def get_params():
         model_save_directory = '/Users/anna/data/rmodels'
 
         dataset_params['dataset_file_path'] = '/Users/anna/data/coloradar/dataset_may2_one.h5'
-        dataset_params['partial'] = 0.05
+        dataset_params['partial'] = 0.5
 
         training_params['n_epochs'] = 300
         training_params['batch_size'] = 8
         optimizer_params['learning_rate'] = 6e-3
 
-        loss_params['occupancy_threshold'] = 0.8
+        loss_params['occupancy_threshold'] = 0.7
         loss_params['max_point_distance'] = 4
         loss_params['fn_fp_weight'] = 1
         loss_params['fn_weight'] = 1

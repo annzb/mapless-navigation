@@ -2,6 +2,7 @@ import os.path
 from abc import ABC, abstractmethod
 from typing import Any, Dict
 
+import numpy as np
 import torch
 
 torch.autograd.set_detect_anomaly(True)
@@ -43,7 +44,7 @@ class ModelManager(ABC):
 
         self.init_data_buffer(**loss_params, **metric_params)
         self.train_loader, self.val_loader, self.test_loader, self.radar_config = get_dataset(
-            dataset_type=self._dataset_type, data_buffer=self.data_buffer, 
+            dataset_type=self._dataset_type, occupancy_threshold=self.data_buffer.occupancy_threshold(),
             logger=self.logger, device=self.device, random_seed=random_seed, batch_size=self.batch_size, 
             **dataset_params
         )

@@ -42,15 +42,20 @@ def read_h5_dataset(file_path):
     return data_dict, RadarConfig.from_dict(config.get('radar_config', {}))
 
 
-def process_lidar_frames(lidar_frames):
-    nonempty_mask = np.array([len(frame) > 0 for frame in lidar_frames])
+def process_lidar_frames(lidar_frames, occupancy_threshold=0.5, gt_cloud_min_num_points=1):
+    nonempty_mask = np.array([len(frame) > gt_cloud_min_num_points for frame in lidar_frames])
     nonempty_cloud_idx = np.where(nonempty_mask)[0]
     if len(nonempty_cloud_idx) == 0:
         return [], np.array([], dtype=np.int64)
     
-    for i in nonempty_cloud_idx:
-        lidar_frames[i][..., 3] = 1 / (1 + np.exp(-lidar_frames[i][..., 3]))
-    return [lidar_frames[i] for i in nonempty_cloud_idx], nonempty_cloud_idx
+    has_occupied_mask = np.zeros(len(nonempty_cloud_idx), dtype=bool)
+    for i, frame_idx in enumerate(nonempty_cloud_idx):
+        lidar_frames[frame_idx][..., 3] = 1 / (1 + np.exp(-lidar_frames[frame_idx][..., 3]))
+        occupied_cloud = lidar_frames[frame_idx][lidar_frames[frame_idx][..., 3] >= occupancy_threshold]
+        has_occupied_mask[i] = len(occupied_cloud) > 0
+    has_occupied_cloud_idx = nonempty_cloud_idx[has_occupied_mask]
+
+    return [lidar_frames[i] for i in has_occupied_cloud_idx], has_occupied_cloud_idx
 
 
 def get_size_recursive(obj):
@@ -166,7 +171,11 @@ def prepare_grid_data(X, Y, poses, data_transformer, dataset_part=1.0, logger=No
     return X_processed, Y_processed, poses_processed
 
 
-def prepare_point_data(X, Y, poses, data_transformer, dataset_part=1.0, intensity_threshold=0.0, logger=None, **kwargs):
+def prepare_point_data(
+        X, Y, poses, data_transformer, 
+        dataset_part=1.0, occupancy_threshold=0.5, intensity_threshold=0.0, gt_cloud_min_num_points=1,
+        logger=None, **kwargs
+):
     assert len(X) == len(Y) == len(poses)
     assert 0.0 < dataset_part <= 1.0
     log_fn = logger.log if logger is not None else print
@@ -183,7 +192,7 @@ def prepare_point_data(X, Y, poses, data_transformer, dataset_part=1.0, intensit
         Y_batch = Y[i * batch_size:(i + 1) * batch_size]
         poses_batch = poses[i * batch_size:(i + 1) * batch_size]
         
-        Y_batch, nonempty_lidar_idx = process_lidar_frames(Y_batch)
+        Y_batch, nonempty_lidar_idx = process_lidar_frames(Y_batch, occupancy_threshold=occupancy_threshold, gt_cloud_min_num_points=gt_cloud_min_num_points)
         if len(Y_batch) == 0:
             continue
 
@@ -320,7 +329,7 @@ def get_dataset(
         dataset_file_path, dataset_type,
         device=None, logger=None, random_seed=1, batch_size=1,
         partial=1.0, shuffle_runs=True, grid_voxel_size=1.0,
-        intensity_threshold=0.0, **kwargs
+        gt_cloud_min_num_points=1, intensity_threshold=0.0, occupancy_threshold=0.5, **kwargs
 ):
     if not isinstance(dataset_file_path, str):
         raise ValueError('dataset_file_path must be a string')
@@ -370,7 +379,7 @@ def get_dataset(
     radar_frames, lidar_frames, poses = dataset_type.preprocess(
         radar_frames, lidar_frames, poses,
         data_transformer=data_transformer, dataset_part=partial, logger=logger,
-        intensity_threshold=intensity_threshold
+        intensity_threshold=intensity_threshold, occupancy_threshold=occupancy_threshold, gt_cloud_min_num_points=gt_cloud_min_num_points
     )
     (
         radar_train, radar_temp,
