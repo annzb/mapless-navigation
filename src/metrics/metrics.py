@@ -4,7 +4,7 @@ import torch.nn.functional as F
 from sklearn.cluster import DBSCAN
 
 from metrics.base import PointcloudOccupancyMetric
-from metrics.loss_points import DistanceLoss, PointLoss2
+from metrics.loss_points import DistanceLoss, DistanceOccupancyLoss, PointLoss2
 from utils import data_transforms
 
 
@@ -231,7 +231,7 @@ class DbscanReduction(DbscanMetric):
             
 
 
-class DistanceLossFpFnMetric(DistanceLoss, PointcloudOccupancyMetric):
+class DistanceLossFpFnMetric(DistanceOccupancyLoss, PointcloudOccupancyMetric):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.negative = True
@@ -252,6 +252,11 @@ class DistanceLossFpMetric(DistanceLossFpFnMetric):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self._subloss_type = 3  # fp
+
+class DistanceLossOccupancyMetric(DistanceLossFpFnMetric):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self._subloss_type = 4
 
 
 class UnmatchedLossFpFnMetric(PointcloudOccupancyMetric, PointLoss2):

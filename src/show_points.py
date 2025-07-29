@@ -32,7 +32,7 @@ def count_empty_gt_clouds(mm, threshold=0.5):
         _, gt_cloud, _ = mm.train_loader.dataset[sample_idx]
         gt_cloud_occupied = gt_cloud[gt_cloud[:, 3] >= threshold]
         if gt_cloud_occupied.shape[0] == 0:
-            print(f'Empty gt cloud at sample {sample_idx}')
+            # print(f'Empty gt cloud at sample {sample_idx}')
             n_empty += 1
     return n_empty
 
@@ -93,23 +93,21 @@ def find_best_sample(mm, metric_name, loss=False):
 
 
 def run():
-    model_path = '/Users/anna/data/rmodels/sweep1/29_best_train_loss.pth'
+    model_path = '/home/arpg/projects/mapless-navigation/trained_models/28jul25_w3q0/best_train_loss.pth'
 
     params = get_params()
     params['device_name'] = 'cpu'
-    params['dataset_params']['partial'] = 1
-    params['loss_params']['occupancy_threshold'] = 0.8
+    # params['dataset_params']['partial'] = 1
+    # params['loss_params']['occupancy_threshold'] = 0.8
 
     mm = PointModelManager(**params)
     mm.init_model(model_path=model_path)
 
-    n_empty_gt_clouds = count_empty_gt_clouds(mm, threshold=0.8) # threshold=params['loss_params']['occupancy_threshold'])
-    print(f'Number of samples: {len(mm.train_loader.dataset)}, number of empty gt clouds: {n_empty_gt_clouds}')
-
-    # Model 29, best for 0.8 - 25, best for 0.7 - 78
-    best_sample_idx, best_metric_value = find_best_sample(mm, metric_name='loss', loss=True)
-    print(f'Best sample idx: {best_sample_idx}, best loss: {best_metric_value}')
-    sample_idx = best_sample_idx
+    # n_empty_gt_clouds = count_empty_gt_clouds(mm, threshold=0.8) # threshold=params['loss_params']['occupancy_threshold'])
+    # print(f'Number of samples: {len(mm.train_loader.dataset)}, number of empty gt clouds: {n_empty_gt_clouds}')
+    # best_sample_idx, best_metric_value = find_best_sample(mm, metric_name='loss', loss=True)
+    # print(f'Best sample idx: {best_sample_idx}, best loss: {best_metric_value}')
+    sample_idx = 0
 
     '''
     Expected array shapes:

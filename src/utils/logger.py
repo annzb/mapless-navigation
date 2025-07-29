@@ -14,9 +14,9 @@ class Logger:
     def init(self, **kwargs):
         logger_run_name = None
         for logger in self.loggers:
-            logger.init(**kwargs)
-            if logger_run_name is None and getattr(logger, 'name', None):
-                logger_run_name = logger.name
+            logger_obj = logger.init(**kwargs)
+            if logger_run_name is None and hasattr(logger_obj, 'name'):
+                logger_run_name = logger_obj.name
         
         if self._user_run_name:
             self._run_name = self._user_run_name

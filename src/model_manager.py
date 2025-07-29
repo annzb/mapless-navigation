@@ -53,23 +53,17 @@ class ModelManager(ABC):
         self.init_metrics(device=self.device, batch_size=self.batch_size, **loss_params, **metric_params)
         self.init_optimizer(**optimizer_params)
  
+        loss_params['loss_type'] = self.loss_fn.__class__.__name__
+        loss_params['data_buffer_type'] = self.data_buffer.__class__.__name__
         self.logger.init(
             project="radar-occupancy",
             config={
                 "host": host_name,
-                'training_params': training_params,
-                "model": {
-                    "name": self.model.name,
-                    **model_params
-                },
-                'dataset': dataset_params,
-                'optimizer': optimizer_params,
-                "loss": {
-                    "name": self.loss_fn.__class__.__name__,
-                    "point_mapping_method": self.data_buffer.__class__.__name__,
-                    **loss_params
-                },
-                'metrics': metric_params
+                **loss_params,
+                **training_params,
+                **model_params,
+                **dataset_params,
+                **optimizer_params
             }
         )
 
@@ -270,7 +264,7 @@ class ModelManager(ABC):
 
             for mode in 'train', 'val':
                 for metric in self.metrics[mode]:
-                    if metric.total_score >= metric.best_score:
+                    if (metric.total_score < metric.best_score) if metric.negative else (metric.total_score > metric.best_score):
                         self._save_model(f'best_{metric.name}')
 
             log = {
@@ -287,6 +281,8 @@ class ModelManager(ABC):
     def evaluate(self):
         mode = 'test'
         for model_path in self._saved_models:
+            if os.path.basename(model_path).startswith('epoch_'):
+                continue
             self.logger.log(f'Evaluating model {os.path.basename(model_path)}')
             self.init_model(model_path)
             self.reset_metrics(mode=mode)

@@ -26,11 +26,11 @@ def get_params():
     model_params = {
         'encoder_cloud_size': 1024,
         'encoder_num_features': 128,
-        'encoder_batch_norm': True,
-        'encoder_dropout': 0.2,
+        'encoder_batch_norm': False,
+        'encoder_dropout': None,
         'predicted_cloud_size': 4096,
-        'decoder_layer_norm': True,
-        'decoder_dropout': 0.2
+        'decoder_layer_norm': False,
+        'decoder_dropout': None
     }
     optimizer_params = {
         'learning_rate': 1e-3
@@ -41,11 +41,13 @@ def get_params():
         'max_point_distance': 1.0,
         'same_point_distance_limit': 0.05,
         'unmatched_weight': 1.0,
+        'distance_weight': 1.0,
+        'occupancy_weight': 1.0,
         'fn_fp_weight': 1.0,
         'fn_weight': 1.0,
         'fp_weight': 1.0,
         'spatial_weight': 1.0,
-        'occupancy_weight': 1.0
+        'occupancy_weight': 10.0
     }
     metric_params = {}
 
@@ -96,15 +98,21 @@ def get_params():
         host_name = 'lab_pc'
         logger = Logger(print_log=True)
         model_save_directory = '/home/arpg/projects/mapless-navigation/trained_models'
-        training_params['n_epochs'] = 5
+
+        training_params['n_epochs'] = 500
         training_params['batch_size'] = 4
 
         dataset_params['dataset_file_path'] = '/home/arpg/coloradar/dataset_may2_one.h5'
-        dataset_params['partial'] = 0.01
-        model_params['encoder_batch_norm'] = False
-        model_params['decoder_layer_norm'] = False
-        model_params['encoder_dropout'] = None
-        model_params['decoder_dropout'] = None
+        dataset_params['partial'] = 0.02
+
+        # loss_params['max_point_distance'] = 0.2
+
+        # model_params['encoder_cloud_size'] = 2048
+        # model_params['encoder_num_features'] = 128
+        # model_params['encoder_batch_norm'] = False
+        # model_params['encoder_dropout'] = None
+        # model_params['decoder_layer_norm'] = False
+        # model_params['decoder_dropout'] = None
 
     return {
         'host_name': host_name,

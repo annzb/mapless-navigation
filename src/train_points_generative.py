@@ -4,7 +4,7 @@ torch.autograd.set_detect_anomaly(True)
 
 from metrics import metrics as metric_defs
 from utils.dataset import RadarDataset
-from metrics import DistanceLoss as PointLoss, ChamferPointDataBuffer as PointDataBuffer
+from metrics import DistanceOccupancyLoss as PointLoss, ChamferPointDataBuffer as PointDataBuffer
 from models import GenerativeBaseline as PointModel
 from model_manager import ModelManager
 from utils.params import get_params
@@ -28,33 +28,41 @@ class PointModelManager(ModelManager):
             metric_defs.DbscanReduction,
             metric_defs.DistanceLossFpFnMetric,
             metric_defs.DistanceLossFpMetric,
-            metric_defs.DistanceLossFnMetric
+            metric_defs.DistanceLossFnMetric,
+            metric_defs.DistanceLossOccupancyMetric
         )
 
 
 def run(
-        training_params: Optional[dict] = None, 
-        model_params: Optional[dict] = None,
-        dataset_params: Optional[dict] = None, 
-        optimizer_params: Optional[dict] = None, 
-        loss_params: Optional[dict] = None
+        # training_params: Optional[dict] = None, 
+        # model_params: Optional[dict] = None,
+        # dataset_params: Optional[dict] = None, 
+        # optimizer_params: Optional[dict] = None, 
+        # loss_params: Optional[dict] = None,
+        **kwargs
     ):
     params = get_params()
-    if training_params:
-        params['training_params'].update(training_params)
-    if model_params:
-        params['model_params'].update(model_params)
-    if dataset_params:
-        params['dataset_params'].update(dataset_params)
-    if optimizer_params:
-        params['optimizer_params'].update(optimizer_params)
+    for param_name, param_value in kwargs.items():
+        if isinstance(param_value, dict):
+            params[param_name].update(param_value)
+        else:
+            params[param_name] = param_value
 
-    if loss_params:
-        params['loss_params'].update(loss_params)
-    else:
-        params['loss_params']['fn_fp_weight'] = 1.0
-        params['loss_params']['fn_weight'] = 1.0
-        params['loss_params']['fp_weight'] = 1.0
+    # if training_params:
+    #     params['training_params'].update(training_params)
+    # if model_params:
+    #     params['model_params'].update(model_params)
+    # if dataset_params:
+    #     params['dataset_params'].update(dataset_params)
+    # if optimizer_params:
+    #     params['optimizer_params'].update(optimizer_params)
+
+    # if loss_params:
+    #     params['loss_params'].update(loss_params)
+    # else:
+    #     params['loss_params']['fn_fp_weight'] = 1.0
+    #     params['loss_params']['fn_weight'] = 1.0
+    #     params['loss_params']['fp_weight'] = 1.0
 
     mm = PointModelManager(**params)
     mm.train()

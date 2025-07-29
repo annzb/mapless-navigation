@@ -31,8 +31,12 @@ class MsePointLoss(PointcloudOccupancyLoss):
     
 
 class DistanceLoss(PointcloudOccupancyLoss):
-    def __init__(self, fn_fp_weight, fn_weight, fp_weight, **kwargs):
+    def __init__(self, distance_weight, occupancy_weight, fn_fp_weight, fn_weight, fp_weight, **kwargs):
         super().__init__(**kwargs)
+        if not isinstance(distance_weight, (int, float)):
+            raise ValueError('distance_weight must be a number')
+        if not isinstance(occupancy_weight, (int, float)):
+            raise ValueError('occupancy_weight must be a number')
         if not isinstance(fn_fp_weight, (int, float)):
             raise ValueError('fn_fp_weight must be a number')
         if not isinstance(fn_weight, (int, float)):
@@ -40,9 +44,17 @@ class DistanceLoss(PointcloudOccupancyLoss):
         if not isinstance(fp_weight, (int, float)):
             raise ValueError('fp_weight must be a number')
         
+        self._distance_weight = distance_weight
+        self._occupancy_weight = occupancy_weight
         self._fn_fp_weight = fn_fp_weight
         self._fn_weight = fn_weight
         self._fp_weight = fp_weight
+
+    def distance_weight(self) -> float:
+        return self._distance_weight
+    
+    def occupancy_weight(self) -> float:
+        return self._occupancy_weight
     
     def fn_fp_weight(self) -> float:
         return self._fn_fp_weight
@@ -66,7 +78,7 @@ class DistanceLoss(PointcloudOccupancyLoss):
 
         return loss_pred + loss_true
 
-    def _calc(self, y_pred, y_true, data_buffer=None, verbose_return=False, *args, **kwargs):
+    def _calc_distance_loss(self, y_pred, y_true, data_buffer=None, verbose_return=False, *args, **kwargs):
         (y_pred_values, y_pred_batch_indices), (y_true_values, y_true_batch_indices) = y_pred, y_true
         pred_occ_mask, true_occ_mask = data_buffer.occupied_mask()
         if not self.occupied_only:
@@ -102,6 +114,49 @@ class DistanceLoss(PointcloudOccupancyLoss):
         if verbose_return:
             return torch.stack(losses), torch.tensor(loss_types, device=self._device)
         return torch.stack(losses).mean()
+
+    def _calc_occupancy_loss(self, y_pred, y_true, data_buffer=None, verbose_return=False, *args, **kwargs):
+        return torch.tensor([0.0], device=self._device)
+
+    def _calc(self, y_pred, y_true, data_buffer=None, verbose_return=False, *args, **kwargs):
+        distance_loss_result = self._calc_distance_loss(y_pred, y_true, data_buffer, verbose_return)
+        occupancy_loss = self._calc_occupancy_loss(y_pred, y_true, data_buffer)
+
+        if verbose_return:
+            distance_losses, loss_types = distance_loss_result
+            losses = torch.cat((distance_losses * self._distance_weight, occupancy_loss * self._occupancy_weight))
+            loss_types = torch.cat((loss_types, torch.tensor([4], device=self._device)))
+            return losses, loss_types
+        
+        return distance_loss_result * self._distance_weight + occupancy_loss * self._occupancy_weight
+
+
+class DistanceOccupancyLoss(DistanceLoss):
+    def _calc_occupancy_loss(self, y_pred, y_true, data_buffer=None, verbose_return=False, *args, **kwargs):
+        (y_pred_values, y_pred_batch_indices), (y_true_values, y_true_batch_indices) = y_pred, y_true
+        pred_occ_mask, true_occ_mask = data_buffer.occupied_mask()
+        losses = []
+
+        for b in range(self._batch_size):
+            pred_batch_mask = y_pred_batch_indices == b
+            true_batch_mask = y_true_batch_indices == b
+            if data_buffer.occupied_only():
+                pred_batch_mask &= pred_occ_mask
+                true_batch_mask &= true_occ_mask
+
+            pred_b = y_pred_values[pred_batch_mask]
+            true_b = y_true_values[true_batch_mask]
+
+            # Normalized occupancy densities
+            pred_occupancy_density = pred_b[:, 3].mean() if pred_b.size(0) > 0 else torch.tensor(0.0, device=pred_b.device)
+            true_occupancy_density = true_b[:, 3].mean() if true_b.size(0) > 0 else torch.tensor(0.0, device=true_b.device)
+
+            # Occupancy density loss (absolute difference)
+            loss = (pred_occupancy_density - true_occupancy_density).abs()
+            losses.append(loss)
+
+        return torch.stack(losses).mean().unsqueeze(0)
+
 
 
 class PointLoss(PointcloudOccupancyLoss):
