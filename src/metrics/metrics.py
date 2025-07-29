@@ -5,7 +5,7 @@ from sklearn.cluster import DBSCAN
 
 from metrics.base import PointcloudOccupancyMetric
 from metrics.loss_points import DistanceLoss, DistanceOccupancyLoss, PointLoss2
-from utils import data_transforms
+from data import data_transforms
 
 
 # class MatchedPointRatio(PointcloudOccupancyMetric):

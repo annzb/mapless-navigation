@@ -3,10 +3,10 @@ from typing import Optional
 torch.autograd.set_detect_anomaly(True)
 
 from metrics import metrics as metric_defs
-from utils.dataset import RadarDataset
+from data import RadarDataset
 from metrics import DistanceOccupancyLoss as PointLoss, ChamferPointDataBuffer as PointDataBuffer
 from models import GenerativeBaseline as PointModel
-from model_manager import ModelManager
+from training.model_manager import ModelManager
 from utils.params import get_params
 
 

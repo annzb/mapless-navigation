@@ -5,7 +5,7 @@ from metrics import metrics as metric_defs
 from utils.dataset import RadarDataset
 from metrics import PointLoss2 as PointLoss, ChamferPointDataBuffer as PointDataBuffer
 from models import RegressionBaseline as PointModel
-from model_manager import ModelManager
+from src.training.model_manager import ModelManager
 from utils import get_local_params
 
 

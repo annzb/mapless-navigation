@@ -103,7 +103,7 @@ def get_params():
         training_params['batch_size'] = 4
 
         dataset_params['dataset_file_path'] = '/home/arpg/coloradar/dataset_may2_one.h5'
-        dataset_params['partial'] = 0.02
+        dataset_params['partial'] = 0.2
 
         # loss_params['max_point_distance'] = 0.2
 

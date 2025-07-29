@@ -2,7 +2,7 @@ import numpy as np
 import torch
 from sklearn.cluster import DBSCAN
 
-from utils.radar_config import RadarConfig
+from data.radar_config import RadarConfig
 
 
 def match_points(cloud1: torch.Tensor, cloud2: torch.Tensor):

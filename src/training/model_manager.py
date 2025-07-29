@@ -1,16 +1,16 @@
 import os.path
 from abc import ABC, abstractmethod
-from typing import Any, Dict
+from typing import Any, Dict, Optional, Union
 
 import numpy as np
 import torch
 
 torch.autograd.set_detect_anomaly(True)
 
+from data import get_dataset
 from metrics import BaseLoss, BaseMetric, OccupancyDataBuffer
 from models import RadarOccupancyModel
 from utils import Logger, param_validation as validate
-from utils.dataset import get_dataset
 
 
 class ModelManager(ABC):
@@ -291,3 +291,53 @@ class ModelManager(ABC):
             log = {"model_path": model_path, "test_loss": model_test_loss}
             log.update(self.report_metrics(mode=mode))
             self.logger.log(log)
+    
+    def predict(self, radar_frame: Union[torch.Tensor, np.ndarray], radar_batch_indices: Optional[Union[torch.Tensor, np.ndarray]] = None):
+        radar_frame = validate.any_to_tensor(radar_frame, device=self.device)
+        if radar_batch_indices is None:
+            radar_batch_indices = torch.zeros(radar_frame.shape[0], dtype=torch.int64, device=self.device)
+        else:
+            radar_batch_indices = validate.any_to_tensor(radar_batch_indices, dtype=torch.int64, device=self.device)
+
+        self.model.eval()
+        with torch.no_grad():
+            pred_frames, pred_indices = self.model((radar_frame, radar_batch_indices))
+
+        if isinstance(radar_frame, np.ndarray):
+            pred_frames, pred_indices = pred_frames.cpu().numpy(), pred_indices.cpu().numpy()
+        return pred_frames, pred_indices
+        
+    def evaluate_batch(
+            self, 
+            radar_batch: Union[torch.Tensor, np.ndarray], 
+            lidar_batch: Union[torch.Tensor, np.ndarray], 
+            radar_batch_indices: Optional[Union[torch.Tensor, np.ndarray]] = None,
+            lidar_batch_indices: Optional[Union[torch.Tensor, np.ndarray]] = None
+    ):
+        radar_batch = validate.any_to_tensor(radar_batch, device=self.device)
+        lidar_batch = validate.any_to_tensor(lidar_batch, device=self.device)
+        if radar_batch_indices is None:
+            radar_batch_indices = torch.zeros(radar_batch.shape[0], dtype=torch.int64, device=self.device)
+        else:
+            radar_batch_indices = validate.any_to_tensor(radar_batch_indices, dtype=torch.int64, device=self.device)
+        if lidar_batch_indices is None:
+            lidar_batch_indices = torch.zeros(lidar_batch.shape[0], dtype=torch.int64, device=self.device)
+        else:
+            lidar_batch_indices = validate.any_to_tensor(lidar_batch_indices, dtype=torch.int64, device=self.device)
+
+        mode = 'test'
+        self.model.eval()
+        self.reset_metrics_epoch(mode=mode)
+
+        with torch.no_grad():
+            pred_frames, pred_indices = self.model((radar_batch, radar_batch_indices))
+
+        self.data_buffer.create_masks(y=(pred_frames, pred_indices), y_other=(lidar_batch, lidar_batch_indices))
+        self.apply_metrics(y_pred=(pred_frames, pred_indices), y_true=(lidar_batch, lidar_batch_indices), data_buffer=self.data_buffer, mode=mode)
+        report = self.report_metrics(mode=mode)
+        loss = self.loss_fn(y_pred=(pred_frames, pred_indices), y_true=(lidar_batch, lidar_batch_indices), data_buffer=self.data_buffer).detach().item()
+        report['loss'] = loss
+
+        if isinstance(radar_batch, np.ndarray):
+            pred_frames, pred_indices = pred_frames.cpu().numpy(), pred_indices.cpu().numpy()
+        return (pred_frames, pred_indices), report

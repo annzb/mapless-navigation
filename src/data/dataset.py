@@ -12,8 +12,8 @@ from torch.utils.data import Dataset, DataLoader
 from torch.utils.data._utils.collate import default_collate
 from sklearn.model_selection import train_test_split
 
-from utils.data_transforms import NumpyDataTransform
-from utils.radar_config import RadarConfig
+from data.data_transforms import NumpyDataTransform
+from data.radar_config import RadarConfig
 
 
 def read_h5_dataset(file_path):

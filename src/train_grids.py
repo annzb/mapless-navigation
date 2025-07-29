@@ -5,7 +5,7 @@ from metrics import metrics as metric_defs
 from utils.dataset import GridRadarDataset
 from metrics import DistanceLoss as PointLoss, GridOccupancyDataBuffer as GridDataBuffer
 from models import GenerativeBaseline as PointModel
-from model_manager import ModelManager
+from src.training.model_manager import ModelManager
 from utils.params import get_params
 
 
