@@ -68,31 +68,31 @@ def get_params():
 
     elif platform.system() == "Darwin":
         host_name = 'mac'
-        logger = Logger(print_log=True)
+        logger = Logger(print_log=True, loggers=(wandb, ))
         device_name = 'mps'
         model_save_directory = '/Users/anna/data/rmodels'
 
         dataset_params['dataset_file_path'] = '/Users/anna/data/coloradar/dataset_may2_one.h5'
-        dataset_params['partial'] = 0.5
+        dataset_params['partial'] = 1
 
-        training_params['n_epochs'] = 300
-        training_params['batch_size'] = 8
-        optimizer_params['learning_rate'] = 6e-3
+        # training_params['n_epochs'] = 300
+        # training_params['batch_size'] = 8
+        # optimizer_params['learning_rate'] = 6e-3
 
-        loss_params['occupancy_threshold'] = 0.7
-        loss_params['max_point_distance'] = 4
-        loss_params['fn_fp_weight'] = 1
-        loss_params['fn_weight'] = 1
-        loss_params['fp_weight'] = 1
+        # loss_params['occupancy_threshold'] = 0.7
+        # loss_params['max_point_distance'] = 4
+        # loss_params['fn_fp_weight'] = 1
+        # loss_params['fn_weight'] = 1
+        # loss_params['fp_weight'] = 1
 
-        model_params['encoder_cloud_size'] = 1024
-        model_params['encoder_num_features'] = 512
-        model_params['encoder_batch_norm'] = False
-        model_params['encoder_dropout'] = 0.2
+        # model_params['encoder_cloud_size'] = 1024
+        # model_params['encoder_num_features'] = 512
+        # model_params['encoder_batch_norm'] = False
+        # model_params['encoder_dropout'] = 0.2
 
-        model_params['predicted_cloud_size'] = 2048
-        model_params['decoder_dropout'] = 0.2
-        model_params['decoder_layer_norm'] = False
+        # model_params['predicted_cloud_size'] = 2048
+        # model_params['decoder_dropout'] = 0.2
+        # model_params['decoder_layer_norm'] = False
     
     else:
         host_name = 'lab_pc'

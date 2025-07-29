@@ -1,8 +1,9 @@
 
 import numpy as np
-import open3d as o3d
+# import open3d as o3d
 import os
 import torch
+import pickle
 
 from collections import defaultdict
 from tqdm import tqdm
@@ -36,24 +37,27 @@ def save_predictions(mm, save_file):
     for metric_name, metric_values in metrics.items():
         metrics[metric_name] = np.array(metric_values)
 
-    np.savez(
-        save_file,
-        radar_clouds=radar_clouds,
-        gt_clouds=gt_clouds,
-        predicted_clouds=predicted_clouds,
-        poses=poses,
-        metrics=metrics
-    )
+    data = {
+        'radar_clouds': radar_clouds,
+        'gt_clouds': gt_clouds,
+        'predicted_clouds': predicted_clouds,
+        'poses': poses,
+        'metrics': metrics
+    }
+
+    with open(save_file, 'wb') as f:
+        pickle.dump(data, f)
 
 
 def read_predictions(save_file):
-    data = np.load(save_file, allow_pickle=True)
+    with open(save_file, 'rb') as f:
+        data = pickle.load(f)
     return (
-        list(data['radar_clouds']),
-        list(data['gt_clouds']),
-        list(data['predicted_clouds']),
-        list(data['poses']),
-        data['metrics'].item()
+        data['radar_clouds'],
+        data['gt_clouds'], 
+        data['predicted_clouds'],
+        data['poses'],
+        data['metrics']
     )
 
 
@@ -139,8 +143,8 @@ def animate_map(lidar_clouds, radar_clouds, poses):
 
 
 def run():
-    model_path = '/home/arpg/projects/mapless-navigation/trained_models/28jul25_w3q0/best_train_loss.pth'
-    save_file = 'predictions.npz'
+    model_path = '/Users/anna/data/rmodels/19jul25_c07k/best_train_loss.pth'
+    save_file = 'predictions.pkl'
 
     params = get_params()
     params['device_name'] = 'cpu'
@@ -154,7 +158,7 @@ def run():
         save_predictions(mm, save_file)
     radar_clouds, gt_clouds, predicted_clouds, poses, metrics = read_predictions(save_file)
 
-    animate_map(radar_clouds, gt_clouds, poses)
+    # animate_map(radar_clouds, gt_clouds, poses)
 
 
 if __name__ == '__main__':

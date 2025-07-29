@@ -93,10 +93,14 @@ def find_best_sample(mm, metric_name, loss=False):
 
 
 def run():
-    model_path = '/home/arpg/projects/mapless-navigation/trained_models/28jul25_w3q0/best_train_loss.pth'
+    model_path = '/Users/anna/data/rmodels/atomic-sweep-1/best_train_loss.pth'
 
     params = get_params()
     params['device_name'] = 'cpu'
+    # params['model_params']['encoder_batch_norm'] = True
+    # params['model_params']['decoder_layer_norm'] = True
+    # params['model_params']['encoder_dropout'] = 0.2
+    # params['model_params']['decoder_dropout'] = 0.2
     # params['dataset_params']['partial'] = 1
     # params['loss_params']['occupancy_threshold'] = 0.8
 
