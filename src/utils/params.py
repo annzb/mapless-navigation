@@ -61,6 +61,7 @@ def get_params():
 
         dataset_params['dataset_file_path'] = '/media/giantdrive/coloradar/dataset_may2_all.h5'
         dataset_params['partial'] = 0.005
+
         # model_params['encoder_batch_norm'] = False
         # model_params['decoder_layer_norm'] = False
         # model_params['encoder_dropout'] = None
@@ -96,14 +97,14 @@ def get_params():
     
     else:
         host_name = 'lab_pc'
-        logger = Logger(print_log=True)
+        logger = Logger(print_log=True, loggers=(wandb, ))
         model_save_directory = '/home/arpg/projects/mapless-navigation/trained_models'
 
-        training_params['n_epochs'] = 500
+        training_params['n_epochs'] = 200
         training_params['batch_size'] = 4
 
         dataset_params['dataset_file_path'] = '/home/arpg/coloradar/dataset_may2_one.h5'
-        dataset_params['partial'] = 0.2
+        dataset_params['partial'] = 0.02
 
         # loss_params['max_point_distance'] = 0.2
 

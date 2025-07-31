@@ -33,7 +33,7 @@ def run_wrapper():
 def sweep():
     config = {
         'project': 'radar-occupancy',
-        'name': 'XS-overfit-norm-dropout',
+        'name': 'XS-norm-dropout-loss',
         'method': 'grid',
         'metric': {'name': 'best_train_loss', 'goal': 'minimize'},
         'parameters': {
@@ -62,7 +62,7 @@ def sweep():
                 'values': [True, False]
             },
             'random_seed': {
-                'values': [1, 2, 3, 4, 5]  # to see if consistent across sample sets
+                'values': [1, 2, 3]  # to see if consistent across sample sets
             }
         }
     }
