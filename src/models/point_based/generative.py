@@ -22,7 +22,9 @@ class Baseline(RadarOccupancyModel):
         self.name = 'generative_baseline_v1.0'
         self.encoder = SinglePointEncoder(output_size=encoder_cloud_size, output_dim=encoder_num_features, batch_norm=encoder_batch_norm, dropout=encoder_dropout)
         self.decoder = MlpDecoder(latent_dim=encoder_num_features * 2, output_size=predicted_cloud_size, output_dim=4, layer_norm=decoder_layer_norm, dropout=decoder_dropout)
-
+# X
+# cloud, encoded, pooled_mean, pooled_max, latent, encoded_clouds
+# pred_clouds, predicted_log_odds_flat, probs, predicted_flat_indices
     def forward(self, X, debug=False, **kwargs):
         flat_pts, batch_idx = X
 

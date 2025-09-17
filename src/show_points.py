@@ -13,16 +13,35 @@ from visualize.points import show_radar_clouds
 
 
 def run():
-    model_path = '/home/arpg/projects/mapless-navigation/trained_models/28jul25_w3q0/best_val_loss.pth'
-
     params = get_params()
     params['device_name'] = 'cpu'
-    # params['model_params']['encoder_batch_norm'] = True
+    params['dataset_params']['dataset_file_path'] = '/Users/anna/data/coloradar/dataset_may2_all.h5'
+    params['dataset_params']['partial'] = 0.005
+    
+    # Brute S sweep run 43
+    # model_path = '/Users/anna/data/rmodels/sweep_s_july/43_best_val_loss.pth'
+    # params['loss_params']['occupancy_threshold'] = 0.6
+    # params['loss_params']['max_point_distance'] = 1.5
+    # params['model_params']['encoder_num_features'] = 256
+    # params['model_params']['encoder_cloud_size'] = 512
+    # params['model_params']['encoder_batch_norm'] = False
+    # params['model_params']['encoder_dropout'] = 0.4
+    # params['model_params']['predicted_cloud_size'] = 2048
+    # params['model_params']['decoder_layer_norm'] = False
+    # params['model_params']['decoder_dropout'] = 0.1
+
+    # Brute S sweep run 39
+    # model_path = '/Users/anna/data/rmodels/sweep_s_july/39_best_train_loss.pth'
+    # params['loss_params']['occupancy_threshold'] = 0.5
+    # params['loss_params']['max_point_distance'] = 0.2
+    # params['model_params']['encoder_num_features'] = 256
+    # params['model_params']['encoder_cloud_size'] = 512
+    # params['model_params']['encoder_batch_norm'] = False
+    # params['model_params']['encoder_dropout'] = 0.1
+    # params['model_params']['predicted_cloud_size'] = 2048
     # params['model_params']['decoder_layer_norm'] = True
-    # params['model_params']['encoder_dropout'] = 0.2
-    # params['model_params']['decoder_dropout'] = 0.2
-    # params['dataset_params']['partial'] = 1
-    # params['loss_params']['occupancy_threshold'] = 0.8
+    # params['model_params']['decoder_dropout'] = 0.3
+
 
     mm = PointModelManager(**params)
     mm.init_model(model_path=model_path)
@@ -88,9 +107,9 @@ def run():
     #     window_name=title
     # )
     show_radar_clouds(
-        clouds=[pred_cloud_np, true_cloud_np, pred_cloud_np_occupied, true_cloud_np_occupied],
-        prob_flags=[True, True, True, True],
-        titles=['Predicted Probabilities', 'GT Probabilities', 'Predicted Occupied', 'GT Occupied'],
+        clouds=[input_cloud_np, pred_cloud_np, true_cloud_np, pred_cloud_np_occupied, true_cloud_np_occupied],
+        prob_flags=[False, True, True, True, True],
+        titles=['Input Cloud', 'Predicted Probabilities', 'GT Probabilities', 'Predicted Occupied', 'GT Occupied'],
         window_name=title
     )
     # show_radar_clouds(

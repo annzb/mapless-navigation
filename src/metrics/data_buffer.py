@@ -168,6 +168,7 @@ class MappedPointOccupancyDataBuffer(PointOccupancyDataBuffer):
                     
         self._mapped_mask = (mapped_mask, mapped_mask_other)
         self._cluster_clouds(y, y_other, **kwargs)
+        
     def mapped_mask(self):
         """Get the pair of masks indicating mapped points.
         

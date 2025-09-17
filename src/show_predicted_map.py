@@ -7,7 +7,7 @@ from visualize import points as visualize
 
 
 def run():
-    model_path = '/home/arpg/projects/mapless-navigation/trained_models/28jul25_w3q0/best_train_loss.pth'
+    model_path = '/Users/anna/data/rmodels/sweep1/29_best_train_loss.pth'
     save_file = 'predictions.pkl'
 
     params = get_params()

@@ -40,14 +40,11 @@ def get_params():
         'occupancy_threshold': 0.6,
         'max_point_distance': 1.0,
         'same_point_distance_limit': 0.05,
-        'unmatched_weight': 1.0,
         'distance_weight': 1.0,
-        'occupancy_weight': 1.0,
+        'occupancy_weight': 10.0,
         'fn_fp_weight': 1.0,
         'fn_weight': 1.0,
-        'fp_weight': 1.0,
-        'spatial_weight': 1.0,
-        'occupancy_weight': 10.0
+        'fp_weight': 1.0
     }
     metric_params = {}
 
@@ -56,28 +53,35 @@ def get_params():
         logger = Logger(print_log=True, loggers=(wandb, ))
         device_name = 'cuda:1'
         model_save_directory = '/home/annz/mapping/models'
-        training_params['n_epochs'] = 1000
-        training_params['batch_size'] = 8
 
         dataset_params['dataset_file_path'] = '/media/giantdrive/coloradar/dataset_may2_all.h5'
         dataset_params['partial'] = 0.005
 
-        # model_params['encoder_batch_norm'] = False
-        # model_params['decoder_layer_norm'] = False
-        # model_params['encoder_dropout'] = None
-        # model_params['decoder_dropout'] = None
+        training_params['n_epochs'] = 1000
+        training_params['batch_size'] = 8
+        loss_params['occupied_only'] = False
+
+        model_params['encoder_cloud_size'] = 1024
+        model_params['encoder_num_features'] = 256
+        model_params['encoder_batch_norm'] = True
+        model_params['encoder_dropout'] = 0.2
+        model_params['predicted_cloud_size'] = 2048
+        model_params['decoder_dropout'] = 0.2
+        model_params['decoder_layer_norm'] = True
 
     elif platform.system() == "Darwin":
         host_name = 'mac'
-        logger = Logger(print_log=True, loggers=(wandb, ))
+        logger = Logger(print_log=True)
         device_name = 'mps'
         model_save_directory = '/Users/anna/data/rmodels'
 
         dataset_params['dataset_file_path'] = '/Users/anna/data/coloradar/dataset_may2_one.h5'
-        dataset_params['partial'] = 1
+        dataset_params['partial'] = 0.05
 
-        # training_params['n_epochs'] = 300
-        # training_params['batch_size'] = 8
+        loss_params['occupied_only'] = False
+
+        training_params['n_epochs'] = 300
+        training_params['batch_size'] = 8
         # optimizer_params['learning_rate'] = 6e-3
 
         # loss_params['occupancy_threshold'] = 0.7
@@ -86,14 +90,13 @@ def get_params():
         # loss_params['fn_weight'] = 1
         # loss_params['fp_weight'] = 1
 
-        # model_params['encoder_cloud_size'] = 1024
-        # model_params['encoder_num_features'] = 512
-        # model_params['encoder_batch_norm'] = False
-        # model_params['encoder_dropout'] = 0.2
-
-        # model_params['predicted_cloud_size'] = 2048
-        # model_params['decoder_dropout'] = 0.2
-        # model_params['decoder_layer_norm'] = False
+        model_params['encoder_cloud_size'] = 1024
+        model_params['encoder_num_features'] = 256
+        model_params['encoder_batch_norm'] = True
+        model_params['encoder_dropout'] = 0.2
+        model_params['predicted_cloud_size'] = 2048
+        model_params['decoder_dropout'] = 0.2
+        model_params['decoder_layer_norm'] = True
     
     else:
         host_name = 'lab_pc'

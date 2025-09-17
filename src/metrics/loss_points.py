@@ -31,18 +31,12 @@ class MsePointLoss(PointcloudOccupancyLoss):
     
 
 class DistanceLoss(PointcloudOccupancyLoss):
-    def __init__(self, distance_weight, occupancy_weight,  **kwargs):  # fn_fp_weight, fn_weight, fp_weight, **kwargs):
+    def __init__(self, distance_weight, occupancy_weight,  **kwargs):
         super().__init__(**kwargs)
         if not isinstance(distance_weight, (int, float)):
             raise ValueError('distance_weight must be a number')
         if not isinstance(occupancy_weight, (int, float)):
             raise ValueError('occupancy_weight must be a number')
-        # if not isinstance(fn_fp_weight, (int, float)):
-        #     raise ValueError('fn_fp_weight must be a number')
-        # if not isinstance(fn_weight, (int, float)):
-        #     raise ValueError('fn_weight must be a number')
-        # if not isinstance(fp_weight, (int, float)):
-        #     raise ValueError('fp_weight must be a number')
         
         self._distance_weight = distance_weight
         self._occupancy_weight = occupancy_weight

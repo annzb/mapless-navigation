@@ -181,44 +181,40 @@ class PointNet2Spatial(nn.Module):
         return output
 
 
-class SinglePointEncoder(nn.Module):
-    def __init__(self, output_size=1024, output_dim=16, batch_norm: bool = True, dropout: Optional[float] = None, **kwargs):
+class SinglePointEncoder(nn.Module):  # "single cloud" encoder
+    def __init__(self, output_size=1024, output_dim=16,
+                 batch_norm: bool = True, dropout: Optional[float] = None, **kwargs):
         super().__init__()
-        if not isinstance(output_size, int):
-            raise ValueError('output_size must be an integer')
-        if output_size <= 0:
-            raise ValueError('output_size must be positive')
-        if not isinstance(output_dim, int):
-            raise ValueError('output_dim must be an integer')
-        if output_dim <= 0:
-            raise ValueError('output_dim must be positive')
-        if not isinstance(batch_norm, bool):
-            raise ValueError('batch_norm must be a boolean')
-        if dropout is not None and not isinstance(dropout, float):
-            raise ValueError('dropout must be a float')
-        if dropout is not None and (dropout < 0.0 or dropout > 1.0):
-            raise ValueError('dropout must be between 0.0 and 1.0')
+        # --- basic arg checks (yours) ---
+        if not isinstance(output_size, int): raise ValueError('output_size must be an integer')
+        if output_size <= 0: raise ValueError('output_size must be positive')
+        if not isinstance(output_dim, int): raise ValueError('output_dim must be an integer')
+        if output_dim <= 0: raise ValueError('output_dim must be positive')
+        if not isinstance(batch_norm, bool): raise ValueError('batch_norm must be a boolean')
+        if dropout is not None and not isinstance(dropout, float): raise ValueError('dropout must be a float')
+        if dropout is not None and (dropout < 0.0 or dropout > 1.0): raise ValueError('dropout must be between 0.0 and 1.0')
 
         self.output_size = output_size
         self.output_dim = output_dim
 
+        sa1_mlp = [16, 16, 64]
         self.sa1 = PointNetSetAbstraction(
             npoint=output_size * 2, radius=0.4, nsample=32,
-            in_channel=4 + 3, mlp=[16, 16, 64], group_all=False
+            in_channel=4 + 3, mlp=sa1_mlp, group_all=False
         )
+        sa2_mlp = [64, 64, 256]
         self.sa2 = PointNetSetAbstraction(
             npoint=output_size, radius=0.8, nsample=32,
-            in_channel=64 + 3, mlp=[64, 64, 256], group_all=False
+            in_channel=sa1_mlp[-1] + 3, mlp=sa2_mlp, group_all=False
         )
 
-        layers = [nn.Conv1d(256, 128, 1)]
-        if batch_norm:
-            layers.append(nn.BatchNorm1d(128))
-        layers.append(nn.ReLU())
-        if dropout is not None:
-            layers.append(nn.Dropout(p=dropout))
-        layers.append(nn.Conv1d(128, output_dim, 1))
-        self.project = nn.Sequential(*layers)
+        proj_in = sa2_mlp[-1]  # should be 256 
+        if proj_in != 256:
+            raise ValueError(
+                f'Projection expects 256 input channels from SA2, but got {proj_in}. '
+                f'Update the projection in/out dims if you change sa2_mlp.'
+            )
+        self.project = nn.Conv1d(proj_in, output_dim, kernel_size=1, bias=True)
 
     def forward(self, cloud):
         cloud = cloud.unsqueeze(0).permute(0, 2, 1)    # (N, 4) -> (1, 4, N)
