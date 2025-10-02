@@ -159,17 +159,37 @@ class DistanceGridOccupancyLoss(DistanceOccupancyLoss):
 
     def _calc_occupancy_loss(self, y_pred, y_true, data_buffer=None, *args, **kwargs):
         (pred_pts, pred_batch_idx), (true_pts, true_batch_idx) = y_pred, y_true
-        
         batch_losses = []
         for b in range(self._batch_size):
+            if b not in pred_batch_idx:  # last batch may not be full
+                continue
             pred_b = pred_pts[pred_batch_idx == b]
             true_b = true_pts[true_batch_idx == b]
             pred_avg_occ = diff_utils.voxelize_points(pred_b, self.grid_dims, self.min_bounds, self.max_bounds)
             true_avg_occ = diff_utils.voxelize_points(true_b, self.grid_dims, self.min_bounds, self.max_bounds)
-            loss = F.mse_loss(pred_avg_occ, true_avg_occ)
+            combined_mask = (pred_avg_occ > 0) | (true_avg_occ > 0)
+            if combined_mask.any():
+                pred_active_voxels = pred_avg_occ[combined_mask]
+                true_active_voxels = true_avg_occ[combined_mask]
+                loss = F.mse_loss(pred_active_voxels, true_active_voxels)
+            else:
+                raise ValueError("No points to calculate loss")
             batch_losses.append(loss)
-            
         return torch.stack(batch_losses).mean().unsqueeze(0)
+
+    # def _calc_occupancy_loss(self, y_pred, y_true, data_buffer=None, *args, **kwargs):
+    #     (pred_pts, pred_batch_idx), (true_pts, true_batch_idx) = y_pred, y_true
+        
+    #     batch_losses = []
+    #     for b in range(self._batch_size):
+    #         pred_b = pred_pts[pred_batch_idx == b]
+    #         true_b = true_pts[true_batch_idx == b]
+    #         pred_avg_occ = diff_utils.voxelize_points(pred_b, self.grid_dims, self.min_bounds, self.max_bounds)
+    #         true_avg_occ = diff_utils.voxelize_points(true_b, self.grid_dims, self.min_bounds, self.max_bounds)
+    #         loss = F.mse_loss(pred_avg_occ, true_avg_occ)
+    #         batch_losses.append(loss)
+            
+    #     return torch.stack(batch_losses).mean().unsqueeze(0)
 
     # def _calc_weighted_distance_loss(self, pred_values, true_values):
     #     dist_matrix = torch.cdist(pred_values[:, :3], true_values[:, :3])
