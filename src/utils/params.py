@@ -56,7 +56,7 @@ def get_params():
         device_name = 'cuda:1'
         model_save_directory = '/home/annz/mapping/models'
 
-        dataset_params['dataset_file_path'] = '/media/giantdrive/coloradar/dataset_sep17_all.h5'
+        dataset_params['dataset_file_path'] = '/media/giantdrive/coloradar/coloradar_sep17_all.h5'
 
         # All - S 
         # dataset_params['partial'] = 0.005
