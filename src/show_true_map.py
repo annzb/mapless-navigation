@@ -8,7 +8,9 @@ from visualize import points as visualize
 def run():
     params = get_params()
     params['device_name'] = 'cpu'
+    params['dataset_params']['dataset_file_path'] = '/Users/anna/data/coloradar/coloradar_sep17_one.h5'
     params['dataset_params']['partial'] = 1.0
+    params['dataset_params']['normalize_point_coords'] = False
     # params['loss_params']['occupancy_threshold'] = 0.6
 
     model_manager = PointModelManager(**params)

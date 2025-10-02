@@ -4,19 +4,18 @@ import torch
 from sklearn.cluster import DBSCAN
 from tqdm import tqdm
 
+# from utils import evaluation as eval_utils
 from utils.params import get_params
 from train_points_generative import PointModelManager
 from visualize.points import show_radar_clouds
 
 
-
-
-
 def run():
     params = get_params()
     params['device_name'] = 'cpu'
-    params['dataset_params']['dataset_file_path'] = '/Users/anna/data/coloradar/dataset_may2_all.h5'
-    params['dataset_params']['partial'] = 0.005
+    # params['dataset_params']['dataset_file_path'] = '/Users/anna/data/coloradar/dataset_may2_all.h5'
+    # params['dataset_params']['partial'] = 0.005
+    model_path = '/Users/anna/data/rmodels/01oct25_lbbh/best_val_loss.pth'
     
     # Brute S sweep run 43
     # model_path = '/Users/anna/data/rmodels/sweep_s_july/43_best_val_loss.pth'
@@ -42,26 +41,25 @@ def run():
     # params['model_params']['decoder_layer_norm'] = True
     # params['model_params']['decoder_dropout'] = 0.3
 
-
     mm = PointModelManager(**params)
     mm.init_model(model_path=model_path)
 
-    # n_empty_gt_clouds = count_empty_gt_clouds(mm, threshold=0.8) # threshold=params['loss_params']['occupancy_threshold'])
+    # n_empty_gt_clouds = count_empty_gt_clouds(mm, threshold=0.6) # threshold=params['loss_params']['occupancy_threshold'])
     # print(f'Number of samples: {len(mm.train_loader.dataset)}, number of empty gt clouds: {n_empty_gt_clouds}')
-    # best_sample_idx, best_metric_value = find_best_sample(mm, metric_name='loss', loss=True)
+    # best_sample_idx, best_metric_value = eval_utils.find_best_sample(mm, metric_name='loss', loss=True)
     # print(f'Best sample idx: {best_sample_idx}, best loss: {best_metric_value}')
-    sample_idx = 0
+    sample_idx = 10
 
     input_cloud_np, true_cloud_np, _ = mm.train_loader.dataset[sample_idx]
     y_pred_tensor, report = mm.evaluate_batch(input_cloud_np, true_cloud_np)
     pred_cloud_np = y_pred_tensor[0].cpu().numpy()
     pred_cloud_np_occupied = pred_cloud_np[pred_cloud_np[:, 3] >= params['loss_params']['occupancy_threshold']]
     true_cloud_np_occupied = true_cloud_np[true_cloud_np[:, 3] >= params['loss_params']['occupancy_threshold']]
-
+    
+    print('loss:', report['loss'])
     for metric_name, metric_value in report.items():
         metric_name_short = metric_name.split('_')[-1]
         print(f'{metric_name_short}: {metric_value}')
-
 
     # pred_cloud_reduced = probs # data_transforms.collapse_close_points(probs, d=0.007)
     # y_pred, y_true = (pred_cloud_reduced, torch.zeros(pred_cloud_reduced.shape[0])), (torch.from_numpy(gt_cloud_occupied), torch.zeros(gt_cloud_occupied.shape[0]))
@@ -73,7 +71,6 @@ def run():
     # mm.data_buffer.create_masks(y_pred, y_true)
     # recall = recall_metric._calc(y_pred, y_true, data_buffer=mm.data_buffer)
     # precision = precision_metric._calc(y_pred, y_true, data_buffer=mm.data_buffer)
-
 
     # title = 'Best Valid Occupancy Ratio Model'
     title = 'Best Train Loss Model'

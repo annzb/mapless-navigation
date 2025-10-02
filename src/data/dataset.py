@@ -20,9 +20,13 @@ def read_h5_dataset(file_path):
     print('Reading dataset from', file_path)
     data_dict = {}
     with h5py.File(file_path, 'r') as f:
-        config = json.loads(f['config'][()])
+        config_bytes = f['config'][()]
+        config_str = config_bytes.tobytes().decode('utf-8')
+        config = json.loads(config_str)
+        # config = json.loads(f['config'][()])
         data_content = config.get('data_content', [])
         runs = config.get('runs', [])
+
         for content in data_content:
             data_dict[content] = {}
             for run in runs:
@@ -225,19 +229,24 @@ def prepare_point_data(
 class RadarDataset(Dataset):
     def __init__(
             self, radar_frames, lidar_frames, poses, data_transformer,
+            normalize_point_coords=True, normalize_point_intensity=True,
             intensity_mean=None, intensity_std=None, coord_means=None, coord_stds=None,
             name='dataset', logger=None, orig_radar_frames=None, **kwargs
     ):
-        self.X, self.coord_means, self.coord_stds = data_transformer.scale_point_coords(
-            points=radar_frames, coord_means=coord_means, coord_stds=coord_stds
-        )
-        self.X, self.intensity_mean, self.intensity_std = data_transformer.scale_point_intensity(
-            points=self.X, intensity_mean=intensity_mean, intensity_std=intensity_std
-        )
-        self.Y, _, _ = data_transformer.scale_point_coords(
-            points=lidar_frames, coord_means=coord_means, coord_stds=coord_stds
-        )
-        self.poses = poses
+        self.X, self.Y, self.poses = radar_frames, lidar_frames, poses
+        self.coord_means, self.coord_stds = np.array([]), np.array([])
+
+        if normalize_point_coords:
+            self.X, self.coord_means, self.coord_stds = data_transformer.scale_point_coords(
+                points=radar_frames, coord_means=coord_means, coord_stds=coord_stds
+            )
+            self.Y, _, _ = data_transformer.scale_point_coords(
+                points=lidar_frames, coord_means=coord_means, coord_stds=coord_stds
+            )
+        if normalize_point_intensity:
+            self.X, self.intensity_mean, self.intensity_std = data_transformer.scale_point_intensity(
+                points=self.X, intensity_mean=intensity_mean, intensity_std=intensity_std
+            )
         self.orig_radar_frames = orig_radar_frames
         self.name = name.capitalize()
         self.print_log(logger=logger)
@@ -329,6 +338,7 @@ def get_dataset(
         dataset_file_path, dataset_type,
         device=None, logger=None, random_seed=1, batch_size=1,
         partial=1.0, shuffle_runs=True, grid_voxel_size=1.0,
+        normalize_point_coords=True, normalize_point_intensity=True,
         gt_cloud_min_num_points=1, intensity_threshold=0.0, occupancy_threshold=0.5, **kwargs
 ):
     if not isinstance(dataset_file_path, str):
@@ -390,10 +400,9 @@ def get_dataset(
         radar_frames, lidar_frames, poses, # orig_radar_frames, 
         test_size=0.5, random_state=random_seed
     )
-    (
-        radar_val, radar_test,
-        lidar_val, lidar_test,
-        poses_val, poses_test,
+    (radar_val, radar_test,
+     lidar_val, lidar_test,
+     poses_val, poses_test,
         # orig_radar_frames_val, orig_radar_frames_test
     ) = train_test_split(
         radar_temp, lidar_temp, poses_temp, # orig_radar_frames_temp, 
@@ -404,12 +413,15 @@ def get_dataset(
     train_dataset = dataset_type(
         radar_train, lidar_train, poses_train, 
         data_transformer=data_transformer, device=device, name='train',
+        normalize_point_coords=normalize_point_coords, normalize_point_intensity=normalize_point_intensity,
         # orig_radar_frames=orig_radar_frames_train, 
         voxel_size=grid_voxel_size
     )
+    radar_config.scale_grid_parameters(coord_means=train_dataset.coord_means, coord_stds=train_dataset.coord_stds)
     val_dataset = dataset_type(
         radar_val, lidar_val, poses_val, 
         data_transformer=data_transformer, device=device, name='valid', 
+        normalize_point_coords=normalize_point_coords, normalize_point_intensity=normalize_point_intensity,
         intensity_mean=train_dataset.intensity_mean, intensity_std=train_dataset.intensity_std, coord_means=train_dataset.coord_means, coord_stds=train_dataset.coord_stds,
         # orig_radar_frames=orig_radar_frames_val, 
         voxel_size=grid_voxel_size
@@ -417,6 +429,7 @@ def get_dataset(
     test_dataset = dataset_type(
         radar_test, lidar_test, poses_test, 
         data_transformer=data_transformer, device=device, name='test', 
+        normalize_point_coords=normalize_point_coords, normalize_point_intensity=normalize_point_intensity,
         intensity_mean=train_dataset.intensity_mean, intensity_std=train_dataset.intensity_std, coord_means=train_dataset.coord_means, coord_stds=train_dataset.coord_stds,
         # orig_radar_frames=orig_radar_frames_test, 
         voxel_size=grid_voxel_size

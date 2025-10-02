@@ -8,6 +8,7 @@ import torch.nn.functional as F
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
+from metrics import diff_utils
 from metrics.base import PointcloudOccupancyLoss
 
 
@@ -40,24 +41,12 @@ class DistanceLoss(PointcloudOccupancyLoss):
         
         self._distance_weight = distance_weight
         self._occupancy_weight = occupancy_weight
-        self._fn_fp_weight = 1  # fn_fp_weight
-        self._fn_weight = 1  # fn_weight
-        self._fp_weight = 1  # fp_weight
 
     def distance_weight(self) -> float:
         return self._distance_weight
     
     def occupancy_weight(self) -> float:
         return self._occupancy_weight
-    
-    def fn_fp_weight(self) -> float:
-        return self._fn_fp_weight
-    
-    def fn_weight(self) -> float:
-        return self._fn_weight
-    
-    def fp_weight(self) -> float:
-        return self._fp_weight
     
     def _calc_weighted_distance_loss(self, pred_values, true_values):
         dist_matrix = torch.cdist(pred_values[:, :3], true_values[:, :3])
@@ -88,15 +77,15 @@ class DistanceLoss(PointcloudOccupancyLoss):
             pred_b_filtered, true_b_filtered = y_pred_values[pred_batch_mask & pred_occ_mask], y_true_values[true_batch_mask & true_occ_mask]
 
             if pred_b_filtered.size(0) > 0 and true_b_filtered.size(0) > 0:  # promote matching points
-                loss = self._calc_weighted_distance_loss(pred_b_filtered, true_b_filtered) * self._fn_fp_weight
+                loss = self._calc_weighted_distance_loss(pred_b_filtered, true_b_filtered)
                 loss_types.append(1)
 
             elif true_b_filtered.size(0) > 0:  # encourage higher prediction confidence while scaling with true confidence
-                loss = self._calc_weighted_distance_loss(pred_b, true_b_filtered) * self._fn_weight
+                loss = self._calc_weighted_distance_loss(pred_b, true_b_filtered)
                 loss_types.append(2)
 
             elif pred_b_filtered.size(0) > 0:  # encourage lower prediction confidence
-                loss = self._calc_weighted_distance_loss(pred_b_filtered, true_b) * self._fp_weight
+                loss = self._calc_weighted_distance_loss(pred_b_filtered, true_b)
                 loss_types.append(3)
 
             else:
@@ -151,6 +140,84 @@ class DistanceOccupancyLoss(DistanceLoss):
 
         return torch.stack(losses).mean().unsqueeze(0)
 
+
+class DistanceGridOccupancyLoss(DistanceOccupancyLoss):
+    def __init__(self, radar_config, **kwargs):
+        super().__init__(**kwargs)
+        if not radar_config.is_normalized or radar_config.scaled_point_range is None:
+            raise ValueError(
+                "RadarConfig must be scaled before being passed to the loss function. "
+                "Ensure `radar_config.scale_grid_parameters()` has been called."
+            )
+        self.point_range = radar_config.scaled_point_range
+        self.grid_size = radar_config.grid_size
+        min_bounds = torch.tensor([self.point_range[0], self.point_range[2], self.point_range[4]], dtype=torch.float32, device=self._device)
+        max_bounds = torch.tensor([self.point_range[1], self.point_range[3], self.point_range[5]], dtype=torch.float32, device=self._device)
+        self.register_buffer('min_bounds', min_bounds)
+        self.register_buffer('max_bounds', max_bounds)
+        self.register_buffer('grid_dims', torch.tensor(self.grid_size, dtype=torch.long, device=self._device))
+
+    def _calc_occupancy_loss(self, y_pred, y_true, data_buffer=None, *args, **kwargs):
+        (pred_pts, pred_batch_idx), (true_pts, true_batch_idx) = y_pred, y_true
+        
+        batch_losses = []
+        for b in range(self._batch_size):
+            pred_b = pred_pts[pred_batch_idx == b]
+            true_b = true_pts[true_batch_idx == b]
+            pred_avg_occ = diff_utils.voxelize_points(pred_b, self.grid_dims, self.min_bounds, self.max_bounds)
+            true_avg_occ = diff_utils.voxelize_points(true_b, self.grid_dims, self.min_bounds, self.max_bounds)
+            loss = F.mse_loss(pred_avg_occ, true_avg_occ)
+            batch_losses.append(loss)
+            
+        return torch.stack(batch_losses).mean().unsqueeze(0)
+
+    # def _calc_weighted_distance_loss(self, pred_values, true_values):
+    #     dist_matrix = torch.cdist(pred_values[:, :3], true_values[:, :3])
+    #     d_pred_to_true, _ = dist_matrix.min(dim=1)
+    #     loss_pred = d_pred_to_true.mean()
+    #     d_true_to_pred, _ = dist_matrix.min(dim=0)
+    #     loss_true = d_true_to_pred.mean()
+    #     return loss_pred + loss_true
+
+    # def _calc_occupancy_loss(self, y_pred, y_true, data_buffer=None, *args, **kwargs):
+    #     (pred_pts, pred_batch_idx), (true_pts, true_batch_idx) = y_pred, y_true
+        
+    #     batch_losses = []
+    #     for b in range(self._batch_size):
+    #         pred_b = pred_pts[pred_batch_idx == b]
+    #         true_b = true_pts[true_batch_idx == b]
+    #         # if pred_b.shape[0] == 0 and true_b.shape[0] == 0:
+    #         #     batch_losses.append(torch.tensor(0.0, device=self._device))
+    #         #     continue
+            
+    #         nx, ny, nz = self.grid_dims
+    #         num_cells = nx * ny * nz
+    #         pred_avg_occ = torch.zeros(num_cells, device=self._device)
+    #         true_avg_occ = torch.zeros(num_cells, device=self._device)
+    #         min_bounds_tensor = torch.zeros_like(self.grid_dims)
+
+    #         # Voxelize predicted points
+    #         if pred_b.shape[0] > 0:
+    #             pred_coords = (pred_b[:, :3] - self.min_bounds) / (self.max_bounds - self.min_bounds) * self.grid_dims
+    #             pred_indices_3d = pred_coords.long().clip(min=min_bounds_tensor, max=self.grid_dims - 1)
+    #             pred_indices_1d = pred_indices_3d[:, 0] * (ny * nz) + pred_indices_3d[:, 1] * nz + pred_indices_3d[:, 2]
+    #             pred_occupancy_sum = torch.zeros(num_cells, device=self._device).scatter_add_(0, pred_indices_1d, pred_b[:, 3])
+    #             pred_counts = torch.zeros(num_cells, device=self._device).scatter_add_(0, pred_indices_1d, torch.ones_like(pred_indices_1d, dtype=torch.float))
+    #             pred_avg_occ = pred_occupancy_sum / pred_counts.clamp(min=1)
+
+    #         # Voxelize ground truth points
+    #         if true_b.shape[0] > 0:
+    #             true_coords = (true_b[:, :3] - self.min_bounds) / (self.max_bounds - self.min_bounds) * self.grid_dims
+    #             true_indices_3d = true_coords.long().clip(min=min_bounds_tensor, max=self.grid_dims - 1)
+    #             true_indices_1d = true_indices_3d[:, 0] * (ny * nz) + true_indices_3d[:, 1] * nz + true_indices_3d[:, 2]
+    #             true_occupancy_sum = torch.zeros(num_cells, device=self._device).scatter_add_(0, true_indices_1d, true_b[:, 3])
+    #             true_counts = torch.zeros(num_cells, device=self._device).scatter_add_(0, true_indices_1d, torch.ones_like(true_indices_1d, dtype=torch.float))
+    #             true_avg_occ = true_occupancy_sum / true_counts.clamp(min=1)
+
+    #         loss = F.mse_loss(pred_avg_occ, true_avg_occ)
+    #         batch_losses.append(loss)
+            
+    #     return torch.stack(batch_losses).mean().unsqueeze(0)
 
 
 class PointLoss(PointcloudOccupancyLoss):

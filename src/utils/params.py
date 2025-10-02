@@ -19,6 +19,8 @@ def get_params():
         'dataset_file_path': None,
         'partial': 1.0, 
         'shuffle_runs': True,
+        'normalize_point_coords': True,
+        'normalize_point_intensity': True,
         'intensity_threshold': 5000.0,
         'grid_voxel_size': 0.25,
         'gt_cloud_min_num_points': 100
@@ -41,7 +43,7 @@ def get_params():
         'max_point_distance': 1.0,
         'same_point_distance_limit': 0.05,
         'distance_weight': 1.0,
-        'occupancy_weight': 10.0,
+        'occupancy_weight': 1.0,
         'fn_fp_weight': 1.0,
         'fn_weight': 1.0,
         'fp_weight': 1.0
@@ -54,18 +56,22 @@ def get_params():
         device_name = 'cuda:1'
         model_save_directory = '/home/annz/mapping/models'
 
-        dataset_params['dataset_file_path'] = '/media/giantdrive/coloradar/dataset_may2_all.h5'
-        dataset_params['partial'] = 0.005
+        dataset_params['dataset_file_path'] = '/media/giantdrive/coloradar/dataset_sep17_all.h5'
+
+        # All - S 
+        # dataset_params['partial'] = 0.005
+        # All - L
+        dataset_params['partial'] = 0.5
 
         training_params['n_epochs'] = 1000
         training_params['batch_size'] = 8
         loss_params['occupied_only'] = False
 
-        model_params['encoder_cloud_size'] = 1024
-        model_params['encoder_num_features'] = 256
+        model_params['encoder_cloud_size'] = 2048
+        model_params['encoder_num_features'] = 512
         model_params['encoder_batch_norm'] = True
         model_params['encoder_dropout'] = 0.2
-        model_params['predicted_cloud_size'] = 2048
+        model_params['predicted_cloud_size'] = 4096
         model_params['decoder_dropout'] = 0.2
         model_params['decoder_layer_norm'] = True
 
@@ -75,12 +81,12 @@ def get_params():
         device_name = 'mps'
         model_save_directory = '/Users/anna/data/rmodels'
 
-        dataset_params['dataset_file_path'] = '/Users/anna/data/coloradar/dataset_may2_one.h5'
-        dataset_params['partial'] = 0.05
+        dataset_params['dataset_file_path'] = '/Users/anna/data/coloradar/coloradar_sep17_one.h5'
+        dataset_params['partial'] = 0.02
 
         loss_params['occupied_only'] = False
 
-        training_params['n_epochs'] = 300
+        training_params['n_epochs'] = 500
         training_params['batch_size'] = 8
         # optimizer_params['learning_rate'] = 6e-3
 
@@ -94,7 +100,7 @@ def get_params():
         model_params['encoder_num_features'] = 256
         model_params['encoder_batch_norm'] = True
         model_params['encoder_dropout'] = 0.2
-        model_params['predicted_cloud_size'] = 2048
+        model_params['predicted_cloud_size'] = 4096
         model_params['decoder_dropout'] = 0.2
         model_params['decoder_layer_norm'] = True
     

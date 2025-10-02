@@ -4,8 +4,8 @@ torch.autograd.set_detect_anomaly(True)
 
 from metrics import metrics as metric_defs
 from data import RadarDataset
-from metrics import DistanceLoss as PointLoss, ChamferPointDataBuffer as PointDataBuffer
-from models import GenerativeBaseline as PointModel
+from metrics import DistanceGridOccupancyLoss as PointLoss, ChamferPointDataBuffer as PointDataBuffer
+from models import GenerativeFolding as PointModel
 from training.model_manager import ModelManager
 from utils.params import get_params
 

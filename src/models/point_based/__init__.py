@@ -2,4 +2,4 @@ from models.point_based.polar_to_cartesian import PolarToCartesianPoints
 from models.point_based.downsampling import TrainedDownsampling
 from models.point_based.pointnet import PointNet
 from models.point_based.occupancy_pointclouds import Baseline, PointOccupancyModel, DualBranchPointnet, RegressionBaseline
-from models.point_based.generative import Baseline as GenerativeBaseline
+from models.point_based.generative import Baseline as GenerativeBaseline, GenerativeFolding

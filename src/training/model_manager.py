@@ -49,7 +49,7 @@ class ModelManager(ABC):
             **dataset_params
         )
         self.init_model()
-        self.init_loss_function(device=self.device, batch_size=self.batch_size, **loss_params)
+        self.init_loss_function(device=self.device, radar_config=self.radar_config, batch_size=self.batch_size, **loss_params)
         self.init_metrics(device=self.device, batch_size=self.batch_size, **loss_params, **metric_params)
         self.init_optimizer(**optimizer_params)
  

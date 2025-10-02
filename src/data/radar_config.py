@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import List, Optional, Tuple
 
 import math
@@ -65,6 +65,12 @@ class RadarConfig:
     azimuth_angles: List[float]
     elevation_angles: List[float]
     doppler_bin_width: float
+
+    # Scaling parameters
+    is_normalized: bool = False
+    coord_means: Optional[np.ndarray] = field(default=None, repr=False)
+    coord_stds: Optional[np.ndarray] = field(default=None, repr=False)
+    scaled_point_range: Optional[Tuple] = field(default=None, repr=False)
 
     @classmethod
     def from_dict(cls, radar_config_dict: dict) -> "RadarConfig":
@@ -143,3 +149,25 @@ class RadarConfig:
             math.ceil(z_max * 2 / grid_voxel_size)
         )
         self.num_grid_voxels = self.grid_size[0] * self.grid_size[1] * self.grid_size[2]
+
+    def scale_grid_parameters(self, coord_means: np.ndarray, coord_stds: np.ndarray):
+        """
+        Updates the grid bounds (point_range, grid_size) to match the normalized coordinate system.
+        """
+        if self.is_normalized:
+            print("Warning: Grid parameters have already been scaled.")
+            return
+        if self.point_range is None:
+            raise ValueError("Cannot scale grid parameters before they are initialized with set_radar_frame_params.")
+
+        self.coord_means = coord_means
+        self.coord_stds = coord_stds
+        x_min, x_max, y_min, y_max, z_min, z_max = self.point_range
+        scaled_x_min = (x_min - self.coord_means[0]) / self.coord_stds[0]
+        scaled_x_max = (x_max - self.coord_means[0]) / self.coord_stds[0]
+        scaled_y_min = (y_min - self.coord_means[1]) / self.coord_stds[1]
+        scaled_y_max = (y_max - self.coord_means[1]) / self.coord_stds[1]
+        scaled_z_min = (z_min - self.coord_means[2]) / self.coord_stds[2]
+        scaled_z_max = (z_max - self.coord_means[2]) / self.coord_stds[2]
+        self.scaled_point_range = (scaled_x_min, scaled_x_max, scaled_y_min, scaled_y_max, scaled_z_min, scaled_z_max)
+        self.is_normalized = True

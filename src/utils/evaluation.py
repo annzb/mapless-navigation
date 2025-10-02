@@ -79,19 +79,19 @@ def read_predictions(save_file_path):
 #     return n_empty
 
 
-# def find_best_sample(mm, metric_name, loss=False):
-#     best_sample_idx = None
-#     best_metric_value = np.inf if loss else -np.inf
+def find_best_sample(mm, metric_name, loss=False):
+    best_sample_idx = None
+    best_metric_value = np.inf if loss else -np.inf
 
-#     for sample_idx in tqdm(range(len(mm.train_loader.dataset))):
-#         x_tensor, y_true_tensor, outputs_tensor = run_inference(mm, sample_idx)['tensor']
-#         embeddings_tensor, y_pred_tensor = unpack_model_output(outputs_tensor)
-#         report = report_metrics(mm, y_pred=y_pred_tensor, y_true=y_true_tensor)
-#         if metric_name not in report:
-#             raise ValueError(f'Metric {metric_name} not found, available metrics: {report.keys()}')
+    for sample_idx in tqdm(range(len(mm.train_loader.dataset))):
+        x_tensor, y_true_tensor, outputs_tensor = run_inference(mm, sample_idx)['tensor']
+        embeddings_tensor, y_pred_tensor = unpack_model_output(outputs_tensor)
+        report = report_metrics(mm, y_pred=y_pred_tensor, y_true=y_true_tensor)
+        if metric_name not in report:
+            raise ValueError(f'Metric {metric_name} not found, available metrics: {report.keys()}')
         
-#         if (report[metric_name] < best_metric_value) if loss else (report[metric_name] > best_metric_value):
-#             best_metric_value = report[metric_name]
-#             best_sample_idx = sample_idx
+        if (report[metric_name] < best_metric_value) if loss else (report[metric_name] > best_metric_value):
+            best_metric_value = report[metric_name]
+            best_sample_idx = sample_idx
 
-#     return best_sample_idx, best_metric_value
+    return best_sample_idx, best_metric_value
